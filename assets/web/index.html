@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Live2D Viewer</title>
+    <style>
+        /* ===== 기본 스타일 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* 투명 배경 */
+            background: transparent;
+        }
+
+        /* ===== 캔버스 스타일 ===== */
+        #live2d-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* WebGL은 캔버스 자체적으로 투명도 지원 */
+        }
+
+        /* ===== 로딩 화면 ===== */
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+
+        #loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ===== 에러 화면 ===== */
+        #error {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ff6b6b;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            text-align: center;
+            padding: 20px;
+            z-index: 101;
+        }
+
+        #error.visible {
+            display: flex;
+        }
+
+        #error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        #error-message {
+            font-size: 14px;
+            max-width: 280px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <!-- Live2D 캔버스 -->
+    <canvas id="live2d-canvas"></canvas>
+
+    <!-- 로딩 화면 -->
+    <div id="loading">
+        <div class="spinner"></div>
+        <p>모델 로딩 중...</p>
+    </div>
+
+    <!-- 에러 화면 -->
+    <div id="error">
+        <div id="error-icon">⚠️</div>
+        <p id="error-message">모델을 불러올 수 없습니다.</p>
+    </div>
+
+    <!-- Live2D Cubism SDK Core -->
+    <!-- 
+        실제 사용 시 아래 스크립트들을 Live2D Cubism SDK에서 가져와야 합니다:
+        1. live2dcubismcore.min.js - Cubism Core
+        2. live2dcubismframework.min.js - Cubism Framework
+        또는 pixi-live2d-display 라이브러리 사용
+    -->
+    
+    <!-- PixiJS (Live2D 렌더링용) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    
+    <!-- pixi-live2d-display (Live2D Cubism 렌더링 라이브러리) -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
+    <script>
+        // ===================================================================
+        // Live2D Viewer 스크립트
+        // ===================================================================
+        // 이 스크립트는 URL 파라미터에서 모델 경로를 받아 Live2D 모델을 렌더링합니다.
+        // pixi-live2d-display 라이브러리를 사용합니다.
+        // ===================================================================
+
+        (function() {
+            'use strict';
+
+            // === 전역 변수 ===
+            let app = null;
+            let currentModel = null;
+
+            // === DOM 요소 ===
+            const canvas = document.getElementById('live2d-canvas');
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error');
+            const errorMsgEl = document.getElementById('error-message');
+
+            // === 초기화 ===
+            async function init() {
+                console.log('[Live2D] 초기화 시작...');
+                console.log('[Live2D] 현재 URL:', window.location.href);
+
+                try {
+                    // PixiJS 앱 생성
+                    app = new PIXI.Application({
+                        view: canvas,
+                        autoStart: true,
+                        backgroundAlpha: 0,  // 투명 배경
+                        resizeTo: window,    // 윈도우 크기에 맞춤
+                    });
+
+                    // URL에서 모델 경로 가져오기
+                    const params = new URLSearchParams(window.location.search);
+                    let modelPath = params.get('model');
+
+                    if (modelPath) {
+                        // 상대 경로인 경우 (/models/...) 현재 origin과 결합
+                        if (modelPath.startsWith('/')) {
+                            modelPath = window.location.origin + modelPath;
+                        }
+                        console.log('[Live2D] 최종 모델 URL:', modelPath);
+                        await loadModel(modelPath);
+                    } else {
+                        console.log('[Live2D] 모델 경로가 지정되지 않았습니다.');
+                        hideLoading();
+                    }
+
+                    // 윈도우 리사이즈 이벤트
+                    window.addEventListener('resize', onResize);
+
+                    // 터치/클릭 이벤트 (모델 인터랙션)
+                    canvas.addEventListener('pointerdown', onTap);
+
+                } catch (e) {
+                    console.error('[Live2D] 초기화 실패:', e);
+                    showError('초기화에 실패했습니다: ' + e.message);
+                }
+            }
+
+            // === 모델 로드 ===
+            async function loadModel(modelPath) {
+                console.log('[Live2D] 모델 로딩:', modelPath);
+                showLoading();
+
+                try {
+                    // 기존 모델 제거
+                    if (currentModel) {
+                        app.stage.removeChild(currentModel);
+                        currentModel.destroy();
+                        currentModel = null;
+                    }
+
+                    // Live2D 모델 로드
+                    currentModel = await PIXI.live2d.Live2DModel.from(modelPath);
+                    
+                    // 스테이지에 추가
+                    app.stage.addChild(currentModel);
+
+                    // 모델 크기 및 위치 조정
+                    fitModel();
+
+                    // 인터랙티브 설정
+                    currentModel.interactive = true;
+
+                    console.log('[Live2D] 모델 로드 완료!');
+                    hideLoading();
+
+                } catch (e) {
+                    console.error('[Live2D] 모델 로드 실패:', e);
+                    showError('모델을 불러올 수 없습니다.\n' + e.message);
+                }
+            }
+
+            // === 모델 크기 조정 ===
+            function fitModel() {
+                if (!currentModel || !app) return;
+
+                const stageWidth = app.screen.width;
+                const stageHeight = app.screen.height;
+                const modelWidth = currentModel.width;
+                const modelHeight = currentModel.height;
+
+                // 스테이지에 맞게 스케일 조정
+                const scale = Math.min(
+                    stageWidth / modelWidth,
+                    stageHeight / modelHeight
+                ) * 0.9;  // 약간의 여백
+
+                currentModel.scale.set(scale);
+
+                // 중앙 정렬
+                currentModel.x = (stageWidth - modelWidth * scale) / 2;
+                currentModel.y = (stageHeight - modelHeight * scale) / 2;
+            }
+
+            // === 리사이즈 핸들러 ===
+            function onResize() {
+                if (app) {
+                    app.renderer.resize(window.innerWidth, window.innerHeight);
+                    fitModel();
+                }
+            }
+
+            // === 터치/클릭 핸들러 ===
+            function onTap(e) {
+                if (!currentModel) return;
+
+                // 탭 위치를 모델 좌표로 변환
+                const point = e.data?.global || { x: e.clientX, y: e.clientY };
+                
+                // 모델에 탭 이벤트 전달 (모션 트리거)
+                try {
+                    currentModel.tap(point.x, point.y);
+                } catch (err) {
+                    // 모션이 없는 경우 무시
+                    console.log('[Live2D] 탭 모션 없음');
+                }
+            }
+
+            // === 로딩 표시 ===
+            function showLoading() {
+                loadingEl.classList.remove('hidden');
+                errorEl.classList.remove('visible');
+            }
+
+            function hideLoading() {
+                loadingEl.classList.add('hidden');
+            }
+
+            // === 에러 표시 ===
+            function showError(message) {
+                hideLoading();
+                errorMsgEl.textContent = message;
+                errorEl.classList.add('visible');
+            }
+
+            // === 외부 API (Flutter에서 호출) ===
+            window.Live2DViewer = {
+                // 새 모델 로드
+                loadModel: function(path) {
+                    loadModel(path);
+                },
+                
+                // 모션 실행
+                playMotion: function(group, index) {
+                    if (currentModel) {
+                        try {
+                            currentModel.motion(group, index);
+                        } catch (e) {
+                            console.warn('[Live2D] 모션 실행 실패:', e);
+                        }
+                    }
+                },
+                
+                // 표정 설정
+                setExpression: function(name) {
+                    if (currentModel) {
+                        try {
+                            currentModel.expression(name);
+                        } catch (e) {
+                            console.warn('[Live2D] 표정 설정 실패:', e);
+                        }
+                    }
+                },
+
+                // 모델 스케일 설정
+                setScale: function(scale) {
+                    if (currentModel) {
+                        currentModel.scale.set(scale);
+                    }
+                },
+
+                // 현재 상태 가져오기
+                getStatus: function() {
+                    return {
+                        hasModel: currentModel !== null,
+                        isLoading: !loadingEl.classList.contains('hidden'),
+                        hasError: errorEl.classList.contains('visible'),
+                    };
+                }
+            };
+
+            // === 시작 ===
+            // DOM 로드 완료 후 초기화
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+</html>

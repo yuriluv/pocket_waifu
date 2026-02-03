@@ -1,8 +1,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <!-- ====================================================================== -->
+    <!-- Phase 2: Live2D 오버레이 시스템용 권한 -->
+    <!-- ====================================================================== -->
+    
+    <!-- 인터넷 접근 (API 통신 및 로컬 서버용) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- 다른 앱 위에 그리기 권한 (오버레이 윈도우용) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    
+    <!-- 포그라운드 서비스 권한 (오버레이 지속 실행용) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    
+    <!-- 외부 저장소 읽기/쓰기 권한 (Live2D 모델 파일 접근용) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    
+    <!-- Android 11+ 모든 파일 접근 권한 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    
     <application
-        android:label="flutter_application_1"
+        android:label="Pocket Waifu"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -30,6 +54,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        
+        <!-- ================================================================== -->
+        <!-- flutter_overlay_window 서비스 등록 -->
+        <!-- 오버레이 윈도우가 백그라운드에서도 동작하게 합니다 -->
+        <!-- ================================================================== -->
+        <service
+            android:name="flutter.overlay.window.flutter_overlay_window.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

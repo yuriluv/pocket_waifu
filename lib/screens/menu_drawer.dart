@@ -8,11 +8,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_session_provider.dart';
+import '../providers/prompt_block_provider.dart';
 import '../providers/theme_provider.dart';
 import 'prompt_editor_screen.dart';
 import 'chat_list_screen.dart';
 import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
+import 'live2d_settings_screen.dart';
 import '../widgets/prompt_preview_dialog.dart';
 
 /// 메뉴 드로어 위젯
@@ -119,12 +121,13 @@ class MenuDrawer extends StatelessWidget {
                   subtitle: '최종 조합 프롬프트 확인',
                   onTap: () {
                     Navigator.pop(context);
-                    // TODO: PromptBuilder에서 실제 프롬프트 조합
-                    PromptPreviewDialog.show(
-                      context,
-                      '(프롬프트 빌더 연동 필요)\n\n'
-                      '이 기능은 프롬프트 블록이 조합된 최종 결과를 보여줍니다.',
+                    // PromptBlockProvider에서 미리보기 텍스트 가져오기
+                    final promptBlockProvider = Provider.of<PromptBlockProvider>(
+                      context, 
+                      listen: false,
                     );
+                    final preview = promptBlockProvider.buildPreviewText();
+                    PromptPreviewDialog.show(context, preview);
                   },
                 ),
 
@@ -167,6 +170,27 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
+                // ▶ Live2D 섹션
+                const _SectionTitle(title: 'Live2D'),
+                
+                // Live2D 설정
+                _DrawerMenuItem(
+                  icon: Icons.face,
+                  title: 'Live2D 설정',
+                  subtitle: '오버레이 캐릭터 설정',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const Live2DSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                const Divider(),
+
                 // ▶ 도움말 섹션
                 const _SectionTitle(title: '도움말'),
                 
@@ -198,7 +222,7 @@ class MenuDrawer extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'Pocket Waifu v1.5.0',
+              'Pocket Waifu v2.0.0',
               style: TextStyle(
                 color: Colors.grey[500],
                 fontSize: 12,
@@ -215,7 +239,7 @@ class MenuDrawer extends StatelessWidget {
     showAboutDialog(
       context: context,
       applicationName: 'Pocket Waifu',
-      applicationVersion: '1.5.0',
+      applicationVersion: '2.0.0',
       applicationIcon: Container(
         width: 48,
         height: 48,
@@ -231,7 +255,8 @@ class MenuDrawer extends StatelessWidget {
       ),
       applicationLegalese: '© 2024 Pocket Waifu\n\n'
           'SillyTavern 스타일의 AI 채팅 앱입니다.\n'
-          'OpenAI, Anthropic, GitHub Copilot API를 지원합니다.',
+          'OpenAI, Anthropic, GitHub Copilot API를 지원합니다.\n'
+          'Live2D 오버레이 기능을 지원합니다.',
     );
   }
 }

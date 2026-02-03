@@ -266,11 +266,15 @@ class _PromptBlockCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          block.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: block.enabled ? null : Colors.grey,
+                        Flexible(
+                          child: Text(
+                            block.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: block.enabled ? null : Colors.grey,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                         const SizedBox(width: 8),

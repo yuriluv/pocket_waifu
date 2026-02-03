@@ -1,14 +1,15 @@
 // ============================================================================
-// 설정 화면 (Settings Screen)
+// 설정 화면 (Settings Screen) - v2
 // ============================================================================
 // 이 파일은 앱의 설정 화면 UI를 담당합니다.
-// API 키, 모델 선택, 생성 파라미터, 캐릭터 설정 등을 변경할 수 있습니다.
+// API 프리셋 관리, 생성 파라미터 등을 변경할 수 있습니다.
+// SillyTavern 스타일의 범용 API 설정 시스템을 사용합니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../models/settings.dart';
+import '../models/api_config.dart';
 import '../providers/settings_provider.dart';
 
 /// 설정 화면 위젯
@@ -21,14 +22,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
-  // 탭 컨트롤러 - API 설정 / 캐릭터 설정 / 파라미터 설정 탭
+  // 탭 컨트롤러 - API 프리셋 / 파라미터 설정 탭
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
-    // 3개의 탭 생성
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -43,12 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       appBar: AppBar(
         title: const Text('설정'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // 탭 바
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(icon: Icon(Icons.key), text: 'API'),
-            Tab(icon: Icon(Icons.person), text: '캐릭터'),
+            Tab(icon: Icon(Icons.api), text: 'API 프리셋'),
             Tab(icon: Icon(Icons.tune), text: '파라미터'),
           ],
         ),
@@ -56,9 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       body: TabBarView(
         controller: _tabController,
         children: const [
-          // 각 탭의 내용
-          _ApiSettingsTab(),
-          _CharacterSettingsTab(),
+          _ApiPresetsTab(),
           _ParameterSettingsTab(),
         ],
       ),
@@ -67,343 +63,718 @@ class _SettingsScreenState extends State<SettingsScreen>
 }
 
 // ============================================================================
-// API 설정 탭
+// API 프리셋 탭 (새로운 범용 시스템)
 // ============================================================================
 
-class _ApiSettingsTab extends StatelessWidget {
-  const _ApiSettingsTab();
+class _ApiPresetsTab extends StatelessWidget {
+  const _ApiPresetsTab();
 
   @override
   Widget build(BuildContext context) {
-    // Provider에서 설정값 읽기
     final settingsProvider = context.watch<SettingsProvider>();
-    final settings = settingsProvider.settings;
+    final apiConfigs = settingsProvider.apiConfigs;
+    final activeConfigId = settingsProvider.activeApiConfigId;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        // === API 제공자 선택 ===
-        _SectionTitle(title: 'API 제공자'),
-        const SizedBox(height: 8),
-        _buildInfoText('사용할 AI API를 선택합니다.'),
-        const SizedBox(height: 8),
-        
-        // API 제공자 드롭다운
-        DropdownButtonFormField<ApiProvider>(
-          value: settings.apiProvider,
-          decoration: const InputDecoration(
-            labelText: 'API 제공자',
-            border: OutlineInputBorder(),
+        // 상단 안내문
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          color: Colors.blue.withValues(alpha: 0.1),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, size: 18, color: Colors.blue),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'API 프리셋을 선택하거나 새로 만들어 사용하세요.\n'
+                  '각 프리셋은 Base URL, API Key, 모델, 헤더를 자유롭게 설정할 수 있습니다.',
+                  style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                ),
+              ),
+            ],
           ),
-          items: const [
-            DropdownMenuItem(
-              value: ApiProvider.openai,
-              child: Text('OpenAI (GPT)'),
-            ),
-            DropdownMenuItem(
-              value: ApiProvider.anthropic,
-              child: Text('Anthropic (Claude)'),
-            ),
-          ],
-          onChanged: (value) {
-            if (value != null) {
-              settingsProvider.setApiProvider(value);
-            }
-          },
         ),
 
-        const SizedBox(height: 24),
-
-        // === OpenAI 설정 ===
-        _SectionTitle(title: 'OpenAI 설정'),
-        const SizedBox(height: 8),
-        _buildInfoText('OpenAI API 키는 https://platform.openai.com에서 발급받을 수 있습니다.'),
-        const SizedBox(height: 8),
-
-        // OpenAI API 키 입력
-        TextFormField(
-          initialValue: settings.openaiApiKey,
-          decoration: const InputDecoration(
-            labelText: 'OpenAI API 키',
-            hintText: 'sk-...',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.key),
+        // 프리셋 추가 버튼
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _showPresetTemplateDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('프리셋 템플릿으로 추가'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () => _showEditPresetDialog(context, null),
+                icon: const Icon(Icons.edit_note),
+                label: const Text('커스텀'),
+              ),
+            ],
           ),
-          obscureText: true,  // 비밀번호처럼 숨김
-          onChanged: settingsProvider.setOpenAIApiKey,
         ),
 
-        const SizedBox(height: 16),
+        const Divider(height: 1),
 
-        // OpenAI 모델 선택
-        DropdownButtonFormField<String>(
-          value: settings.openaiModel,
-          decoration: const InputDecoration(
-            labelText: 'OpenAI 모델',
-            border: OutlineInputBorder(),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'gpt-4o', child: Text('GPT-4o (최신, 고성능)')),
-            DropdownMenuItem(value: 'gpt-4o-mini', child: Text('GPT-4o-mini (빠르고 저렴)')),
-            DropdownMenuItem(value: 'gpt-4-turbo', child: Text('GPT-4 Turbo')),
-            DropdownMenuItem(value: 'gpt-4', child: Text('GPT-4')),
-            DropdownMenuItem(value: 'gpt-3.5-turbo', child: Text('GPT-3.5 Turbo (저렴)')),
-          ],
-          onChanged: (value) {
-            if (value != null) {
-              settingsProvider.setOpenAIModel(value);
-            }
-          },
+        // 프리셋 목록
+        Expanded(
+          child: apiConfigs.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.api, size: 64, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'API 프리셋이 없습니다',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '위 버튼을 눌러 프리셋을 추가하세요',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: apiConfigs.length,
+                  itemBuilder: (context, index) {
+                    final config = apiConfigs[index];
+                    final isActive = config.id == activeConfigId;
+                    return _ApiPresetCard(
+                      config: config,
+                      isActive: isActive,
+                      onTap: () => settingsProvider.setActiveApiConfig(config.id),
+                      onEdit: () => _showEditPresetDialog(context, config),
+                      onDelete: () => _confirmDeletePreset(context, config),
+                    );
+                  },
+                ),
         ),
 
-        const SizedBox(height: 24),
-
-        // === Anthropic 설정 ===
-        _SectionTitle(title: 'Anthropic 설정'),
-        const SizedBox(height: 8),
-        _buildInfoText('Anthropic API 키는 https://console.anthropic.com에서 발급받을 수 있습니다.'),
-        const SizedBox(height: 8),
-
-        // Anthropic API 키 입력
-        TextFormField(
-          initialValue: settings.anthropicApiKey,
-          decoration: const InputDecoration(
-            labelText: 'Anthropic API 키',
-            hintText: 'sk-ant-...',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.key),
+        // 하단 사용자 이름 설정
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.grey[50],
+            border: Border(top: BorderSide(color: Colors.grey[200]!)),
           ),
-          obscureText: true,
-          onChanged: settingsProvider.setAnthropicApiKey,
-        ),
-
-        const SizedBox(height: 16),
-
-        // Anthropic 모델 선택
-        DropdownButtonFormField<String>(
-          value: settings.anthropicModel,
-          decoration: const InputDecoration(
-            labelText: 'Anthropic 모델',
-            border: OutlineInputBorder(),
+          child: Row(
+            children: [
+              const Icon(Icons.person, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  initialValue: settingsProvider.userName,
+                  decoration: const InputDecoration(
+                    labelText: '사용자 이름',
+                    hintText: '예: 마스터, 주인님...',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    helperText: 'AI가 당신을 부를 이름',
+                  ),
+                  onChanged: settingsProvider.updateUserName,
+                ),
+              ),
+            ],
           ),
-          items: const [
-            DropdownMenuItem(
-              value: 'claude-3-5-sonnet-20241022',
-              child: Text('Claude 3.5 Sonnet (추천)'),
-            ),
-            DropdownMenuItem(
-              value: 'claude-3-opus-20240229',
-              child: Text('Claude 3 Opus (최고 성능)'),
-            ),
-            DropdownMenuItem(
-              value: 'claude-3-sonnet-20240229',
-              child: Text('Claude 3 Sonnet'),
-            ),
-            DropdownMenuItem(
-              value: 'claude-3-haiku-20240307',
-              child: Text('Claude 3 Haiku (빠르고 저렴)'),
-            ),
-          ],
-          onChanged: (value) {
-            if (value != null) {
-              settingsProvider.setAnthropicModel(value);
-            }
-          },
-        ),
-
-        const SizedBox(height: 24),
-
-        // === 사용자 이름 설정 ===
-        _SectionTitle(title: '사용자 설정'),
-        const SizedBox(height: 8),
-        _buildInfoText('AI가 당신을 부를 이름을 설정합니다.'),
-        const SizedBox(height: 8),
-
-        TextFormField(
-          initialValue: settingsProvider.userName,
-          decoration: const InputDecoration(
-            labelText: '사용자 이름',
-            hintText: '예: 마스터, 주인님...',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.person),
-          ),
-          onChanged: settingsProvider.updateUserName,
         ),
       ],
     );
   }
 
-  Widget _buildInfoText(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 12,
-        color: Colors.grey[600],
+  /// 프리셋 템플릿 선택 다이얼로그
+  void _showPresetTemplateDialog(BuildContext context) {
+    final settingsProvider = context.read<SettingsProvider>();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('프리셋 템플릿 선택'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              _TemplateOption(
+                icon: Icons.code,
+                title: 'GitHub Copilot',
+                subtitle: 'Copilot API (gho_ 토큰 필요)',
+                onTap: () {
+                  Navigator.pop(context);
+                  settingsProvider.addApiConfig(ApiConfig.copilotDefault());
+                },
+              ),
+              _TemplateOption(
+                icon: Icons.smart_toy,
+                title: 'OpenAI',
+                subtitle: 'GPT 모델 (sk- API 키 필요)',
+                onTap: () {
+                  Navigator.pop(context);
+                  settingsProvider.addApiConfig(ApiConfig.openaiDefault());
+                },
+              ),
+              _TemplateOption(
+                icon: Icons.psychology,
+                title: 'Anthropic',
+                subtitle: 'Claude 모델 (sk-ant- API 키 필요)',
+                onTap: () {
+                  Navigator.pop(context);
+                  settingsProvider.addApiConfig(ApiConfig.anthropicDefault());
+                },
+              ),
+              _TemplateOption(
+                icon: Icons.router,
+                title: 'OpenRouter',
+                subtitle: '여러 모델 지원 (openrouter.ai)',
+                onTap: () {
+                  Navigator.pop(context);
+                  settingsProvider.addApiConfig(ApiConfig.openRouterDefault());
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 프리셋 편집 다이얼로그 (신규 또는 수정)
+  void _showEditPresetDialog(BuildContext context, ApiConfig? existingConfig) {
+    showDialog(
+      context: context,
+      builder: (context) => _ApiPresetEditDialog(existingConfig: existingConfig),
+    );
+  }
+
+  /// 프리셋 삭제 확인
+  void _confirmDeletePreset(BuildContext context, ApiConfig config) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('프리셋 삭제'),
+        content: Text('"${config.name}" 프리셋을 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<SettingsProvider>().removeApiConfig(config.id);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('삭제'),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ============================================================================
-// 캐릭터 설정 탭
-// ============================================================================
+/// 템플릿 선택 옵션 위젯
+class _TemplateOption extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
 
-class _CharacterSettingsTab extends StatelessWidget {
-  const _CharacterSettingsTab();
+  const _TemplateOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final settingsProvider = context.watch<SettingsProvider>();
-    final character = settingsProvider.character;
+    return ListTile(
+      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      title: Text(title),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      onTap: onTap,
+    );
+  }
+}
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // === 캐릭터 기본 정보 ===
-        _SectionTitle(title: '캐릭터 기본 정보'),
-        const SizedBox(height: 8),
+/// API 프리셋 카드 위젯
+class _ApiPresetCard extends StatelessWidget {
+  final ApiConfig config;
+  final bool isActive;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
-        // 캐릭터 이름
-        TextFormField(
-          initialValue: character.name,
-          decoration: const InputDecoration(
-            labelText: '캐릭터 이름',
-            hintText: '예: 미카, 사쿠라...',
-            border: OutlineInputBorder(),
-          ),
-          onChanged: settingsProvider.setCharacterName,
-        ),
+  const _ApiPresetCard({
+    required this.config,
+    required this.isActive,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
-        const SizedBox(height: 16),
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      elevation: isActive ? 3 : 1,
+      color: isActive ? Colors.blue.withValues(alpha: 0.05) : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: isActive
+            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // 선택 라디오
+              Radio<bool>(
+                value: true,
+                groupValue: isActive,
+                onChanged: (_) => onTap(),
+              ),
 
-        // 캐릭터 설명
-        TextFormField(
-          initialValue: character.description,
-          decoration: const InputDecoration(
-            labelText: '캐릭터 설명',
-            hintText: '캐릭터의 외모, 배경 등을 설명합니다...',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          maxLines: 5,
-          onChanged: settingsProvider.setCharacterDescription,
-        ),
+              // 프리셋 정보
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            config.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (config.isDefault) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '기본',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      config.modelName,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      config.baseUrl,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // API 키 상태
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          config.apiKey.isEmpty
+                              ? Icons.warning_amber
+                              : Icons.check_circle,
+                          size: 14,
+                          color: config.apiKey.isEmpty
+                              ? Colors.orange
+                              : Colors.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          config.apiKey.isEmpty
+                              ? 'API 키 필요'
+                              : 'API 키 설정됨',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: config.apiKey.isEmpty
+                                ? Colors.orange
+                                : Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
 
-        const SizedBox(height: 16),
-
-        // 캐릭터 성격
-        TextFormField(
-          initialValue: character.personality,
-          decoration: const InputDecoration(
-            labelText: '캐릭터 성격',
-            hintText: '캐릭터의 성격 특성, 말투 등을 설명합니다...',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          maxLines: 5,
-          onChanged: settingsProvider.setCharacterPersonality,
-        ),
-
-        const SizedBox(height: 24),
-
-        // === 시나리오 설정 ===
-        _SectionTitle(title: '시나리오'),
-        const SizedBox(height: 8),
-        Text(
-          '캐릭터와 사용자의 관계, 현재 상황 등을 설명합니다.',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        const SizedBox(height: 8),
-
-        TextFormField(
-          initialValue: character.scenario,
-          decoration: const InputDecoration(
-            labelText: '시나리오',
-            hintText: '예: 당신은 미카의 주인이며...',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          maxLines: 4,
-          onChanged: settingsProvider.setCharacterScenario,
-        ),
-
-        const SizedBox(height: 24),
-
-        // === 첫 인사말 ===
-        _SectionTitle(title: '첫 인사말'),
-        const SizedBox(height: 8),
-        Text(
-          '대화 시작 시 캐릭터가 먼저 하는 말입니다. {{user}}는 사용자 이름으로 대체됩니다.',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        const SizedBox(height: 8),
-
-        TextFormField(
-          initialValue: character.firstMessage,
-          decoration: const InputDecoration(
-            labelText: '첫 인사말',
-            hintText: '안녕하세요, {{user}}님! 반가워요~',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          maxLines: 4,
-          onChanged: settingsProvider.setCharacterFirstMessage,
-        ),
-
-        const SizedBox(height: 24),
-
-        // === 예시 대화 ===
-        _SectionTitle(title: '예시 대화'),
-        const SizedBox(height: 8),
-        Text(
-          '캐릭터의 말투와 반응 스타일을 보여주는 예시입니다.\n{{user}}: 사용자 대사\n{{char}}: 캐릭터 대사',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        const SizedBox(height: 8),
-
-        TextFormField(
-          initialValue: character.exampleDialogue,
-          decoration: const InputDecoration(
-            labelText: '예시 대화',
-            hintText: '{{user}}: 안녕\n{{char}}: 안녕하세요~! 반가워요! 💕',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          maxLines: 6,
-          onChanged: settingsProvider.setCharacterExampleDialogue,
-        ),
-
-        const SizedBox(height: 24),
-
-        // 캐릭터 초기화 버튼
-        OutlinedButton.icon(
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('캐릭터 초기화'),
-                content: const Text('캐릭터 설정을 기본값으로 되돌립니다. 계속하시겠습니까?'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('취소'),
+              // 편집/삭제 버튼
+              Column(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 20),
+                    onPressed: onEdit,
+                    tooltip: '편집',
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      settingsProvider.resetCharacter();
-                    },
-                    child: const Text('확인'),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 20),
+                    onPressed: onDelete,
+                    tooltip: '삭제',
+                    color: Colors.red[400],
                   ),
                 ],
               ),
-            );
-          },
-          icon: const Icon(Icons.restart_alt),
-          label: const Text('기본 캐릭터로 초기화'),
+            ],
+          ),
         ),
-      ],
+      ),
     );
+  }
+}
+
+/// API 프리셋 편집 다이얼로그
+class _ApiPresetEditDialog extends StatefulWidget {
+  final ApiConfig? existingConfig;
+
+  const _ApiPresetEditDialog({this.existingConfig});
+
+  @override
+  State<_ApiPresetEditDialog> createState() => _ApiPresetEditDialogState();
+}
+
+class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
+  late TextEditingController _nameController;
+  late TextEditingController _baseUrlController;
+  late TextEditingController _apiKeyController;
+  late TextEditingController _modelController;
+  late Map<String, String> _customHeaders;
+  bool _showAdvanced = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final config = widget.existingConfig;
+    _nameController = TextEditingController(text: config?.name ?? '새 프리셋');
+    _baseUrlController = TextEditingController(
+      text: config?.baseUrl ?? 'https://api.openai.com/v1/chat/completions',
+    );
+    _apiKeyController = TextEditingController(text: config?.apiKey ?? '');
+    _modelController = TextEditingController(text: config?.modelName ?? 'gpt-4o');
+    _customHeaders = Map.from(config?.customHeaders ?? {});
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: const BoxConstraints(maxHeight: 600),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 헤더
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  widget.existingConfig == null ? '새 프리셋 만들기' : '프리셋 편집',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // 폼 필드
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 프리셋 이름
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: '프리셋 이름',
+                        hintText: '예: My OpenAI, Copilot...',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.label),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Base URL
+                    TextFormField(
+                      controller: _baseUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'Base URL',
+                        hintText: 'https://api.openai.com/v1/chat/completions',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.link),
+                        helperText: 'API 엔드포인트 URL',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // API Key
+                    TextFormField(
+                      controller: _apiKeyController,
+                      decoration: const InputDecoration(
+                        labelText: 'API Key',
+                        hintText: 'sk-..., gho_...',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.key),
+                        helperText: '비밀번호처럼 안전하게 저장됩니다',
+                      ),
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 모델
+                    TextFormField(
+                      controller: _modelController,
+                      decoration: const InputDecoration(
+                        labelText: '모델',
+                        hintText: 'gpt-4o, claude-3-opus...',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.memory),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 고급 설정 토글
+                    InkWell(
+                      onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _showAdvanced
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('고급 설정 (커스텀 헤더)'),
+                        ],
+                      ),
+                    ),
+
+                    if (_showAdvanced) ...[
+                      const SizedBox(height: 12),
+                      _buildHeadersEditor(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // 버튼
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('취소'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _saveConfig,
+                  child: Text(widget.existingConfig == null ? '추가' : '저장'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeadersEditor() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '커스텀 HTTP 헤더',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              TextButton.icon(
+                onPressed: _addHeader,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('추가'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_customHeaders.isEmpty)
+            Text(
+              '커스텀 헤더가 없습니다',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            )
+          else
+            ..._customHeaders.entries.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        entry.key,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        entry.value,
+                        style: const TextStyle(fontFamily: 'monospace'),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, size: 18),
+                      onPressed: () {
+                        setState(() => _customHeaders.remove(entry.key));
+                      },
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  void _addHeader() {
+    final keyController = TextEditingController();
+    final valueController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('헤더 추가'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: keyController,
+              decoration: const InputDecoration(
+                labelText: '헤더 이름',
+                hintText: 'X-Custom-Header',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: valueController,
+              decoration: const InputDecoration(
+                labelText: '헤더 값',
+                hintText: 'value',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (keyController.text.isNotEmpty) {
+                setState(() {
+                  _customHeaders[keyController.text] = valueController.text;
+                });
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('추가'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _saveConfig() {
+    final settingsProvider = context.read<SettingsProvider>();
+    
+    final newConfig = ApiConfig.custom(
+      id: widget.existingConfig?.id,  // null이면 새 ID 생성
+      name: _nameController.text.trim(),
+      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _apiKeyController.text,
+      modelName: _modelController.text.trim(),
+      customHeaders: _customHeaders,
+    );
+
+    if (widget.existingConfig == null) {
+      settingsProvider.addApiConfig(newConfig);
+    } else {
+      settingsProvider.updateApiConfig(newConfig);
+    }
+
+    Navigator.pop(context);
   }
 }
 

@@ -1,8 +1,9 @@
 // ============================================================================
-// 채팅 Provider (Chat Provider)
+// 채팅 Provider (Chat Provider) - v2
 // ============================================================================
 // 이 파일은 채팅 대화 내역과 메시지 전송을 관리하는 Provider입니다.
 // 메시지 목록, 전송 상태, AI 응답 처리 등을 담당합니다.
+// 새로운 ApiConfig 시스템을 지원합니다.
 // ============================================================================
 
 import 'dart:convert';
@@ -10,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/api_config.dart';
 import '../models/message.dart';
 import '../models/character.dart';
 import '../models/settings.dart';
@@ -107,11 +109,13 @@ class ChatProvider extends ChangeNotifier {
   /// [character]: 현재 캐릭터
   /// [settings]: 앱 설정
   /// [userName]: 사용자 이름
+  /// [apiConfig]: API 프리셋 설정 (선택, 없으면 레거시 방식 사용)
   Future<void> sendMessage({
     required String userMessage,
     required Character character,
     required AppSettings settings,
     required String userName,
+    ApiConfig? apiConfig,
   }) async {
     // 빈 메시지는 무시
     if (userMessage.trim().isEmpty) return;
@@ -146,10 +150,28 @@ class ChatProvider extends ChangeNotifier {
       );
 
       // === 4. API 호출 ===
-      final String response = await _apiService.sendMessage(
-        messages: apiMessages,
-        settings: settings,
-      );
+      final String response;
+      if (apiConfig != null) {
+        // 새로운 ApiConfig 방식
+        final List<Map<String, String>> formattedMessages = apiMessages.map((msg) {
+          return {
+            'role': msg.roleString,
+            'content': msg.content,
+          };
+        }).toList();
+
+        response = await _apiService.sendMessageWithConfig(
+          apiConfig: apiConfig,
+          messages: formattedMessages,
+          settings: settings,
+        );
+      } else {
+        // 레거시 방식
+        response = await _apiService.sendMessage(
+          messages: apiMessages,
+          settings: settings,
+        );
+      }
 
       // === 5. AI 응답 메시지 추가 ===
       final Message assistantMsg = Message(
@@ -193,6 +215,7 @@ class ChatProvider extends ChangeNotifier {
     required Character character,
     required AppSettings settings,
     required String userName,
+    ApiConfig? apiConfig,
   }) async {
     // 마지막 메시지가 AI 응답이면 삭제
     if (_messages.isNotEmpty && _messages.last.role == MessageRole.assistant) {
@@ -219,6 +242,7 @@ class ChatProvider extends ChangeNotifier {
         character: character,
         settings: settings,
         userName: userName,
+        apiConfig: apiConfig,
       );
     }
   }
