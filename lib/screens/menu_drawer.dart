@@ -8,7 +8,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_session_provider.dart';
-import '../providers/prompt_block_provider.dart';
 import '../providers/theme_provider.dart';
 import 'prompt_editor_screen.dart';
 import 'chat_list_screen.dart';
@@ -39,12 +38,13 @@ class MenuDrawer extends StatelessWidget {
               children: [
                 // ▶ 채팅 섹션
                 const _SectionTitle(title: '채팅'),
-                
+
                 // 새 채팅 시작
                 _DrawerMenuItem(
                   icon: Icons.add_comment,
                   title: '새 채팅',
                   onTap: () {
+                    // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
                     chatSessionProvider.createNewSession();
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -55,7 +55,7 @@ class MenuDrawer extends StatelessWidget {
                     );
                   },
                 ),
-                
+
                 // 채팅 목록
                 _DrawerMenuItem(
                   icon: Icons.list,
@@ -76,7 +76,7 @@ class MenuDrawer extends StatelessWidget {
 
                 // ▶ 설정 섹션
                 const _SectionTitle(title: '설정'),
-                
+
                 // API 설정
                 _DrawerMenuItem(
                   icon: Icons.key,
@@ -97,7 +97,7 @@ class MenuDrawer extends StatelessWidget {
 
                 // ▶ 프롬프트 섹션
                 const _SectionTitle(title: '프롬프트'),
-                
+
                 // 프롬프트 블록 편집
                 _DrawerMenuItem(
                   icon: Icons.edit_note,
@@ -113,21 +113,15 @@ class MenuDrawer extends StatelessWidget {
                     );
                   },
                 ),
-                
-                // 프롬프트 미리보기
+
+                // 프롬프트 미리보기 (⭐ v2.0.3: 실제 API 전송 프롬프트 보기)
                 _DrawerMenuItem(
                   icon: Icons.preview,
                   title: '프롬프트 미리보기',
-                  subtitle: '최종 조합 프롬프트 확인',
+                  subtitle: '실제 API 전송 프롬프트 확인',
                   onTap: () {
                     Navigator.pop(context);
-                    // PromptBlockProvider에서 미리보기 텍스트 가져오기
-                    final promptBlockProvider = Provider.of<PromptBlockProvider>(
-                      context, 
-                      listen: false,
-                    );
-                    final preview = promptBlockProvider.buildPreviewText();
-                    PromptPreviewDialog.show(context, preview);
+                    PromptPreviewDialog.showWithRealPrompt(context);
                   },
                 ),
 
@@ -135,7 +129,7 @@ class MenuDrawer extends StatelessWidget {
 
                 // ▶ 테마 섹션
                 const _SectionTitle(title: '테마'),
-                
+
                 // 테마 설정
                 _DrawerMenuItem(
                   icon: Icons.palette,
@@ -151,7 +145,7 @@ class MenuDrawer extends StatelessWidget {
                     );
                   },
                 ),
-                
+
                 // 다크 모드 토글
                 SwitchListTile(
                   secondary: Icon(
@@ -172,7 +166,7 @@ class MenuDrawer extends StatelessWidget {
 
                 // ▶ Live2D 섹션
                 const _SectionTitle(title: 'Live2D'),
-                
+
                 // Live2D 설정
                 _DrawerMenuItem(
                   icon: Icons.face,
@@ -193,7 +187,7 @@ class MenuDrawer extends StatelessWidget {
 
                 // ▶ 도움말 섹션
                 const _SectionTitle(title: '도움말'),
-                
+
                 // 명령어 도움말
                 _DrawerMenuItem(
                   icon: Icons.terminal,
@@ -204,7 +198,7 @@ class MenuDrawer extends StatelessWidget {
                     CommandHelpDialog.show(context);
                   },
                 ),
-                
+
                 // 앱 정보
                 _DrawerMenuItem(
                   icon: Icons.info_outline,
@@ -223,10 +217,7 @@ class MenuDrawer extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Text(
               'Pocket Waifu v2.0.0',
-              style: TextStyle(
-                color: Colors.grey[500],
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ),
         ],
@@ -247,13 +238,10 @@ class MenuDrawer extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(
-          Icons.favorite,
-          color: Colors.white,
-          size: 28,
-        ),
+        child: const Icon(Icons.favorite, color: Colors.white, size: 28),
       ),
-      applicationLegalese: '© 2024 Pocket Waifu\n\n'
+      applicationLegalese:
+          '© 2024 Pocket Waifu\n\n'
           'SillyTavern 스타일의 AI 채팅 앱입니다.\n'
           'OpenAI, Anthropic, GitHub Copilot API를 지원합니다.\n'
           'Live2D 오버레이 기능을 지원합니다.',
@@ -292,11 +280,7 @@ class _DrawerHeader extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.favorite,
-              color: Colors.white,
-              size: 32,
-            ),
+            child: const Icon(Icons.favorite, color: Colors.white, size: 32),
           ),
           const SizedBox(height: 12),
           // 앱 이름

@@ -238,6 +238,7 @@ class _Live2DSettingsScreenState extends State<Live2DSettingsScreen> {
 
       // 서버 시작 (필요시)
       if (!_serverService.isRunning) {
+        debugPrint('[Live2DSettings] 서버 시작 - 모델 폴더: $_modelFolderPath');
         await _serverService.startServer(_modelFolderPath!);
         setState(() => _isServerRunning = true);
       }
@@ -246,8 +247,13 @@ class _Live2DSettingsScreenState extends State<Live2DSettingsScreen> {
       final success = await _overlayService.showOverlay();
       if (success) {
         // 모델 URL을 오버레이로 전송
+        debugPrint('[Live2DSettings] === 모델 URL 생성 ===');
+        debugPrint('[Live2DSettings] 선택된 모델 경로: $_selectedModelPath');
+        debugPrint('[Live2DSettings] 모델 폴더 경로: $_modelFolderPath');
+        
         final webViewUrl = _serverService.getWebViewUrl(_selectedModelPath!);
-        debugPrint('[Live2DSettings] WebView URL: $webViewUrl');
+        debugPrint('[Live2DSettings] 생성된 WebView URL: $webViewUrl');
+        
         await _overlayService.sendDataToOverlay({
           'action': 'loadModel',
           'url': webViewUrl,

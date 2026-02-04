@@ -1,16 +1,19 @@
 // ============================================================================
-// 설정 화면 (Settings Screen) - v2
+// 설정 화면 (Settings Screen) - v2.0.1
 // ============================================================================
 // 이 파일은 앱의 설정 화면 UI를 담당합니다.
 // API 프리셋 관리, 생성 파라미터 등을 변경할 수 있습니다.
 // SillyTavern 스타일의 범용 API 설정 시스템을 사용합니다.
+// v2.0.1: 연결 테스트, 고급 옵션 추가
 // ============================================================================
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/api_config.dart';
 import '../providers/settings_provider.dart';
+import '../services/api_service.dart';
 
 /// 설정 화면 위젯
 class SettingsScreen extends StatefulWidget {
@@ -53,10 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _ApiPresetsTab(),
-          _ParameterSettingsTab(),
-        ],
+        children: const [_ApiPresetsTab(), _ParameterSettingsTab()],
       ),
     );
   }
@@ -151,7 +151,8 @@ class _ApiPresetsTab extends StatelessWidget {
                     return _ApiPresetCard(
                       config: config,
                       isActive: isActive,
-                      onTap: () => settingsProvider.setActiveApiConfig(config.id),
+                      onTap: () =>
+                          settingsProvider.setActiveApiConfig(config.id),
                       onEdit: () => _showEditPresetDialog(context, config),
                       onDelete: () => _confirmDeletePreset(context, config),
                     );
@@ -193,7 +194,7 @@ class _ApiPresetsTab extends StatelessWidget {
   /// 프리셋 템플릿 선택 다이얼로그
   void _showPresetTemplateDialog(BuildContext context) {
     final settingsProvider = context.read<SettingsProvider>();
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -256,7 +257,8 @@ class _ApiPresetsTab extends StatelessWidget {
   void _showEditPresetDialog(BuildContext context, ApiConfig? existingConfig) {
     showDialog(
       context: context,
-      builder: (context) => _ApiPresetEditDialog(existingConfig: existingConfig),
+      builder: (context) =>
+          _ApiPresetEditDialog(existingConfig: existingConfig),
     );
   }
 
@@ -395,18 +397,12 @@ class _ApiPresetCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       config.modelName,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       config.baseUrl,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[500],
-                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                       overflow: TextOverflow.ellipsis,
                     ),
                     // API 키 상태
@@ -424,9 +420,7 @@ class _ApiPresetCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          config.apiKey.isEmpty
-                              ? 'API 키 필요'
-                              : 'API 키 설정됨',
+                          config.apiKey.isEmpty ? 'API 키 필요' : 'API 키 설정됨',
                           style: TextStyle(
                             fontSize: 11,
                             color: config.apiKey.isEmpty
@@ -481,6 +475,17 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   late TextEditingController _modelController;
   late Map<String, String> _customHeaders;
   bool _showAdvanced = false;
+  bool _isTesting = false;
+  String? _testResult;
+
+  // v2.0.1: 고급 옵션
+  late ApiFormat _format;
+  late bool _useStreaming;
+  late bool _hasFirstSystemPrompt;
+  late bool _requiresAlternateRole;
+  late bool _mergeSystemPrompts;
+  late bool _mustStartWithUserInput;
+  late bool _useMaxOutputTokens;
 
   @override
   void initState() {
@@ -491,8 +496,19 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
       text: config?.baseUrl ?? 'https://api.openai.com/v1/chat/completions',
     );
     _apiKeyController = TextEditingController(text: config?.apiKey ?? '');
-    _modelController = TextEditingController(text: config?.modelName ?? 'gpt-4o');
+    _modelController = TextEditingController(
+      text: config?.modelName ?? 'gpt-4o',
+    );
     _customHeaders = Map.from(config?.customHeaders ?? {});
+
+    // v2.0.1: 고급 옵션 초기화
+    _format = config?.format ?? ApiFormat.openAICompatible;
+    _useStreaming = config?.useStreaming ?? true;
+    _hasFirstSystemPrompt = config?.hasFirstSystemPrompt ?? true;
+    _requiresAlternateRole = config?.requiresAlternateRole ?? true;
+    _mergeSystemPrompts = config?.mergeSystemPrompts ?? false;
+    _mustStartWithUserInput = config?.mustStartWithUserInput ?? false;
+    _useMaxOutputTokens = config?.useMaxOutputTokens ?? false;
   }
 
   @override
@@ -504,12 +520,38 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
     super.dispose();
   }
 
+  /// ⭐ v2.0.1: 연결 테스트
+  Future<void> _testConnection() async {
+    setState(() {
+      _isTesting = true;
+      _testResult = null;
+    });
+
+    final testConfig = ApiConfig.custom(
+      name: _nameController.text.trim(),
+      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _apiKeyController.text,
+      modelName: _modelController.text.trim(),
+      customHeaders: _customHeaders,
+    ).copyWith(format: _format);
+
+    debugPrint('>>> 연결 테스트 시작: ${testConfig.baseUrl}');
+
+    final apiService = ApiService();
+    final (success, message) = await apiService.testConnection(testConfig);
+
+    setState(() {
+      _isTesting = false;
+      _testResult = success ? '✅ $message' : '❌ $message';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
-        constraints: const BoxConstraints(maxHeight: 600),
+        constraints: const BoxConstraints(maxHeight: 700),
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -560,7 +602,7 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                         hintText: 'https://api.openai.com/v1/chat/completions',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.link),
-                        helperText: 'API 엔드포인트 URL',
+                        helperText: 'API 엔드포인트 URL (⭐ 변경 시 반드시 저장)',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -573,9 +615,10 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                         hintText: 'sk-..., gho_...',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.key),
-                        helperText: '비밀번호처럼 안전하게 저장됩니다',
+                        helperText: '여러 키는 줄바꿈으로 구분',
                       ),
                       obscureText: true,
+                      maxLines: 1,
                     ),
                     const SizedBox(height: 16),
 
@@ -591,9 +634,46 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                     ),
                     const SizedBox(height: 16),
 
+                    // v2.0.1: API 규격 선택
+                    DropdownButtonFormField<ApiFormat>(
+                      value: _format,
+                      decoration: const InputDecoration(
+                        labelText: 'API 규격',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.api),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: ApiFormat.openAICompatible,
+                          child: Text('OpenAI Compatible'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.anthropic,
+                          child: Text('Anthropic Claude'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.openRouter,
+                          child: Text('OpenRouter'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.google,
+                          child: Text('Google Gemini'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.custom,
+                          child: Text('Custom'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) setState(() => _format = value);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     // 고급 설정 토글
                     InkWell(
-                      onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+                      onTap: () =>
+                          setState(() => _showAdvanced = !_showAdvanced),
                       child: Row(
                         children: [
                           Icon(
@@ -602,14 +682,43 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                                 : Icons.expand_more,
                           ),
                           const SizedBox(width: 8),
-                          const Text('고급 설정 (커스텀 헤더)'),
+                          const Text('고급 설정'),
                         ],
                       ),
                     ),
 
                     if (_showAdvanced) ...[
                       const SizedBox(height: 12),
+                      _buildAdvancedOptions(),
+                      const SizedBox(height: 12),
                       _buildHeadersEditor(),
+                    ],
+
+                    // v2.0.1: 연결 테스트 결과
+                    if (_testResult != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _testResult!.startsWith('✅')
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _testResult!.startsWith('✅')
+                                ? Colors.green
+                                : Colors.red,
+                          ),
+                        ),
+                        child: Text(
+                          _testResult!,
+                          style: TextStyle(
+                            color: _testResult!.startsWith('✅')
+                                ? Colors.green[800]
+                                : Colors.red[800],
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -618,15 +727,28 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
             const SizedBox(height: 16),
 
-            // 버튼
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            // 버튼 (⭐ v2.0.3: Wrap으로 overflow 방지)
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
+                // v2.0.1: 연결 테스트 버튼
+                OutlinedButton.icon(
+                  onPressed: _isTesting ? null : _testConnection,
+                  icon: _isTesting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.wifi_tethering, size: 18),
+                  label: Text(_isTesting ? '테스트 중...' : '연결 테스트'),
+                ),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('취소'),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: _saveConfig,
                   child: Text(widget.existingConfig == null ? '추가' : '저장'),
@@ -635,6 +757,68 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// v2.0.1: 고급 옵션 빌드
+  Widget _buildAdvancedOptions() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('고급 옵션', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            title: const Text('스트리밍 사용'),
+            subtitle: const Text('응답을 실시간으로 표시'),
+            value: _useStreaming,
+            onChanged: (v) => setState(() => _useStreaming = v ?? true),
+            dense: true,
+          ),
+          CheckboxListTile(
+            title: const Text('첫 시스템 프롬프트 포함'),
+            subtitle: const Text('시스템 메시지를 첫 번째로'),
+            value: _hasFirstSystemPrompt,
+            onChanged: (v) => setState(() => _hasFirstSystemPrompt = v ?? true),
+            dense: true,
+          ),
+          CheckboxListTile(
+            title: const Text('역할 교대 필수'),
+            subtitle: const Text('user-assistant 번갈아 배치'),
+            value: _requiresAlternateRole,
+            onChanged: (v) =>
+                setState(() => _requiresAlternateRole = v ?? true),
+            dense: true,
+          ),
+          CheckboxListTile(
+            title: const Text('시스템 프롬프트 합치기'),
+            subtitle: const Text('여러 system을 하나로'),
+            value: _mergeSystemPrompts,
+            onChanged: (v) => setState(() => _mergeSystemPrompts = v ?? false),
+            dense: true,
+          ),
+          CheckboxListTile(
+            title: const Text('사용자 입력으로 시작 필수'),
+            value: _mustStartWithUserInput,
+            onChanged: (v) =>
+                setState(() => _mustStartWithUserInput = v ?? false),
+            dense: true,
+          ),
+          CheckboxListTile(
+            title: const Text('max_output_tokens 사용'),
+            subtitle: const Text('max_tokens 대신 사용'),
+            value: _useMaxOutputTokens,
+            onChanged: (v) => setState(() => _useMaxOutputTokens = v ?? false),
+            dense: true,
+          ),
+        ],
       ),
     );
   }
@@ -758,15 +942,34 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
   void _saveConfig() {
     final settingsProvider = context.read<SettingsProvider>();
-    
-    final newConfig = ApiConfig.custom(
-      id: widget.existingConfig?.id,  // null이면 새 ID 생성
-      name: _nameController.text.trim(),
-      baseUrl: _baseUrlController.text.trim(),
-      apiKey: _apiKeyController.text,
-      modelName: _modelController.text.trim(),
-      customHeaders: _customHeaders,
-    );
+
+    // v2.0.1: 모든 필드 포함
+    final newConfig =
+        ApiConfig.custom(
+          id: widget.existingConfig?.id, // null이면 새 ID 생성
+          name: _nameController.text.trim(),
+          baseUrl: _baseUrlController.text.trim(),
+          apiKey: _apiKeyController.text,
+          modelName: _modelController.text.trim(),
+          customHeaders: _customHeaders,
+        ).copyWith(
+          format: _format,
+          useStreaming: _useStreaming,
+          hasFirstSystemPrompt: _hasFirstSystemPrompt,
+          requiresAlternateRole: _requiresAlternateRole,
+          mergeSystemPrompts: _mergeSystemPrompts,
+          mustStartWithUserInput: _mustStartWithUserInput,
+          useMaxOutputTokens: _useMaxOutputTokens,
+        );
+
+    debugPrint('╔════════════════════════════════════════════════════════════');
+    debugPrint('║ >>> API Config 저장');
+    debugPrint('║ >>> ID: ${newConfig.id}');
+    debugPrint('║ >>> Name: ${newConfig.name}');
+    debugPrint('║ >>> URL: ${newConfig.baseUrl}');
+    debugPrint('║ >>> Model: ${newConfig.modelName}');
+    debugPrint('║ >>> Format: ${newConfig.format.name}');
+    debugPrint('╚════════════════════════════════════════════════════════════');
 
     if (widget.existingConfig == null) {
       settingsProvider.addApiConfig(newConfig);
@@ -775,6 +978,14 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
     }
 
     Navigator.pop(context);
+
+    // v2.0.1: 저장 완료 알림
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${newConfig.name} 프리셋이 저장되었습니다.'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
 
@@ -873,54 +1084,8 @@ class _ParameterSettingsTab extends StatelessWidget {
           onChanged: settingsProvider.setPresencePenalty,
         ),
 
-        const SizedBox(height: 24),
-
-        // === 프롬프트 설정 ===
-        _SectionTitle(title: '추가 프롬프트'),
-        const SizedBox(height: 8),
-
-        // 시스템 프롬프트
-        TextFormField(
-          initialValue: settings.systemPrompt,
-          decoration: const InputDecoration(
-            labelText: '추가 시스템 프롬프트',
-            hintText: 'AI에게 추가로 전달할 지시사항...',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-            helperText: '캐릭터 설정 외에 추가로 전달할 지시사항',
-          ),
-          maxLines: 4,
-          onChanged: settingsProvider.setSystemPrompt,
-        ),
-
-        const SizedBox(height: 16),
-
-        // 탈옥 프롬프트 사용 여부
-        SwitchListTile(
-          title: const Text('탈옥 프롬프트 사용'),
-          subtitle: Text(
-            '주의: 이 기능은 AI의 안전 제한을 우회하려는 시도입니다',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
-          value: settings.useJailbreak,
-          onChanged: settingsProvider.setUseJailbreak,
-        ),
-
-        // 탈옥 프롬프트 입력
-        if (settings.useJailbreak) ...[
-          const SizedBox(height: 8),
-          TextFormField(
-            initialValue: settings.jailbreakPrompt,
-            decoration: const InputDecoration(
-              labelText: '탈옥 프롬프트',
-              hintText: '특별 지시사항...',
-              border: OutlineInputBorder(),
-              alignLabelWithHint: true,
-            ),
-            maxLines: 4,
-            onChanged: settingsProvider.setJailbreakPrompt,
-          ),
-        ],
+        // Note: Additional/Jailbreak prompts removed in v2.0.6
+        // All prompt configuration should use the Prompt Blocks system (프롬프트 편집기)
       ],
     );
   }
@@ -940,10 +1105,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-      ),
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
     );
   }
 }

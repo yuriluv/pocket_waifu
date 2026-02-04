@@ -125,21 +125,42 @@ class LocalServerService {
 
   /// 외부 저장소에서 모델 파일 제공
   Future<shelf.Response> _serveModelFile(String relativePath) async {
+    debugPrint('[LocalServer] === 모델 파일 요청 시작 ===');
+    debugPrint('[LocalServer] 요청 경로 (원본): $relativePath');
+    debugPrint('[LocalServer] 루트 경로: $_rootPath');
+    
     if (_rootPath == null) {
+      debugPrint('[LocalServer] 오류: 루트 경로가 설정되지 않음');
       return shelf.Response.internalServerError(
         body: 'Model root path not set',
       );
     }
 
     try {
+      // URL 디코딩 (한글 파일명 등 처리)
+      final decodedPath = Uri.decodeComponent(relativePath);
+      debugPrint('[LocalServer] 디코딩 경로: $decodedPath');
+      
       // URL 경로의 / 를 시스템 경로 구분자로 변환
-      final normalizedPath = relativePath.replaceAll('/', path.separator);
+      final normalizedPath = decodedPath.replaceAll('/', path.separator);
+      debugPrint('[LocalServer] 정규화 경로: $normalizedPath');
+      
       final filePath = path.join(_rootPath!, normalizedPath);
+      debugPrint('[LocalServer] 최종 파일 경로: $filePath');
+      
       final file = File(filePath);
       
       if (!await file.exists()) {
-        debugPrint('[LocalServer] 파일 없음: $filePath');
-        return shelf.Response.notFound('File not found: $relativePath');
+        debugPrint('[LocalServer] ⚠️ 파일 없음: $filePath');
+        // 디렉토리 내용 출력 (디버깅용)
+        final dir = Directory(_rootPath!);
+        if (await dir.exists()) {
+          debugPrint('[LocalServer] 루트 폴더 내용:');
+          await for (final entity in dir.list(recursive: false)) {
+            debugPrint('[LocalServer]   - ${entity.path}');
+          }
+        }
+        return shelf.Response.notFound('File not found: $relativePath\nFull path: $filePath');
       }
 
       // 파일 읽기
@@ -268,9 +289,12 @@ class LocalServerService {
   /// [modelRelativePath]: 모델 폴더 기준 상대 경로
   /// 반환: "http://localhost:8080/?model=/models/hiyori/hiyori.model3.json"
   String getWebViewUrl(String modelRelativePath) {
-    // 경로 구분자 정규화
+    // 경로 구분자 정규화 (Windows \ -> /)
     final normalizedPath = modelRelativePath.replaceAll('\\', '/');
-    // 상대 경로로 전달 (서버 내부 경로)
-    return '$serverUrl/?model=/models/$normalizedPath';
+    final url = '$serverUrl/?model=/models/$normalizedPath';
+    debugPrint('[LocalServer] getWebViewUrl 입력: $modelRelativePath');
+    debugPrint('[LocalServer] getWebViewUrl 정규화: $normalizedPath');
+    debugPrint('[LocalServer] getWebViewUrl 출력: $url');
+    return url;
   }
 }

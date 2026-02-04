@@ -119,18 +119,17 @@
         <p id="error-message">모델을 불러올 수 없습니다.</p>
     </div>
 
-    <!-- Live2D Cubism SDK Core -->
-    <!-- 
-        실제 사용 시 아래 스크립트들을 Live2D Cubism SDK에서 가져와야 합니다:
-        1. live2dcubismcore.min.js - Cubism Core
-        2. live2dcubismframework.min.js - Cubism Framework
-        또는 pixi-live2d-display 라이브러리 사용
-    -->
+    <!-- ============================================== -->
+    <!-- Live2D Cubism 4 스크립트 로드 (순서 중요!) -->
+    <!-- ============================================== -->
     
-    <!-- PixiJS (Live2D 렌더링용) -->
+    <!-- 1. Cubism 4 Core (필수! - 반드시 먼저 로드) -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    
+    <!-- 2. PixiJS (렌더링 엔진) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     
-    <!-- pixi-live2d-display (Live2D Cubism 렌더링 라이브러리) -->
+    <!-- 3. pixi-live2d-display (Cubism 4 지원 버전) -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
 
     <script>
@@ -160,6 +159,24 @@
                 console.log('[Live2D] 현재 URL:', window.location.href);
 
                 try {
+                    // Cubism Core 로드 확인
+                    if (typeof Live2DCubismCore === 'undefined') {
+                        throw new Error('Live2DCubismCore가 로드되지 않았습니다. 네트워크 연결을 확인하세요.');
+                    }
+                    console.log('[Live2D] Cubism Core 버전:', Live2DCubismCore.Version.csmGetVersion());
+
+                    // PixiJS 확인
+                    if (typeof PIXI === 'undefined') {
+                        throw new Error('PixiJS가 로드되지 않았습니다.');
+                    }
+                    console.log('[Live2D] PixiJS 버전:', PIXI.VERSION);
+
+                    // pixi-live2d-display 확인
+                    if (!PIXI.live2d || !PIXI.live2d.Live2DModel) {
+                        throw new Error('pixi-live2d-display가 로드되지 않았습니다.');
+                    }
+                    console.log('[Live2D] pixi-live2d-display 로드됨');
+
                     // PixiJS 앱 생성
                     app = new PIXI.Application({
                         view: canvas,
@@ -170,19 +187,24 @@
 
                     // URL에서 모델 경로 가져오기
                     const params = new URLSearchParams(window.location.search);
-                    let modelPath = params.get('model');
+                    const modelPath = params.get('model');
 
-                    if (modelPath) {
-                        // 상대 경로인 경우 (/models/...) 현재 origin과 결합
-                        if (modelPath.startsWith('/')) {
-                            modelPath = window.location.origin + modelPath;
-                        }
-                        console.log('[Live2D] 최종 모델 URL:', modelPath);
-                        await loadModel(modelPath);
-                    } else {
-                        console.log('[Live2D] 모델 경로가 지정되지 않았습니다.');
-                        hideLoading();
+                    console.log('[Live2D] URL 파라미터:', window.location.search);
+                    console.log('[Live2D] 모델 경로 파라미터:', modelPath);
+
+                    if (!modelPath) {
+                        console.error('[Live2D] model parameter missing');
+                        showError('모델 경로가 지정되지 않았습니다.\nURL에 ?model=... 파라미터를 추가하세요.');
+                        return;
                     }
+
+                    // 플레이스홀더 경로 체크 제거됨 - 실제 경로 검증은 로드 시점에 수행
+                    // (이전: relative/path, example 등 문자열 포함 시 에러 발생)
+
+                    // ✅ origin 붙이지 않고 그대로 전달
+                    // Live2D 내부에서 base URL 계산 시 상대경로로 처리됨
+                    console.log('[Live2D] 최종 모델 URL:', modelPath);
+                    await loadModel(modelPath);
 
                     // 윈도우 리사이즈 이벤트
                     window.addEventListener('resize', onResize);

@@ -87,14 +87,30 @@ class Live2DService {
       final dir = Directory(_live2dRootPath!);
       if (await dir.exists()) {
         await scanModels();
+        
+        // 저장된 선택 모델이 실제로 존재하는지 검증
+        if (_selectedModelPath != null) {
+          final modelExists = _models.any((m) => m.relativePath == _selectedModelPath);
+          if (!modelExists) {
+            debugPrint('[Live2D] ⚠️ 저장된 모델 경로가 더 이상 유효하지 않습니다: $_selectedModelPath');
+            debugPrint('[Live2D] ⚠️ 선택된 모델을 초기화합니다.');
+            _selectedModelPath = null;
+            await _saveSettings();
+          } else {
+            debugPrint('[Live2D] ✓ 저장된 모델 경로 유효: $_selectedModelPath');
+          }
+        }
       } else {
         debugPrint('[Live2D] 저장된 폴더가 더 이상 존재하지 않습니다: $_live2dRootPath');
         _live2dRootPath = null;
+        _selectedModelPath = null;
+        await _saveSettings();
       }
     }
 
     debugPrint('[Live2D] 초기화 완료. 루트: $_live2dRootPath');
     debugPrint('[Live2D] 발견된 모델 수: ${_models.length}');
+    debugPrint('[Live2D] 선택된 모델: $_selectedModelPath');
   }
 
   /// 모델 폴더 경로를 설정합니다 (사용자가 file_picker로 선택)
@@ -135,6 +151,12 @@ class Live2DService {
           final folderPath = path.dirname(modelFilePath);
           final modelName = path.basename(folderPath);  // 폴더명을 모델 이름으로
           final relativePath = path.relative(modelFilePath, from: _live2dRootPath!);
+          
+          // 디버그: 경로 정보 출력
+          debugPrint('[Live2D] === 모델 발견 ===');
+          debugPrint('[Live2D]   절대 경로: $modelFilePath');
+          debugPrint('[Live2D]   루트 경로: $_live2dRootPath');
+          debugPrint('[Live2D]   상대 경로: $relativePath');
           
           // 파일 수정일
           final stat = await modelFile.stat();

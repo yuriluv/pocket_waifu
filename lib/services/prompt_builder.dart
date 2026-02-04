@@ -1,8 +1,9 @@
 // ============================================================================
-// 프롬프트 빌더 (Prompt Builder) - v2
+// 프롬프트 빌더 (Prompt Builder) - v2.0.3
 // ============================================================================
 // 프롬프트 블록 시스템을 사용하여 최종 프롬프트를 조립하는 서비스입니다.
 // SillyTavern 스타일의 프롬프트 블록을 지원합니다.
+// v2.0.3: === [이름] === 헤더 제거, 내용만 연결
 // ============================================================================
 
 import 'package:uuid/uuid.dart';
@@ -12,7 +13,7 @@ import '../models/message.dart';
 import '../models/settings.dart';
 import '../models/prompt_block.dart';
 
-/// 프롬프트 빌더 클래스 (v2)
+/// 프롬프트 빌더 클래스 (v2.0.3)
 /// 프롬프트 블록 시스템을 사용하여 최종 프롬프트를 조립합니다
 class PromptBuilder {
   // UUID 생성기 (메시지 ID 생성용)
@@ -23,12 +24,13 @@ class PromptBuilder {
   // ============================================================================
 
   /// 프롬프트 블록들을 사용하여 최종 프롬프트 텍스트를 생성합니다
-  /// 
+  /// ⭐ v2.0.3: 헤더 없이 내용만 연결
+  ///
   /// [blocks]: 프롬프트 블록 목록
   /// [pastMessages]: 과거 대화 내역
   /// [currentInput]: 현재 사용자 입력
   /// [pastMessageCount]: 포함할 과거 메시지 수
-  /// 
+  ///
   /// 반환값: 조립된 최종 프롬프트 문자열
   String buildFinalPrompt({
     required List<PromptBlock> blocks,
@@ -37,9 +39,7 @@ class PromptBuilder {
     int pastMessageCount = 10,
   }) {
     // 활성화된 블록만 필터링하고 순서대로 정렬
-    final enabledBlocks = blocks
-        .where((block) => block.isEnabled)
-        .toList()
+    final enabledBlocks = blocks.where((block) => block.isEnabled).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
     final List<String> promptParts = [];
@@ -59,22 +59,31 @@ class PromptBuilder {
         content = block.content;
       }
 
-      // 내용이 있는 경우만 추가
+      // ⭐ v2.0.3: 헤더 없이 내용만 추가
       if (content.isNotEmpty) {
-        promptParts.add('--- ${block.name} ---\n$content');
+        promptParts.add(content);
       }
     }
 
     return promptParts.join('\n\n');
   }
 
-  /// 과거 대화를 XML 형식으로 변환합니다
-  /// 
+  /// 과거 대화를 XML 형식으로 변환합니다 (turn number 포함)
+  ///
   /// 출력 형식:
   /// ```xml
-  /// <user>사용자 메시지 1</user>
-  /// <char>AI 응답 1</char>
+  /// <user chat 1>사용자 메시지</user chat 1>
+  /// <char chat 1>AI 응답</char chat 1>
+  /// <user chat 2>사용자 메시지</user chat 2>
+  /// <char chat 2>AI 응답</char chat 2>
   /// ```
+  ///
+  /// 규칙:
+  /// - user와 char는 쌍(pair)으로 같은 turn number를 공유
+  /// - turn number는 프롬프트 빌드 시점에 동적으로 할당 (저장하지 않음)
+  /// - 삭제 후에도 남은 메시지 기준으로 재번호 부여
+  /// - system 메시지는 제외
+  /// - 연속된 같은 role의 메시지는 각각 별도 turn으로 처리
   String _buildPastMemoryXml(List<Message> messages, int count) {
     if (messages.isEmpty) return '';
 
@@ -83,22 +92,53 @@ class PromptBuilder {
         ? messages.sublist(messages.length - count)
         : messages;
 
-    final List<String> xmlParts = [];
+    // system 메시지 제외
+    final filteredMessages = recentMessages
+        .where((msg) => msg.role != MessageRole.system)
+        .toList();
 
-    for (final msg in recentMessages) {
+    if (filteredMessages.isEmpty) return '';
+
+    final List<String> xmlParts = [];
+    int turnNumber = 1;
+    int i = 0;
+
+    while (i < filteredMessages.length) {
+      final msg = filteredMessages[i];
+
       if (msg.role == MessageRole.user) {
-        xmlParts.add('<user>${msg.content}</user>');
+        // user 메시지 추가
+        xmlParts.add(
+          '<user chat $turnNumber>${msg.content}</user chat $turnNumber>',
+        );
+        i++;
+
+        // 바로 다음이 assistant면 같은 turn number로 추가
+        if (i < filteredMessages.length &&
+            filteredMessages[i].role == MessageRole.assistant) {
+          xmlParts.add(
+            '<char chat $turnNumber>${filteredMessages[i].content}</char chat $turnNumber>',
+          );
+          i++;
+        }
+        turnNumber++;
       } else if (msg.role == MessageRole.assistant) {
-        xmlParts.add('<char>${msg.content}</char>');
+        // assistant만 단독으로 있는 경우 (예: 첫 인사말)
+        xmlParts.add(
+          '<char chat $turnNumber>${msg.content}</char chat $turnNumber>',
+        );
+        i++;
+        turnNumber++;
+      } else {
+        i++;
       }
-      // system 메시지는 과거 기억에 포함하지 않음
     }
 
     return xmlParts.join('\n');
   }
 
   /// API 호출용 메시지 목록을 구성합니다 (블록 기반)
-  /// 
+  ///
   /// GitHub Copilot API 플래그 처리:
   /// - hasFirstSystemPrompt: 첫 메시지가 반드시 system이어야 함
   /// - requiresAlternateRole: user/assistant가 번갈아 와야 함
@@ -113,9 +153,7 @@ class PromptBuilder {
     final List<Map<String, String>> formatted = [];
 
     // 활성화된 블록만 필터링하고 순서대로 정렬
-    final enabledBlocks = blocks
-        .where((block) => block.isEnabled)
-        .toList()
+    final enabledBlocks = blocks.where((block) => block.isEnabled).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
     // === 1. 시스템 프롬프트 구성 (past_memory, user_input 제외한 모든 블록) ===
@@ -130,10 +168,7 @@ class PromptBuilder {
 
     // hasFirstSystemPrompt가 true면 시스템 메시지를 맨 앞에
     if (hasFirstSystemPrompt && systemParts.isNotEmpty) {
-      formatted.add({
-        'role': 'system',
-        'content': systemParts.join('\n\n'),
-      });
+      formatted.add({'role': 'system', 'content': systemParts.join('\n\n')});
     }
 
     // === 2. 과거 기억 (past_memory) 블록 처리 ===
@@ -178,7 +213,7 @@ class PromptBuilder {
     if (messages.isEmpty) return messages;
 
     final List<Map<String, String>> merged = [];
-    
+
     for (final msg in messages) {
       if (merged.isEmpty) {
         merged.add(Map.from(msg));
@@ -233,13 +268,8 @@ class PromptBuilder {
       promptParts.add('[예시 대화]\n$exampleDialogue');
     }
 
-    if (settings.systemPrompt.isNotEmpty) {
-      promptParts.add('[추가 지시사항]\n${settings.systemPrompt}');
-    }
-
-    if (settings.useJailbreak && settings.jailbreakPrompt.isNotEmpty) {
-      promptParts.add('[특별 지시사항]\n${settings.jailbreakPrompt}');
-    }
+    // Note: systemPrompt from AppSettings is deprecated.
+    // All prompt configuration should use the Prompt Blocks system.
 
     return promptParts.join('\n\n');
   }
@@ -260,11 +290,9 @@ class PromptBuilder {
       userName: userName,
     );
 
-    messages.add(Message(
-      id: _uuid.v4(),
-      role: MessageRole.system,
-      content: systemPrompt,
-    ));
+    messages.add(
+      Message(id: _uuid.v4(), role: MessageRole.system, content: systemPrompt),
+    );
 
     // 대화 내역이 비어있고 첫 인사말이 있으면 추가
     if (chatHistory.isEmpty && character.firstMessage.isNotEmpty) {
@@ -272,11 +300,13 @@ class PromptBuilder {
           .replaceAll('{{user}}', userName)
           .replaceAll('{{char}}', character.name);
 
-      messages.add(Message(
-        id: _uuid.v4(),
-        role: MessageRole.assistant,
-        content: firstMessage,
-      ));
+      messages.add(
+        Message(
+          id: _uuid.v4(),
+          role: MessageRole.assistant,
+          content: firstMessage,
+        ),
+      );
     }
 
     // 대화 내역 추가 (system 메시지 제외)
@@ -303,4 +333,3 @@ class PromptBuilder {
         .replaceAll('{{char}}', character.name);
   }
 }
-

@@ -21,14 +21,12 @@ class PromptEditorScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('프롬프트 블록 편집'),
         actions: [
-          // 미리보기 버튼
+          // 미리보기 버튼 (⭐ v2.0.3: 실제 API 전송 프롬프트 보기)
           IconButton(
             icon: const Icon(Icons.preview),
             tooltip: '미리보기',
             onPressed: () {
-              final provider = Provider.of<PromptBlockProvider>(context, listen: false);
-              final preview = provider.buildPreviewText();
-              PromptPreviewDialog.show(context, preview);
+              PromptPreviewDialog.showWithRealPrompt(context);
             },
           ),
           // 블록 추가 버튼
@@ -53,7 +51,9 @@ class PromptEditorScreen extends StatelessWidget {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
-                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primaryContainer.withValues(alpha: 0.3),
                 child: Row(
                   children: [
                     Icon(
@@ -92,7 +92,8 @@ class PromptEditorScreen extends StatelessWidget {
                       index: index,
                       onToggle: () => provider.toggleBlock(block.id),
                       onEdit: () => _showEditBlockDialog(context, block),
-                      onDelete: () => _confirmDeleteBlock(context, provider, block),
+                      onDelete: () =>
+                          _confirmDeleteBlock(context, provider, block),
                     );
                   },
                 ),
@@ -103,9 +104,7 @@ class PromptEditorScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
-                  border: Border(
-                    top: BorderSide(color: Colors.grey[300]!),
-                  ),
+                  border: Border(top: BorderSide(color: Colors.grey[300]!)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -115,32 +114,9 @@ class PromptEditorScreen extends StatelessWidget {
                       '(활성: ${provider.blocks.where((b) => b.enabled).length}개)',
                       style: const TextStyle(fontSize: 12),
                     ),
-                    Row(
-                      children: [
-                        const Text('과거 메시지 수: ', style: TextStyle(fontSize: 12)),
-                        SizedBox(
-                          width: 60,
-                          child: TextFormField(
-                            initialValue: provider.pastMessageCount.toString(),
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                              border: OutlineInputBorder(),
-                            ),
-                            onChanged: (value) {
-                              final count = int.tryParse(value);
-                              if (count != null && count >= 0) {
-                                provider.setPastMessageCount(count);
-                              }
-                            },
-                          ),
-                        ),
-                      ],
+                    Text(
+                      '과거 메시지: ${provider.pastMessageCount}개',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -154,17 +130,125 @@ class PromptEditorScreen extends StatelessWidget {
 
   /// 블록 추가 다이얼로그
   void _showAddBlockDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => const _AddBlockDialog(),
-    );
+    showDialog(context: context, builder: (context) => const _AddBlockDialog());
   }
 
   /// 블록 편집 다이얼로그
   void _showEditBlockDialog(BuildContext context, PromptBlock block) {
+    // ⭐ v2.0.2: read-only 블록은 특별한 다이얼로그 표시
+    if (block.isReadOnly) {
+      _showReadOnlyBlockDialog(context, block);
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => _EditBlockDialog(block: block),
+    );
+  }
+
+  /// ⭐ v2.0.2: Read-only 블록 정보 다이얼로그
+  void _showReadOnlyBlockDialog(BuildContext context, PromptBlock block) {
+    final provider = Provider.of<PromptBlockProvider>(context, listen: false);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.lock_outline, color: Colors.grey),
+            const SizedBox(width: 8),
+            Expanded(child: Text(block.name, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: Colors.orange,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        block.type == PromptBlock.TYPE_PAST_MEMORY
+                            ? '이 블록은 실제 대화 시 과거 메시지로 자동 채워집니다.\n직접 수정할 수 없습니다.'
+                            : '이 블록은 사용자의 현재 입력으로 자동 채워집니다.\n직접 수정할 수 없습니다.',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 과거 기억 블록인 경우 메시지 개수 설정
+              if (block.type == PromptBlock.TYPE_PAST_MEMORY) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  '포함할 과거 메시지 수',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            initialValue: provider.pastMessageCount.toString(),
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              hintText: '메시지 수 입력',
+                              suffixText: '개',
+                            ),
+                            onChanged: (value) {
+                              final count = int.tryParse(value);
+                              if (count != null && count >= 0) {
+                                provider.setPastMessageCount(count);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '0 = 모든 메시지 포함',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('확인'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -252,10 +336,7 @@ class _PromptBlockCard extends StatelessWidget {
                   color: color.withValues(alpha: block.enabled ? 0.2 : 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  icon,
-                  color: block.enabled ? color : Colors.grey,
-                ),
+                child: Icon(icon, color: block.enabled ? color : Colors.grey),
               ),
               const SizedBox(width: 12),
 
@@ -289,24 +370,31 @@ class _PromptBlockCard extends StatelessWidget {
                           ),
                           child: Text(
                             _getTypeLabel(block.type),
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: color,
-                            ),
+                            style: TextStyle(fontSize: 10, color: color),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
+                    // ⭐ v2.0.2: read-only 블록은 설명 표시
                     Text(
-                      block.content.isEmpty
+                      block.isReadOnly
+                          ? (block.type == PromptBlock.TYPE_PAST_MEMORY
+                                ? '(런타임에 과거 메시지로 자동 채워짐)'
+                                : '(런타임에 사용자 입력으로 자동 채워짐)')
+                          : block.content.isEmpty
                           ? '(내용 없음)'
                           : block.content.length > 50
-                              ? '${block.content.substring(0, 50)}...'
-                              : block.content,
+                          ? '${block.content.substring(0, 50)}...'
+                          : block.content,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: block.isReadOnly
+                            ? Colors.blue[600]
+                            : Colors.grey[600],
+                        fontStyle: block.isReadOnly
+                            ? FontStyle.italic
+                            : FontStyle.normal,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -316,16 +404,18 @@ class _PromptBlockCard extends StatelessWidget {
               ),
 
               // 활성화 토글
-              Switch(
-                value: block.enabled,
-                onChanged: (_) => onToggle(),
-              ),
+              Switch(value: block.enabled, onChanged: (_) => onToggle()),
 
-              // 삭제 버튼
+              // 삭제 버튼 (⭐ v2.0.2: 시스템 블록은 삭제 불가)
               IconButton(
-                icon: const Icon(Icons.delete_outline),
-                color: Colors.red[300],
-                onPressed: onDelete,
+                icon: Icon(
+                  block.isSystemBlock
+                      ? Icons.lock_outline
+                      : Icons.delete_outline,
+                ),
+                color: block.isSystemBlock ? Colors.grey[400] : Colors.red[300],
+                onPressed: block.isSystemBlock ? null : onDelete,
+                tooltip: block.isSystemBlock ? '시스템 블록은 삭제할 수 없습니다' : '삭제',
               ),
             ],
           ),
@@ -357,26 +447,16 @@ class _EmptyBlocksPlaceholder extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.inbox_outlined,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             '프롬프트 블록이 없습니다',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
           Text(
             '블록을 추가하여 프롬프트 구조를 정의하세요',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
@@ -486,10 +566,7 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        ElevatedButton(
-          onPressed: _addBlock,
-          child: const Text('추가'),
-        ),
+        ElevatedButton(onPressed: _addBlock, child: const Text('추가')),
       ],
     );
   }
@@ -557,7 +634,12 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
         children: [
           const Icon(Icons.edit),
           const SizedBox(width: 8),
-          Text('블록 편집: ${widget.block.name}'),
+          Expanded(
+            child: Text(
+              '블록 편집: ${widget.block.name}',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       content: SizedBox(
@@ -568,7 +650,10 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 블록 이름
-              const Text('블록 이름', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                '블록 이름',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: _nameController,
@@ -599,10 +684,7 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        ElevatedButton(
-          onPressed: _saveBlock,
-          child: const Text('저장'),
-        ),
+        ElevatedButton(onPressed: _saveBlock, child: const Text('저장')),
       ],
     );
   }

@@ -21,11 +21,11 @@ class PromptBlockProvider extends ChangeNotifier {
   static const String _pastMessageCountKey = 'past_message_count';
 
   // === 상태 변수 ===
-  List<PromptBlock> _blocks = [];        // 프롬프트 블록 목록
-  int _pastMessageCount = 10;            // 과거 기억에 포함할 메시지 수
-  bool _isLoading = false;               // 로딩 상태
-  final Uuid _uuid = const Uuid();       // UUID 생성기
-  final PromptBuilder _promptBuilder = PromptBuilder();  // 프롬프트 빌더
+  List<PromptBlock> _blocks = []; // 프롬프트 블록 목록
+  int _pastMessageCount = 10; // 과거 기억에 포함할 메시지 수
+  bool _isLoading = false; // 로딩 상태
+  final Uuid _uuid = const Uuid(); // UUID 생성기
+  final PromptBuilder _promptBuilder = PromptBuilder(); // 프롬프트 빌더
 
   // === Getter ===
   List<PromptBlock> get blocks => List.unmodifiable(_blocks);
@@ -49,9 +49,7 @@ class PromptBlockProvider extends ChangeNotifier {
       final String? blocksJson = prefs.getString(_blocksKey);
       if (blocksJson != null) {
         final List<dynamic> blocksList = jsonDecode(blocksJson);
-        _blocks = blocksList
-            .map((json) => PromptBlock.fromMap(json))
-            .toList();
+        _blocks = blocksList.map((json) => PromptBlock.fromMap(json)).toList();
       } else {
         // 저장된 데이터가 없으면 기본 블록 생성
         _initializeDefaultBlocks();
@@ -71,10 +69,10 @@ class PromptBlockProvider extends ChangeNotifier {
   /// 기본 블록을 초기화합니다
   void _initializeDefaultBlocks() {
     _blocks = [
-      PromptBlock.systemPrompt(),   // 시스템 프롬프트
-      PromptBlock.character(),      // 캐릭터 설정
-      PromptBlock.pastMemory(),     // 과거 기억
-      PromptBlock.userInput(),      // 사용자 입력
+      PromptBlock.systemPrompt(), // 시스템 프롬프트
+      PromptBlock.character(), // 캐릭터 설정
+      PromptBlock.pastMemory(), // 과거 기억
+      PromptBlock.userInput(), // 사용자 입력
     ];
   }
 
@@ -97,7 +95,7 @@ class PromptBlockProvider extends ChangeNotifier {
   }
 
   /// 새 블록을 추가합니다
-  /// 
+  ///
   /// 두 가지 방식으로 호출 가능:
   /// 1. addBlock(name, content) - 기본 설정으로 블록 생성
   /// 2. addBlock(PromptBlock block) - 완전한 블록 객체 전달
@@ -106,7 +104,7 @@ class PromptBlockProvider extends ChangeNotifier {
 
     if (nameOrBlock is PromptBlock) {
       // PromptBlock 객체가 전달된 경우
-      newBlock = nameOrBlock.id.isEmpty 
+      newBlock = nameOrBlock.id.isEmpty
           ? nameOrBlock.copyWith(id: _uuid.v4())
           : nameOrBlock;
     } else if (nameOrBlock is String && content != null) {
@@ -115,8 +113,8 @@ class PromptBlockProvider extends ChangeNotifier {
       final userInputIndex = _blocks.indexWhere(
         (b) => b.id == PromptBlock.TYPE_USER_INPUT,
       );
-      final newOrder = userInputIndex > 0 
-          ? _blocks[userInputIndex - 1].order + 1 
+      final newOrder = userInputIndex > 0
+          ? _blocks[userInputIndex - 1].order + 1
           : 50;
 
       newBlock = PromptBlock(
@@ -231,7 +229,7 @@ class PromptBlockProvider extends ChangeNotifier {
   }
 
   /// 최종 프롬프트 미리보기 (디버그/확인용)
-  /// 
+  ///
   /// [pastMessages]: 과거 대화 내역
   /// [currentInput]: 현재 사용자 입력
   String buildFinalPrompt(List<Message> pastMessages, String currentInput) {
@@ -268,17 +266,19 @@ class PromptBlockProvider extends ChangeNotifier {
     saveBlocks();
   }
 
-  /// 프롬프트 미리보기 텍스트 생성 (빈 메시지로 테스트)
+  /// 프롬프트 미리보기 텍스트 생성 (⭐ v2.0.3: 헤더 없이)
   String buildPreviewText() {
     final StringBuffer buffer = StringBuffer();
 
     for (final block in _blocks.where((b) => b.isEnabled)) {
-      buffer.writeln('=== [${block.name}] ===');
       if (block.type == PromptBlock.TYPE_PAST_MEMORY) {
+        buffer.writeln('[과거 대화]');
         buffer.writeln('(최근 $_pastMessageCount개 메시지가 여기에 포함됩니다)');
       } else if (block.type == PromptBlock.TYPE_USER_INPUT) {
+        buffer.writeln('[사용자 입력]');
         buffer.writeln('(사용자 입력이 여기에 포함됩니다)');
       } else {
+        // ⭐ v2.0.3: 헤더 없이 내용만 표시
         buffer.writeln(block.content.isEmpty ? '(내용 없음)' : block.content);
       }
       buffer.writeln();

@@ -8,34 +8,32 @@
 
 /// 사용할 AI API 제공자를 정의하는 열거형
 enum ApiProvider {
-  openai,    // OpenAI (GPT 모델)
+  openai, // OpenAI (GPT 모델)
   anthropic, // Anthropic (Claude 모델)
-  copilot,   // GitHub Copilot
+  copilot, // GitHub Copilot
 }
 
 /// 앱 설정을 담는 클래스
 class AppSettings {
   // === API 설정 ===
-  final ApiProvider apiProvider;  // 현재 선택된 API 제공자
-  final String openaiApiKey;      // OpenAI API 키
-  final String anthropicApiKey;   // Anthropic API 키
-  final String copilotApiKey;     // GitHub Copilot API 키 (gho_xxxxx)
-  final String openaiModel;       // OpenAI 모델명 (예: gpt-4, gpt-3.5-turbo)
-  final String anthropicModel;    // Anthropic 모델명 (예: claude-3-opus)
-  final String copilotModel;      // Copilot 모델명 (예: gpt-4o)
-  
+  final ApiProvider apiProvider; // 현재 선택된 API 제공자
+  final String openaiApiKey; // OpenAI API 키
+  final String anthropicApiKey; // Anthropic API 키
+  final String copilotApiKey; // GitHub Copilot API 키 (gho_xxxxx)
+  final String openaiModel; // OpenAI 모델명 (예: gpt-4, gpt-3.5-turbo)
+  final String anthropicModel; // Anthropic 모델명 (예: claude-3-opus)
+  final String copilotModel; // Copilot 모델명 (예: gpt-4o)
+
   // === 생성 파라미터 ===
   // 이 값들은 AI가 텍스트를 생성할 때 영향을 줍니다
-  final double temperature;       // 온도: 높을수록 창의적, 낮을수록 일관적 (0.0~2.0)
-  final double topP;              // Top-P: 확률 분포 자르기 (0.0~1.0)
-  final int maxTokens;            // 최대 토큰 수: AI 응답의 최대 길이
-  final double frequencyPenalty;  // 빈도 패널티: 반복 단어 억제 (-2.0~2.0)
-  final double presencePenalty;   // 존재 패널티: 새로운 주제 유도 (-2.0~2.0)
+  final double temperature; // 온도: 높을수록 창의적, 낮을수록 일관적 (0.0~2.0)
+  final double topP; // Top-P: 확률 분포 자르기 (0.0~1.0)
+  final int maxTokens; // 최대 토큰 수: AI 응답의 최대 길이
+  final double frequencyPenalty; // 빈도 패널티: 반복 단어 억제 (-2.0~2.0)
+  final double presencePenalty; // 존재 패널티: 새로운 주제 유도 (-2.0~2.0)
 
-  // === 프롬프트 설정 ===
-  final String systemPrompt;      // 시스템 프롬프트 (AI에게 주는 기본 지시사항)
-  final String jailbreakPrompt;   // 탈옥 프롬프트 (제한 해제용, 선택사항)
-  final bool useJailbreak;        // 탈옥 프롬프트 사용 여부
+  // === 프롬프트 설정 (deprecated - use Prompt Blocks instead) ===
+  final String systemPrompt; // 시스템 프롬프트 (AI에게 주는 기본 지시사항)
 
   /// AppSettings 생성자
   AppSettings({
@@ -52,8 +50,6 @@ class AppSettings {
     this.frequencyPenalty = 0.0,
     this.presencePenalty = 0.0,
     this.systemPrompt = '',
-    this.jailbreakPrompt = '',
-    this.useJailbreak = false,
   });
 
   /// 현재 선택된 API 제공자의 API 키를 반환합니다
@@ -108,8 +104,6 @@ class AppSettings {
       'frequencyPenalty': frequencyPenalty,
       'presencePenalty': presencePenalty,
       'systemPrompt': systemPrompt,
-      'jailbreakPrompt': jailbreakPrompt,
-      'useJailbreak': useJailbreak,
     };
   }
 
@@ -142,8 +136,6 @@ class AppSettings {
       frequencyPenalty: (map['frequencyPenalty'] ?? 0.0).toDouble(),
       presencePenalty: (map['presencePenalty'] ?? 0.0).toDouble(),
       systemPrompt: map['systemPrompt'] ?? '',
-      jailbreakPrompt: map['jailbreakPrompt'] ?? '',
-      useJailbreak: map['useJailbreak'] ?? false,
     );
   }
 
@@ -162,8 +154,6 @@ class AppSettings {
     double? frequencyPenalty,
     double? presencePenalty,
     String? systemPrompt,
-    String? jailbreakPrompt,
-    bool? useJailbreak,
   }) {
     return AppSettings(
       apiProvider: apiProvider ?? this.apiProvider,
@@ -179,8 +169,6 @@ class AppSettings {
       frequencyPenalty: frequencyPenalty ?? this.frequencyPenalty,
       presencePenalty: presencePenalty ?? this.presencePenalty,
       systemPrompt: systemPrompt ?? this.systemPrompt,
-      jailbreakPrompt: jailbreakPrompt ?? this.jailbreakPrompt,
-      useJailbreak: useJailbreak ?? this.useJailbreak,
     );
   }
 }

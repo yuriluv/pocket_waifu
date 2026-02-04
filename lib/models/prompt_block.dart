@@ -1,8 +1,9 @@
 // ============================================================================
-// 프롬프트 블록 모델 (Prompt Block Model)
+// 프롬프트 블록 모델 (Prompt Block Model) - v2.0.2
 // ============================================================================
 // SillyTavern 스타일의 프롬프트 블록 시스템을 위한 데이터 모델입니다.
 // 각 블록은 프롬프트의 한 부분을 담당하며, 순서 변경/활성화/비활성화가 가능합니다.
+// v2.0.2: read-only 블록 지원 (과거 기억, 사용자 입력)
 // ============================================================================
 
 import 'package:uuid/uuid.dart';
@@ -10,29 +11,32 @@ import 'package:uuid/uuid.dart';
 /// 프롬프트 블록 클래스
 /// 프롬프트를 구성하는 각 블록(조각)을 나타냅니다
 class PromptBlock {
-  final String id;        // 블록 고유 ID
-  String name;            // 블록 이름 (예: "시스템 프롬프트", "캐릭터 설정")
-  String type;            // 블록 타입 (시스템 블록 구분용)
-  String content;         // 프롬프트 내용
-  bool isEnabled;         // 활성화 여부 (비활성화 시 최종 프롬프트에 포함 안 됨)
-  bool isSystemBlock;     // 기본 블록 여부 (true면 삭제 불가)
-  int order;              // 정렬 순서 (낮을수록 먼저 배치)
+  final String id; // 블록 고유 ID
+  String name; // 블록 이름 (예: "시스템 프롬프트", "캐릭터 설정")
+  String type; // 블록 타입 (시스템 블록 구분용)
+  String content; // 프롬프트 내용
+  bool isEnabled; // 활성화 여부 (비활성화 시 최종 프롬프트에 포함 안 됨)
+  bool isSystemBlock; // 기본 블록 여부 (true면 삭제 불가)
+  int order; // 정렬 순서 (낮을수록 먼저 배치)
 
   // 구버전 호환성 getter (id를 type처럼 사용한 경우)
   bool get enabled => isEnabled;
 
+  /// ⭐ v2.0.2: read-only 여부 (과거 기억, 사용자 입력은 수정 불가)
+  bool get isReadOnly => type == TYPE_PAST_MEMORY || type == TYPE_USER_INPUT;
+
   // === 기본 블록 타입 상수 ===
   // 이 ID를 가진 블록은 시스템에서 특별하게 처리됩니다
-  
+
   /// 과거 대화 기억 블록 - 이전 대화 내역을 XML 형식으로 포함
   static const String TYPE_PAST_MEMORY = 'past_memory';
-  
+
   /// 사용자 입력 블록 - 현재 사용자가 입력한 메시지 (항상 마지막에 위치)
   static const String TYPE_USER_INPUT = 'user_input';
-  
+
   /// 시스템 프롬프트 블록 - AI에게 주는 기본 지시사항
   static const String TYPE_SYSTEM_PROMPT = 'system_prompt';
-  
+
   /// 캐릭터 설정 블록 - 캐릭터 정보
   static const String TYPE_CHARACTER = 'character';
 

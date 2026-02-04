@@ -1,8 +1,9 @@
 // ============================================================================
-// 채팅 목록 화면 (Chat List Screen)
+// 채팅 목록 화면 (Chat List Screen) - v2.0.4
 // ============================================================================
 // 모든 채팅 세션을 표시하고 관리하는 화면입니다.
 // 채팅 선택, 이름 변경, 삭제 기능을 제공합니다.
+// v2.0.4: ChatSessionProvider가 단일 데이터 소스 - 세션 전환만으로 자동 연동
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ class ChatListScreen extends StatelessWidget {
             icon: const Icon(Icons.add),
             tooltip: '새 채팅',
             onPressed: () {
+              // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
               final provider = Provider.of<ChatSessionProvider>(
                 context,
                 listen: false,
@@ -41,6 +43,7 @@ class ChatListScreen extends StatelessWidget {
           if (provider.sessions.isEmpty) {
             return _EmptySessionsPlaceholder(
               onCreate: () {
+                // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
                 provider.createNewSession();
                 Navigator.pop(context);
               },
@@ -58,6 +61,7 @@ class ChatListScreen extends StatelessWidget {
                 session: session,
                 isActive: isActive,
                 onTap: () {
+                  // v2.0.4: 세션 전환만 하면 ChatProvider가 자동 연동
                   provider.switchSession(session.id);
                   Navigator.pop(context);
                 },
@@ -160,7 +164,7 @@ class ChatListScreen extends StatelessWidget {
     ChatSession session,
   ) {
     final json = provider.exportSession(session.id);
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -177,10 +181,7 @@ class ChatListScreen extends StatelessWidget {
           child: SingleChildScrollView(
             child: SelectableText(
               json,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-              ),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
           ),
         ),
@@ -231,7 +232,8 @@ class _ChatSessionCard extends StatelessWidget {
       dateStr = dateFormat.format(session.updatedAt);
     } catch (e) {
       // intl 패키지 없을 때 fallback
-      dateStr = '${session.updatedAt.month}/${session.updatedAt.day} '
+      dateStr =
+          '${session.updatedAt.month}/${session.updatedAt.day} '
           '${session.updatedAt.hour}:${session.updatedAt.minute.toString().padLeft(2, '0')}';
     }
 
@@ -241,10 +243,7 @@ class _ChatSessionCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: isActive
-            ? BorderSide(
-                color: Theme.of(context).colorScheme.primary,
-                width: 2,
-              )
+            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
             : BorderSide.none,
       ),
       child: InkWell(
@@ -317,10 +316,7 @@ class _ChatSessionCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       lastMessagePreview,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -341,11 +337,7 @@ class _ChatSessionCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Icon(
-                          Icons.chat,
-                          size: 12,
-                          color: Colors.grey[400],
-                        ),
+                        Icon(Icons.chat, size: 12, color: Colors.grey[400]),
                         const SizedBox(width: 4),
                         Text(
                           '${session.messages.length}개 메시지',
@@ -427,26 +419,16 @@ class _EmptySessionsPlaceholder extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: Colors.grey[400],
-          ),
+          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             '채팅이 없습니다',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey[600],
-            ),
+            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
           Text(
             '새 채팅을 시작해보세요!',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(

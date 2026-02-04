@@ -11,6 +11,7 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
@@ -100,18 +101,55 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
   void _handleReceivedData(dynamic data) {
     if (data == null) return;
 
+    debugPrint('[Overlay] 수신 데이터 타입: ${data.runtimeType}');
+    debugPrint('[Overlay] 수신 데이터 내용: $data');
+
     try {
-      // 데이터가 문자열인 경우 Map으로 파싱 시도
-      // (실제로는 JSON 파싱이 더 안전함)
-      if (data is String && data.contains('loadModel')) {
-        // URL 추출 (간단한 파싱)
-        final urlMatch = RegExp(r'url:\s*(http[^\s,}]+)').firstMatch(data);
-        if (urlMatch != null) {
-          final url = urlMatch.group(1);
-          if (url != null) {
-            _loadModel(url);
+      String? url;
+      
+      // 1. Map 타입인 경우
+      if (data is Map) {
+        if (data['action'] == 'loadModel' && data['url'] != null) {
+          url = data['url'].toString();
+        }
+      }
+      // 2. 문자열인 경우
+      else if (data is String) {
+        // 2-1. JSON 형식으로 파싱 시도
+        if (data.startsWith('{')) {
+          try {
+            final jsonData = jsonDecode(data);
+            if (jsonData is Map && jsonData['action'] == 'loadModel' && jsonData['url'] != null) {
+              url = jsonData['url'].toString();
+            }
+          } catch (jsonError) {
+            debugPrint('[Overlay] JSON 파싱 실패, 정규식으로 시도: $jsonError');
           }
         }
+        
+        // 2-2. Dart Map.toString() 형식으로 파싱 시도
+        // 형식: {action: loadModel, url: http://localhost:8080/?model=/models/...}
+        if (url == null && data.contains('loadModel')) {
+          // url: 뒤에 오는 http로 시작하는 URL 추출
+          // URL이 } 또는 , 또는 공백으로 끝날 수 있음
+          final urlMatch = RegExp(r'url:\s*(http[^\s,}]+)').firstMatch(data);
+          if (urlMatch != null) {
+            url = urlMatch.group(1);
+          }
+        }
+        
+        // 2-3. URL 자체인 경우
+        if (url == null && data.startsWith('http')) {
+          url = data;
+        }
+      }
+      
+      // URL이 추출되었으면 모델 로드
+      if (url != null && url.isNotEmpty) {
+        debugPrint('[Overlay] 추출된 URL: $url');
+        _loadModel(url);
+      } else {
+        debugPrint('[Overlay] URL 추출 실패');
       }
     } catch (e) {
       debugPrint('[Overlay] 데이터 처리 오류: $e');

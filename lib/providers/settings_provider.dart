@@ -7,9 +7,9 @@
 // 설정값이 변경되면 자동으로 UI가 업데이트됩니다.
 // ============================================================================
 
-import 'dart:convert';  // JSON 변환용
-import 'package:flutter/foundation.dart';  // ChangeNotifier용
-import 'package:shared_preferences/shared_preferences.dart';  // 로컬 저장소
+import 'dart:convert'; // JSON 변환용
+import 'package:flutter/foundation.dart'; // ChangeNotifier용
+import 'package:shared_preferences/shared_preferences.dart'; // 로컬 저장소
 
 import '../models/api_config.dart';
 import '../models/character.dart';
@@ -25,14 +25,14 @@ class SettingsProvider extends ChangeNotifier {
   static const String _activeApiConfigKey = 'active_api_config_id';
 
   // === 상태 변수 ===
-  AppSettings _settings = AppSettings();  // 앱 설정
-  Character _character = Character.defaultCharacter();  // 현재 캐릭터
-  bool _isLoading = false;  // 로딩 상태
-  String _userName = 'User';  // 사용자 이름
+  AppSettings _settings = AppSettings(); // 앱 설정
+  Character _character = Character.defaultCharacter(); // 현재 캐릭터
+  bool _isLoading = false; // 로딩 상태
+  String _userName = 'User'; // 사용자 이름
 
   // === API 프리셋 시스템 ===
-  List<ApiConfig> _apiConfigs = [];  // API 프리셋 목록
-  String? _activeApiConfigId;  // 현재 활성화된 API 프리셋 ID
+  List<ApiConfig> _apiConfigs = []; // API 프리셋 목록
+  String? _activeApiConfigId; // 현재 활성화된 API 프리셋 ID
 
   // === Getter (읽기 전용 속성) ===
   // 외부에서 상태를 읽을 수 있지만 직접 수정은 불가능합니다
@@ -64,7 +64,7 @@ class SettingsProvider extends ChangeNotifier {
   /// 저장된 설정을 불러옵니다
   Future<void> loadSettings() async {
     _isLoading = true;
-    notifyListeners();  // UI에 로딩 시작을 알림
+    notifyListeners(); // UI에 로딩 시작을 알림
 
     try {
       // SharedPreferences 인스턴스 가져오기
@@ -105,20 +105,19 @@ class SettingsProvider extends ChangeNotifier {
       }
 
       // 활성 프리셋이 없거나 유효하지 않으면 첫 번째 것 선택
-      if (_activeApiConfigId == null || 
+      if (_activeApiConfigId == null ||
           !_apiConfigs.any((c) => c.id == _activeApiConfigId)) {
         if (_apiConfigs.isNotEmpty) {
           _activeApiConfigId = _apiConfigs.first.id;
         }
       }
-
     } catch (e) {
       // 에러 발생 시 기본값 사용
       debugPrint('설정 불러오기 실패: $e');
     }
 
     _isLoading = false;
-    notifyListeners();  // UI에 로딩 완료를 알림
+    notifyListeners(); // UI에 로딩 완료를 알림
   }
 
   /// 기존 API 설정을 새 프리셋 시스템으로 마이그레이션
@@ -160,7 +159,7 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> saveSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // 설정 저장
       final String settingsJson = jsonEncode(_settings.toMap());
       await prefs.setString(_settingsKey, settingsJson);
@@ -173,8 +172,9 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.setString('user_name', _userName);
 
       // API 프리셋 저장
-      final List<Map<String, dynamic>> configsMaps = 
-          _apiConfigs.map((c) => c.toMap()).toList();
+      final List<Map<String, dynamic>> configsMaps = _apiConfigs
+          .map((c) => c.toMap())
+          .toList();
       await prefs.setString(_apiConfigsKey, jsonEncode(configsMaps));
 
       // 활성 API 프리셋 ID 저장
@@ -238,8 +238,8 @@ class SettingsProvider extends ChangeNotifier {
   /// 앱 설정을 업데이트합니다
   void updateSettings(AppSettings newSettings) {
     _settings = newSettings;
-    notifyListeners();  // UI 업데이트
-    saveSettings();     // 저장
+    notifyListeners(); // UI 업데이트
+    saveSettings(); // 저장
   }
 
   /// 캐릭터를 업데이트합니다
@@ -312,16 +312,6 @@ class SettingsProvider extends ChangeNotifier {
   /// 시스템 프롬프트 변경
   void setSystemPrompt(String prompt) {
     updateSettings(_settings.copyWith(systemPrompt: prompt));
-  }
-
-  /// 탈옥 프롬프트 변경
-  void setJailbreakPrompt(String prompt) {
-    updateSettings(_settings.copyWith(jailbreakPrompt: prompt));
-  }
-
-  /// 탈옥 프롬프트 사용 여부 변경
-  void setUseJailbreak(bool value) {
-    updateSettings(_settings.copyWith(useJailbreak: value));
   }
 
   // === 캐릭터 개별 속성 업데이트 ===

@@ -10,6 +10,7 @@
 // - 권한 확인 및 요청
 // ============================================================================
 
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -213,7 +214,7 @@ class OverlayService {
   Future<void> sendDataToOverlay(Map<String, dynamic> data) async {
     try {
       // 데이터를 JSON 문자열로 변환하여 전송
-      final jsonString = data.toString();
+      final jsonString = jsonEncode(data);
       await FlutterOverlayWindow.shareData(jsonString);
       debugPrint('[Overlay] 데이터 전송: $jsonString');
     } catch (e) {

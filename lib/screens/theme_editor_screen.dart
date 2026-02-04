@@ -92,10 +92,10 @@ class ThemeEditorScreen extends StatelessWidget {
                             onDelete: preset.isBuiltIn
                                 ? null
                                 : () => _confirmDeleteTheme(
-                                      context,
-                                      provider,
-                                      preset,
-                                    ),
+                                    context,
+                                    provider,
+                                    preset,
+                                  ),
                           ),
                         ],
                       );
@@ -203,10 +203,7 @@ class _SectionCard extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(8), child: child),
         ],
       ),
     );
@@ -298,10 +295,11 @@ class _ThemePresetTile extends StatelessWidget {
       ),
       title: Row(
         children: [
-          Text(
-            preset.name,
-            style: TextStyle(
-              fontWeight: isActive ? FontWeight.bold : null,
+          Flexible(
+            child: Text(
+              preset.name,
+              style: TextStyle(fontWeight: isActive ? FontWeight.bold : null),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           if (preset.isBuiltIn) ...[
@@ -314,18 +312,13 @@ class _ThemePresetTile extends StatelessWidget {
               ),
               child: Text(
                 '기본',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
               ),
             ),
           ],
         ],
       ),
-      subtitle: preset.description != null
-          ? Text(preset.description!)
-          : null,
+      subtitle: preset.description != null ? Text(preset.description!) : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -338,10 +331,7 @@ class _ThemePresetTile extends StatelessWidget {
               ),
               child: const Text(
                 '사용 중',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
           if (onEdit != null || onDelete != null)
@@ -476,9 +466,7 @@ class _PreviewMessage extends StatelessWidget {
         ),
         child: Text(
           message,
-          style: TextStyle(
-            color: isUser ? Colors.white : Colors.black87,
-          ),
+          style: TextStyle(color: isUser ? Colors.white : Colors.black87),
         ),
       ),
     );
@@ -490,10 +478,7 @@ class _ColorChip extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _ColorChip({
-    required this.label,
-    required this.color,
-  });
+  const _ColorChip({required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -571,7 +556,8 @@ class _CreateThemeDialogState extends State<_CreateThemeDialog> {
             _ColorPicker(
               label: 'Secondary',
               color: _secondaryColor,
-              onColorSelected: (color) => setState(() => _secondaryColor = color),
+              onColorSelected: (color) =>
+                  setState(() => _secondaryColor = color),
             ),
           ],
         ),
@@ -581,19 +567,16 @@ class _CreateThemeDialogState extends State<_CreateThemeDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        ElevatedButton(
-          onPressed: _createTheme,
-          child: const Text('생성'),
-        ),
+        ElevatedButton(onPressed: _createTheme, child: const Text('생성')),
       ],
     );
   }
 
   void _createTheme() {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('테마 이름을 입력하세요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('테마 이름을 입력하세요')));
       return;
     }
 
@@ -634,7 +617,9 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.preset.name);
-    _descController = TextEditingController(text: widget.preset.description ?? '');
+    _descController = TextEditingController(
+      text: widget.preset.description ?? '',
+    );
     _primaryColor = Color(
       widget.preset.colorOverrides['primary'] ?? Colors.blue.value,
     );
@@ -686,7 +671,8 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
             _ColorPicker(
               label: 'Secondary',
               color: _secondaryColor,
-              onColorSelected: (color) => setState(() => _secondaryColor = color),
+              onColorSelected: (color) =>
+                  setState(() => _secondaryColor = color),
             ),
           ],
         ),
@@ -696,19 +682,16 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('취소'),
         ),
-        ElevatedButton(
-          onPressed: _saveTheme,
-          child: const Text('저장'),
-        ),
+        ElevatedButton(onPressed: _saveTheme, child: const Text('저장')),
       ],
     );
   }
 
   void _saveTheme() {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('테마 이름을 입력하세요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('테마 이름을 입력하세요')));
       return;
     }
 

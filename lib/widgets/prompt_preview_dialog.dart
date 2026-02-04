@@ -1,23 +1,24 @@
 // ============================================================================
-// 프롬프트 미리보기 다이얼로그 (Prompt Preview Dialog)
+// 프롬프트 미리보기 다이얼로그 (Prompt Preview Dialog) - v2.0.3
 // ============================================================================
 // 현재 프롬프트 블록들이 조합된 최종 프롬프트를 미리보는 다이얼로그입니다.
-// 실제 API에 전송되는 프롬프트를 확인하고 복사할 수 있습니다.
+// v2.0.3: 실제 API 전송 프롬프트 표시, 과거 기억 토글 지원
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/chat_provider.dart';
+import '../providers/prompt_block_provider.dart';
+import '../models/message.dart';
 
-/// 프롬프트 미리보기 다이얼로그
-class PromptPreviewDialog extends StatelessWidget {
-  final String promptText;   // 미리볼 프롬프트 텍스트
+/// 프롬프트 미리보기 다이얼로그 (v2.0.3 - 완전 개편)
+class PromptPreviewDialog extends StatefulWidget {
+  final String promptText; // 레거시 호환용
 
-  const PromptPreviewDialog({
-    super.key,
-    required this.promptText,
-  });
+  const PromptPreviewDialog({super.key, required this.promptText});
 
-  /// 다이얼로그를 표시합니다
+  /// 다이얼로그를 표시합니다 (레거시 호환)
   static Future<void> show(BuildContext context, String promptText) {
     return showDialog(
       context: context,
@@ -25,10 +26,23 @@ class PromptPreviewDialog extends StatelessWidget {
     );
   }
 
+  /// ⭐ v2.0.3: 새로운 방식 - 실제 API 전송 프롬프트 표시
+  static Future<void> showWithRealPrompt(BuildContext context) {
+    return showDialog(
+      context: context,
+      builder: (context) => const _RealPromptPreviewDialog(),
+    );
+  }
+
+  @override
+  State<PromptPreviewDialog> createState() => _PromptPreviewDialogState();
+}
+
+class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
   /// 프롬프트를 클립보드에 복사합니다
   Future<void> _copyToClipboard(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: promptText));
-    
+    await Clipboard.setData(ClipboardData(text: widget.promptText));
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -43,9 +57,9 @@ class PromptPreviewDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 프롬프트 통계 계산
-    final int charCount = promptText.length;
-    final int wordCount = promptText.split(RegExp(r'\s+')).length;
-    final int lineCount = promptText.split('\n').length;
+    final int charCount = widget.promptText.length;
+    final int wordCount = widget.promptText.split(RegExp(r'\s+')).length;
+    final int lineCount = widget.promptText.split('\n').length;
     // 대략적인 토큰 수 추정 (영어 기준 4자 = 1토큰, 한글 기준 2자 = 1토큰)
     final int estimatedTokens = (charCount / 2.5).round();
 
@@ -61,11 +75,11 @@ class PromptPreviewDialog extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  '📄 전체 프롬프트 미리보기',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                const Expanded(
+                  child: Text(
+                    '📄 프롬프트 블록 미리보기',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 IconButton(
@@ -106,6 +120,228 @@ class PromptPreviewDialog extends StatelessWidget {
                 ),
                 child: SingleChildScrollView(
                   child: SelectableText(
+                    widget.promptText.isEmpty
+                        ? '(프롬프트가 비어있습니다)'
+                        : widget.promptText,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                      color: widget.promptText.isEmpty
+                          ? Colors.grey
+                          : Colors.black87,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // === 하단 버튼 ===
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _copyToClipboard(context),
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: const Text('복사'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('닫기'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ⭐ v2.0.3: 실제 API 전송 프롬프트를 보여주는 다이얼로그
+class _RealPromptPreviewDialog extends StatefulWidget {
+  const _RealPromptPreviewDialog();
+
+  @override
+  State<_RealPromptPreviewDialog> createState() =>
+      _RealPromptPreviewDialogState();
+}
+
+class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
+  bool _includePastMemory = true;
+
+  String _buildPreviewText(
+    PromptBlockProvider blockProvider,
+    ChatProvider chatProvider,
+  ) {
+    final blocks = blockProvider.blocks.where((b) => b.isEnabled).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    final StringBuffer buffer = StringBuffer();
+    final pastMessages = _includePastMemory
+        ? chatProvider.messages
+        : <Message>[];
+    final pastCount = blockProvider.pastMessageCount;
+
+    for (final block in blocks) {
+      if (block.type == 'past_memory') {
+        if (_includePastMemory && pastMessages.isNotEmpty) {
+          buffer.writeln('[과거 대화]');
+          // 최근 메시지만 표시
+          final recentMessages = pastMessages.length > pastCount
+              ? pastMessages.sublist(pastMessages.length - pastCount)
+              : pastMessages;
+          for (final msg in recentMessages) {
+            final role = msg.role == MessageRole.user ? 'User' : 'Assistant';
+            buffer.writeln('$role: ${msg.content}');
+          }
+        } else {
+          buffer.writeln('[과거 대화]');
+          buffer.writeln('(과거 기억 미포함)');
+        }
+      } else if (block.type == 'user_input') {
+        buffer.writeln('[사용자 입력]');
+        buffer.writeln('(현재 입력 위치)');
+      } else {
+        // 일반 블록: 내용만 표시 (헤더 없음)
+        if (block.content.isNotEmpty) {
+          buffer.writeln(block.content);
+        }
+      }
+      buffer.writeln();
+    }
+
+    return buffer.toString().trim();
+  }
+
+  Future<void> _copyToClipboard(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('프롬프트가 클립보드에 복사되었습니다.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blockProvider = context.watch<PromptBlockProvider>();
+    final chatProvider = context.watch<ChatProvider>();
+    final promptText = _buildPreviewText(blockProvider, chatProvider);
+
+    // 통계 계산
+    final int charCount = promptText.length;
+    final int estimatedTokens = (charCount / 2.5).round();
+    final int messageCount = chatProvider.messages.length;
+
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.85,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // === 헤더 ===
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Text(
+                    '📄 API 전송 프롬프트 미리보기',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+
+            // === 과거 기억 토글 ===
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: _includePastMemory
+                    ? Colors.blue.withValues(alpha: 0.1)
+                    : Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _includePastMemory ? Colors.blue : Colors.grey[300]!,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _includePastMemory
+                        ? Icons.history
+                        : Icons.history_toggle_off,
+                    color: _includePastMemory ? Colors.blue : Colors.grey,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '과거 기억 반영 ($messageCount개 메시지 중 ${blockProvider.pastMessageCount}개)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: _includePastMemory
+                            ? Colors.blue[800]
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  Switch(
+                    value: _includePastMemory,
+                    onChanged: (value) {
+                      setState(() => _includePastMemory = value);
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            // === 통계 정보 ===
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _StatItem(label: '글자', value: '$charCount'),
+                  _StatItem(label: '토큰(추정)', value: '~$estimatedTokens'),
+                  _StatItem(label: '메시지', value: '$messageCount'),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // === 프롬프트 내용 ===
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
                     promptText.isEmpty ? '(프롬프트가 비어있습니다)' : promptText,
                     style: TextStyle(
                       fontFamily: 'monospace',
@@ -121,15 +357,16 @@ class PromptPreviewDialog extends StatelessWidget {
             const SizedBox(height: 12),
 
             // === 하단 버튼 ===
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => _copyToClipboard(context),
+                  onPressed: () => _copyToClipboard(promptText),
                   icon: const Icon(Icons.copy, size: 18),
                   label: const Text('복사'),
                 ),
-                const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('닫기'),
@@ -148,10 +385,7 @@ class _StatItem extends StatelessWidget {
   final String label;
   final String value;
 
-  const _StatItem({
-    required this.label,
-    required this.value,
-  });
+  const _StatItem({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -160,18 +394,9 @@ class _StatItem extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
+        Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
       ],
     );
   }
@@ -307,10 +532,7 @@ class _CommandItem extends StatelessWidget {
           Text(description),
           Text(
             '예: $example',
-            style: TextStyle(
-              color: Colors.grey[500],
-              fontSize: 12,
-            ),
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
           ),
         ],
       ),
