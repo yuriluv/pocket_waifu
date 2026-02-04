@@ -390,6 +390,10 @@
                     console.log('[Live2D] ✅ PixiJS Application 생성 완료');
                     console.log('[Live2D] 텍스처 최대 크기 제한:', MAX_TEXTURE_SIZE);
 
+                    // === Live2D Ticker 등록 (중요! 모델 로드 전에 해야 함) ===
+                    PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker.shared);
+                    console.log('[Live2D] ✅ Ticker 등록 완료');
+
                     // === 5. URL에서 모델 경로 가져오기 ===
                     const params = new URLSearchParams(window.location.search);
                     let modelParam = params.get('model');
@@ -461,13 +465,7 @@
                     
                     console.log('[Live2D] PIXI.live2d.Live2DModel.from() 호출...');
                     
-                    // 텍스처 리사이즈 미들웨어 설정 (4096 초과 시 축소)
-                    const maxTextureSize = 4096;
-                    PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker.shared);
-                    
-                    // 커스텀 텍스처 로더 설정
-                    const originalFrom = PIXI.live2d.Live2DModel.from;
-                    
+                    // 모델 로드 (Ticker 등록 후에는 autoUpdate: true 사용 가능)
                     currentModel = await PIXI.live2d.Live2DModel.from(modelPath, {
                         autoInteract: true,
                         autoUpdate: true,

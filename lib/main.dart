@@ -25,6 +25,9 @@ import 'screens/chat_screen.dart';
 // Live2D 모듈
 import 'features/live2d/live2d_module.dart';
 
+// 오버레이 테스트 위젯
+import 'widgets/simple_overlay_test.dart';
+
 /// 앱의 시작점
 /// 모든 Flutter 앱은 이 함수에서 시작됩니다
 void main() {
@@ -47,11 +50,11 @@ void overlayMain() {
   debugPrint('[OverlayMain] 오버레이 진입점 실행됨!');
   debugPrint('[OverlayMain] ========================================');
 
-  // 오버레이 앱 실행 - Live2D WebView 위젯
+  // 🧪 테스트: SimpleOverlayTest 사용
   runApp(
     const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Live2DOverlayWidget(),
+      home: SimpleOverlayTest(),  // 테스트용 간단한 위젯
     ),
   );
 }
