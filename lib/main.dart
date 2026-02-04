@@ -4,7 +4,7 @@
 // 이 파일은 앱의 진입점(Entry Point)입니다.
 // Flutter 앱은 main() 함수에서 시작됩니다.
 // 여기서 Provider를 설정하고 앱을 실행합니다.
-// 
+//
 // v2.0: Live2D 오버레이 시스템 추가
 // - overlayMain(): 오버레이 윈도우의 별도 진입점
 // ============================================================================
@@ -22,15 +22,15 @@ import 'providers/theme_provider.dart';
 // 화면
 import 'screens/chat_screen.dart';
 
-// Live2D 오버레이 위젯
-import 'widgets/live2d_overlay_widget.dart';
+// Live2D 모듈
+import 'features/live2d/live2d_module.dart';
 
 /// 앱의 시작점
 /// 모든 Flutter 앱은 이 함수에서 시작됩니다
 void main() {
   // Flutter 엔진 초기화 (비동기 작업 전에 필요)
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // 앱 실행
   runApp(const PocketWaifuApp());
 }
@@ -42,12 +42,18 @@ void main() {
 void overlayMain() {
   // Flutter 엔진 초기화
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 오버레이 앱 실행
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: Live2DOverlayWidget(),
-  ));
+
+  debugPrint('[OverlayMain] ========================================');
+  debugPrint('[OverlayMain] 오버레이 진입점 실행됨!');
+  debugPrint('[OverlayMain] ========================================');
+
+  // 오버레이 앱 실행 - Live2D WebView 위젯
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Live2DOverlayWidget(),
+    ),
+  );
 }
 
 /// 앱의 최상위 위젯
@@ -63,16 +69,16 @@ class PocketWaifuApp extends StatelessWidget {
       providers: [
         // 설정 Provider - 앱 설정과 캐릭터 정보를 관리
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
-        
+
         // 채팅 Provider - 대화 내역과 메시지 전송을 관리
         ChangeNotifierProvider(create: (_) => ChatProvider()),
-        
+
         // 프롬프트 블록 Provider - 프롬프트 블록 시스템 관리 (v1.5)
         ChangeNotifierProvider(create: (_) => PromptBlockProvider()),
-        
+
         // 채팅 세션 Provider - 멀티 채팅 세션 관리 (v1.5)
         ChangeNotifierProvider(create: (_) => ChatSessionProvider()),
-        
+
         // 테마 Provider - 테마 프리셋 및 설정 관리 (v1.5)
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
       ],
@@ -93,19 +99,19 @@ class _AppWithTheme extends StatelessWidget {
     return MaterialApp(
       // 앱 이름
       title: 'Pocket Waifu',
-      
+
       // 디버그 배너 숨기기
       debugShowCheckedModeBanner: false,
-      
+
       // 앱 테마 설정 (ThemeProvider에서 가져옴)
       theme: themeProvider.getThemeData(isDark: false),
-      
+
       // 다크 테마 설정 (ThemeProvider에서 가져옴)
       darkTheme: themeProvider.getThemeData(isDark: true),
-      
+
       // ThemeProvider의 테마 모드 사용
       themeMode: themeProvider.themeMode,
-      
+
       // 시작 화면 - 채팅 화면
       home: const ChatScreen(),
     );

@@ -39,6 +39,11 @@ android {
     }
 }
 
+dependencies {
+    // AndroidX WebKit - WebViewAssetLoader 지원
+    implementation("androidx.webkit:webkit:1.9.0")
+}
+
 flutter {
     source = "../.."
 }

@@ -13,7 +13,7 @@ import 'prompt_editor_screen.dart';
 import 'chat_list_screen.dart';
 import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
-import 'live2d_settings_screen.dart';
+import '../features/live2d/live2d_module.dart';
 import '../widgets/prompt_preview_dialog.dart';
 
 /// 메뉴 드로어 위젯

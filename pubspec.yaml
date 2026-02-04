@@ -105,6 +105,7 @@ flutter:
   # Live2D 웹 렌더러용 HTML/JS 파일
   assets:
     - assets/web/
+    - assets/live2d/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

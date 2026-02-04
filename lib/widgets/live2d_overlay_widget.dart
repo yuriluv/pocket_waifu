@@ -3,7 +3,7 @@
 // ============================================================================
 // 이 파일은 오버레이 윈도우에 표시되는 Live2D WebView 위젯입니다.
 // flutter_overlay_window의 overlayMain에서 실행됩니다.
-// 
+//
 // 주요 기능:
 // - 투명 배경의 WebView
 // - 로컬 서버에서 Live2D 웹 페이지 로드
@@ -34,10 +34,12 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
   bool _isLoading = true;
   String? _currentModelUrl;
   StreamSubscription? _dataSubscription;
+  String _debugStatus = '초기화 중...'; // 디버그용
 
   @override
   void initState() {
     super.initState();
+    debugPrint('[Overlay] ========== 위젯 initState ==========');
     _initializeWebView();
     _listenToMainApp();
   }
@@ -70,31 +72,51 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
             debugPrint('[Overlay] 페이지 로딩 완료: $url');
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint('[Overlay] WebView 오류: ${error.description} (${error.errorCode})');
+            debugPrint(
+              '[Overlay] WebView 오류: ${error.description} (${error.errorCode})',
+            );
+            debugPrint('[Overlay] 오류 URL: ${error.url}');
             setState(() => _isLoading = false);
+          },
+          onHttpError: (HttpResponseError error) {
+            debugPrint('[Overlay] HTTP 오류: ${error.response?.statusCode}');
           },
         ),
       );
 
     // Android WebView 디버깅 활성화
     if (Platform.isAndroid) {
-      final androidController = _controller.platform as AndroidWebViewController;
+      final androidController =
+          _controller.platform as AndroidWebViewController;
       AndroidWebViewController.enableDebugging(true);
       androidController.setMediaPlaybackRequiresUserGesture(false);
     }
 
     // 초기 페이지 (빈 페이지 또는 로딩 페이지)
     _controller.loadHtmlString(_getLoadingHtml());
+
+    setState(() {
+      _debugStatus = 'WebView 초기화 완료';
+    });
   }
 
   /// 메인 앱에서 데이터 수신
   void _listenToMainApp() {
+    debugPrint('[Overlay] overlayListener 등록 시작');
+
     _dataSubscription = FlutterOverlayWindow.overlayListener.listen((data) {
-      debugPrint('[Overlay] 메인 앱에서 데이터 수신: $data');
-      
+      debugPrint('[Overlay] ★★★ 데이터 수신됨 ★★★: $data');
+
+      setState(() {
+        _debugStatus =
+            '데이터 수신: ${data.toString().substring(0, data.toString().length > 30 ? 30 : data.toString().length)}...';
+      });
+
       // 데이터 파싱 및 처리
       _handleReceivedData(data);
     });
+
+    debugPrint('[Overlay] overlayListener 등록 완료');
   }
 
   /// 수신된 데이터 처리
@@ -106,7 +128,7 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
 
     try {
       String? url;
-      
+
       // 1. Map 타입인 경우
       if (data is Map) {
         if (data['action'] == 'loadModel' && data['url'] != null) {
@@ -119,14 +141,16 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
         if (data.startsWith('{')) {
           try {
             final jsonData = jsonDecode(data);
-            if (jsonData is Map && jsonData['action'] == 'loadModel' && jsonData['url'] != null) {
+            if (jsonData is Map &&
+                jsonData['action'] == 'loadModel' &&
+                jsonData['url'] != null) {
               url = jsonData['url'].toString();
             }
           } catch (jsonError) {
             debugPrint('[Overlay] JSON 파싱 실패, 정규식으로 시도: $jsonError');
           }
         }
-        
+
         // 2-2. Dart Map.toString() 형식으로 파싱 시도
         // 형식: {action: loadModel, url: http://localhost:8080/?model=/models/...}
         if (url == null && data.contains('loadModel')) {
@@ -137,13 +161,13 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
             url = urlMatch.group(1);
           }
         }
-        
+
         // 2-3. URL 자체인 경우
         if (url == null && data.startsWith('http')) {
           url = data;
         }
       }
-      
+
       // URL이 추출되었으면 모델 로드
       if (url != null && url.isNotEmpty) {
         debugPrint('[Overlay] 추출된 URL: $url');
@@ -218,52 +242,158 @@ class _Live2DOverlayWidgetState extends State<Live2DOverlayWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      type: MaterialType.transparency,
-      child: Stack(
-        children: [
-          // WebView (투명 배경)
-          Positioned.fill(
-            child: WebViewWidget(controller: _controller),
-          ),
+    // 🧪 디버그 모드: WebView 대신 간단한 UI로 테스트
+    const bool debugMode = true; // false로 바꾸면 WebView 사용
 
-          // 로딩 인디케이터
-          if (_isLoading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withOpacity(0.3),
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+    if (debugMode) {
+      return Material(
+        type: MaterialType.transparency,
+        child: Container(
+          margin: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.bug_report, color: Colors.white, size: 32),
+              const SizedBox(height: 8),
+              const Text(
+                'Live2D 오버레이 테스트',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: Colors.black45,
+                child: Column(
+                  children: [
+                    Text(
+                      '상태: $_debugStatus',
+                      style: const TextStyle(color: Colors.green, fontSize: 10),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'URL: ${_currentModelUrl ?? "대기 중..."}',
+                      style: const TextStyle(color: Colors.yellow, fontSize: 8),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 닫기 버튼
+              GestureDetector(
+                onTap: () async {
+                  await FlutterOverlayWindow.closeOverlay();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    '닫기',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
+          ),
+        ),
+      );
+    }
 
-          // 닫기 버튼 (우측 상단)
-          Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: () async {
-                await FlutterOverlayWindow.closeOverlay();
-              },
+    // 원래 WebView UI
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        // 디버그: 배경색 추가해서 오버레이가 보이는지 확인
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.3), // 반투명 파란색
+          border: Border.all(color: Colors.red, width: 2),
+        ),
+        child: Stack(
+          children: [
+            // WebView (투명 배경)
+            Positioned.fill(child: WebViewWidget(controller: _controller)),
+
+            // 디버그 상태 표시 (항상 표시)
+            Positioned(
+              top: 30,
+              left: 4,
+              right: 4,
               child: Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close,
-                  size: 16,
-                  color: Colors.white,
+                padding: const EdgeInsets.all(4),
+                color: Colors.black.withOpacity(0.7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '상태: $_debugStatus',
+                      style: const TextStyle(color: Colors.green, fontSize: 9),
+                    ),
+                    Text(
+                      'URL: ${_currentModelUrl ?? "없음"}',
+                      style: const TextStyle(color: Colors.yellow, fontSize: 8),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
             ),
-          ),
-        ],
+
+            // 로딩 인디케이터 (로드 중일 때만)
+            if (_isLoading)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.3),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      strokeWidth: 2,
+                    ),
+                  ),
+                ),
+              ),
+
+            // 닫기 버튼 (우측 상단)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: () async {
+                  await FlutterOverlayWindow.closeOverlay();
+                },
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
