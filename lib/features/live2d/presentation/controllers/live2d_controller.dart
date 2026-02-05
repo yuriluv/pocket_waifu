@@ -3,6 +3,7 @@
 // ============================================================================
 // Live2D 기능의 상태를 관리하는 컨트롤러입니다.
 // Provider 패턴을 사용하여 UI와 비즈니스 로직을 분리합니다.
+// v2.1: Native OpenGL 방식으로 전환
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -11,8 +12,8 @@ import '../../data/models/live2d_settings.dart';
 import '../../data/repositories/live2d_repository.dart';
 import '../../data/services/live2d_log_service.dart';
 import '../../data/services/live2d_storage_service.dart';
-import '../../data/services/live2d_local_server_service.dart';
-import '../../data/services/live2d_overlay_service.dart';
+import '../../data/services/live2d_native_bridge.dart';
+import '../../data/services/interaction_manager.dart';
 
 /// Live2D 컨트롤러의 상태
 enum Live2DControllerState {
@@ -29,8 +30,8 @@ class Live2DController extends ChangeNotifier {
   // === 서비스 인스턴스 ===
   final Live2DRepository _repository = Live2DRepository();
   final Live2DStorageService _storageService = Live2DStorageService();
-  final Live2DLocalServerService _serverService = Live2DLocalServerService();
-  final Live2DOverlayService _overlayService = Live2DOverlayService();
+  final Live2DNativeBridge _nativeBridge = Live2DNativeBridge();
+  final InteractionManager _interactionManager = InteractionManager();
 
   // === 상태 변수 ===
   Live2DControllerState _state = Live2DControllerState.initial;
@@ -61,17 +62,16 @@ class Live2DController extends ChangeNotifier {
   String? get folderPath => _storageService.currentFolderPath;
   String? get folderDisplayName => _storageService.folderDisplayName;
 
-  // === Getter: 서버 ===
-  bool get isServerRunning => _serverService.isRunning;
-  String get serverUrl => _serverService.serverUrl;
-
-  // === Getter: 오버레이 ===
-  bool get isOverlayVisible => _overlayService.isOverlayVisible;
+  // === Getter: 오버레이 (Native) ===
+  bool get isOverlayVisible => _settings.isEnabled;  // Native 상태 추적
   bool get isEnabled => _settings.isEnabled;
+  
+  // === Getter: 상호작용 매니저 ===
+  InteractionManager get interactionManager => _interactionManager;
 
-  // === Getter: 권한 ===
-  Future<bool> get hasOverlayPermission => _overlayService.hasOverlayPermission();
-  Future<bool> get hasStoragePermission => _overlayService.hasStoragePermission();
+  // === Getter: 권한 (Native 브릿지 통해 확인) ===
+  Future<bool> get hasOverlayPermission => _nativeBridge.hasOverlayPermission();
+  Future<bool> get hasStoragePermission => _nativeBridge.hasStoragePermission();
 
   /// 초기화
   Future<void> initialize() async {
@@ -81,14 +81,20 @@ class Live2DController extends ChangeNotifier {
     live2dLog.info(_tag, '컨트롤러 초기화 시작');
 
     try {
-      // 1. 설정 로드
+      // 1. Native 브릿지 초기화
+      await _nativeBridge.initialize();
+      
+      // 2. 상호작용 매니저 초기화 (이벤트 핸들러 등록)
+      _interactionManager.initialize();
+      
+      // 3. 설정 로드
       _settings = await Live2DSettings.load();
       live2dLog.debug(_tag, '설정 로드됨', details: _settings.toString());
 
-      // 2. 저장소 서비스에 폴더 정보 복원
+      // 4. 저장소 서비스에 폴더 정보 복원
       _storageService.restoreFromSettings(_settings);
 
-      // 3. 폴더가 유효한지 확인
+      // 5. 폴더가 유효한지 확인
       if (_storageService.hasFolderSelected) {
         final isValid = await _storageService.validateCurrentFolder();
         
@@ -111,11 +117,6 @@ class Live2DController extends ChangeNotifier {
             }
           }
         }
-      }
-
-      // 4. 오버레이가 활성화 상태였다면 복원
-      if (_settings.isEnabled && selectedModel != null) {
-        await _startOverlayIfNeeded();
       }
 
       _setState(Live2DControllerState.ready);
@@ -165,9 +166,6 @@ class Live2DController extends ChangeNotifier {
     if (_settings.isEnabled) {
       await setEnabled(false);
     }
-
-    // 서버 중지
-    await _serverService.stopServer();
 
     // 스토리지 초기화
     _storageService.clearFolder();
@@ -247,7 +245,7 @@ class Live2DController extends ChangeNotifier {
   /// 크기 설정
   Future<void> setScale(double scale) async {
     _settings = _settings.copyWith(scale: scale);
-    _overlayService.setScale(scale);
+    await _nativeBridge.setScale(scale);
     await _settings.save();
     notifyListeners();
   }
@@ -255,7 +253,7 @@ class Live2DController extends ChangeNotifier {
   /// 투명도 설정
   Future<void> setOpacity(double opacity) async {
     _settings = _settings.copyWith(opacity: opacity);
-    _overlayService.setOpacity(opacity);
+    await _nativeBridge.setOpacity(opacity);
     await _settings.save();
     notifyListeners();
   }
@@ -267,17 +265,17 @@ class Live2DController extends ChangeNotifier {
       positionY: 0.5,
     );
     await _settings.save();
-    await _overlayService.setPosition(0, 100);
+    await _nativeBridge.setPosition(0.5, 0.5);
     notifyListeners();
   }
 
-  /// 플로팅 뷰어 활성화/비활성화
+  /// 플로팅 뷰어 활성화/비활성화 (Native 방식)
   Future<bool> setEnabled(bool enabled) async {
     live2dLog.info(_tag, '플로팅 뷰어 ${enabled ? '활성화' : '비활성화'} 요청');
 
     if (enabled) {
       // 활성화 조건 확인
-      if (!await _overlayService.hasOverlayPermission()) {
+      if (!await _nativeBridge.hasOverlayPermission()) {
         live2dLog.warning(_tag, '오버레이 권한 없음');
         _setError('오버레이 권한이 필요합니다');
         return false;
@@ -289,28 +287,16 @@ class Live2DController extends ChangeNotifier {
         return false;
       }
 
-      // 서버 시작
-      final rootPath = await _storageService.getModelRootPath();
-      if (rootPath == null) {
-        _setError('모델 폴더가 설정되지 않았습니다');
-        return false;
-      }
-
-      final serverStarted = await _serverService.startServer(rootPath);
-      if (!serverStarted) {
-        _setError('로컬 서버 시작 실패');
-        return false;
-      }
-
-      // 오버레이 표시
-      _overlayService.setScale(_settings.scale);
-      _overlayService.setOpacity(_settings.opacity);
-      
-      final overlayShown = await _overlayService.showOverlay();
+      // Native 오버레이 표시
+      final overlayShown = await _nativeBridge.showOverlay();
       if (!overlayShown) {
         _setError('오버레이 표시 실패');
         return false;
       }
+
+      // 크기, 투명도 설정
+      await _nativeBridge.setScale(_settings.scale);
+      await _nativeBridge.setOpacity(_settings.opacity);
 
       // 모델 로드
       await _loadModelToOverlay(selectedModel!);
@@ -318,11 +304,10 @@ class Live2DController extends ChangeNotifier {
       _settings = _settings.copyWith(isEnabled: true);
       await _settings.save();
       
-      live2dLog.info(_tag, '플로팅 뷰어 활성화됨');
+      live2dLog.info(_tag, '플로팅 뷰어 활성화됨 (Native)');
     } else {
       // 비활성화
-      await _overlayService.hideOverlay();
-      await _serverService.stopServer();
+      await _nativeBridge.hideOverlay();
 
       _settings = _settings.copyWith(isEnabled: false);
       await _settings.save();
@@ -341,40 +326,17 @@ class Live2DController extends ChangeNotifier {
 
   /// 오버레이 권한 요청
   Future<bool> requestOverlayPermission() async {
-    return _overlayService.requestOverlayPermission();
+    return _nativeBridge.requestOverlayPermission();
   }
 
   /// 저장소 권한 요청
   Future<bool> requestStoragePermission() async {
-    return _overlayService.requestStoragePermission();
+    return _nativeBridge.requestStoragePermission();
   }
 
-  /// 필요시 오버레이 시작 (앱 시작시 복원용)
-  Future<void> _startOverlayIfNeeded() async {
-    if (!_settings.isEnabled) return;
-    if (selectedModel == null) return;
-
-    live2dLog.info(_tag, '오버레이 상태 복원 시도');
-    
-    try {
-      // 서버 시작
-      final rootPath = await _storageService.getModelRootPath();
-      if (rootPath == null) return;
-
-      await _serverService.startServer(rootPath);
-
-      // 오버레이는 수동으로 활성화해야 함 (백그라운드에서 자동 시작 방지)
-      // 사용자가 앱을 열면 토글로 활성화
-      live2dLog.info(_tag, '오버레이 복원 대기 (수동 활성화 필요)');
-    } catch (e) {
-      live2dLog.error(_tag, '오버레이 복원 실패', error: e);
-    }
-  }
-
-  /// 모델을 오버레이에 로드
+  /// 모델을 오버레이에 로드 (Native)
   Future<void> _loadModelToOverlay(Live2DModelInfo model) async {
-    final url = _serverService.getWebViewUrl(model.relativePath);
-    await _overlayService.sendModelUrl(url);
+    await _nativeBridge.loadModel(model.modelFilePath);
   }
 
   /// 상태 변경
@@ -403,7 +365,8 @@ class Live2DController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _overlayService.dispose();
+    _interactionManager.dispose();
+    _nativeBridge.dispose();
     super.dispose();
   }
 }

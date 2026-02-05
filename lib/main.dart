@@ -1,12 +1,12 @@
 // ============================================================================
-// Pocket Waifu - AI 채팅 앱 v2.0 (Live2D)
+// Pocket Waifu - AI 채팅 앱 v2.1 (Native Live2D)
 // ============================================================================
 // 이 파일은 앱의 진입점(Entry Point)입니다.
 // Flutter 앱은 main() 함수에서 시작됩니다.
 // 여기서 Provider를 설정하고 앱을 실행합니다.
 //
-// v2.0: Live2D 오버레이 시스템 추가
-// - overlayMain(): 오버레이 윈도우의 별도 진입점
+// v2.1: Native OpenGL Live2D 오버레이 시스템
+// - WebView 방식 제거, 네이티브 렌더링으로 전환
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -22,11 +22,7 @@ import 'providers/theme_provider.dart';
 // 화면
 import 'screens/chat_screen.dart';
 
-// Live2D 모듈
-import 'features/live2d/live2d_module.dart';
 
-// 오버레이 테스트 위젯
-import 'widgets/simple_overlay_test.dart';
 
 /// 앱의 시작점
 /// 모든 Flutter 앱은 이 함수에서 시작됩니다
@@ -36,27 +32,6 @@ void main() {
 
   // 앱 실행
   runApp(const PocketWaifuApp());
-}
-
-/// 오버레이 윈도우의 진입점
-/// flutter_overlay_window 패키지에서 사용됩니다.
-/// @pragma 어노테이션은 트리 쉐이킹에서 제외되도록 합니다.
-@pragma("vm:entry-point")
-void overlayMain() {
-  // Flutter 엔진 초기화
-  WidgetsFlutterBinding.ensureInitialized();
-
-  debugPrint('[OverlayMain] ========================================');
-  debugPrint('[OverlayMain] 오버레이 진입점 실행됨!');
-  debugPrint('[OverlayMain] ========================================');
-
-  // 🧪 테스트: SimpleOverlayTest 사용
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: SimpleOverlayTest(),  // 테스트용 간단한 위젯
-    ),
-  );
 }
 
 /// 앱의 최상위 위젯

@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.InputStream
 import java.net.URLEncoder
+import com.example.flutter_application_1.live2d.Live2DPlugin
 
 /**
  * MainActivity - Live2D 모델 로딩 지원 (v3.0)
@@ -47,7 +48,10 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        // MethodChannel 설정
+        // Live2D Native Plugin 등록
+        flutterEngine.plugins.add(Live2DPlugin())
+        
+        // MethodChannel 설정 (기존 WebView용 - 추후 제거 예정)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME).setMethodCallHandler { call, result ->
             Log.d(TAG, "MethodChannel 호출: ${call.method}")
             

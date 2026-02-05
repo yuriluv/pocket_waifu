@@ -4,6 +4,7 @@
 // Live2D 플로팅 뷰어의 설정을 관리하는 화면입니다.
 // ============================================================================
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/live2d_controller.dart';
@@ -13,6 +14,13 @@ import '../widgets/model_list_tile.dart';
 import '../widgets/size_slider_tile.dart';
 import '../widgets/overlay_toggle_tile.dart';
 import '../widgets/log_viewer_widget.dart';
+import '../../data/controllers/live2d_overlay_controller.dart';
+import '../../data/services/live2d_log_service.dart';
+import '../../data/services/interaction_manager.dart';
+import '../../domain/entities/interaction_event.dart';
+import 'gesture_settings_screen.dart';
+import 'auto_behavior_settings_screen.dart';
+import 'display_settings_screen.dart';
 
 /// Live2D 설정 화면
 class Live2DSettingsScreen extends StatelessWidget {
@@ -248,6 +256,32 @@ class _Live2DSettingsScreenContentState
                     }
                   },
                 ),
+                
+                // === 6. 고급 설정 메뉴 ===
+                _SectionHeader(
+                  title: '고급 설정',
+                  icon: Icons.settings,
+                ),
+                _AdvancedSettingsMenu(),
+                
+                // === 7. Native 오버레이 테스트 (개발용) ===
+                _SectionHeader(
+                  title: '🧪 Native 오버레이 테스트',
+                  icon: Icons.science,
+                ),
+                _NativeOverlayTestTile(
+                  hasOverlayPermission: _hasOverlayPermission,
+                  selectedModelPath: controller.selectedModel?.modelFilePath,
+                ),
+                
+                // === 8. 상호작용 테스트 (개발용) ===
+                _SectionHeader(
+                  title: '🎮 상호작용 테스트',
+                  icon: Icons.touch_app,
+                ),
+                _InteractionTestTile(
+                  hasOverlayPermission: _hasOverlayPermission,
+                ),
 
                 const SizedBox(height: 32),
               ],
@@ -382,6 +416,516 @@ class _EmptyModelList extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+/// 상호작용 테스트 타일
+class _InteractionTestTile extends StatefulWidget {
+  final bool hasOverlayPermission;
+
+  const _InteractionTestTile({
+    required this.hasOverlayPermission,
+  });
+
+  @override
+  State<_InteractionTestTile> createState() => _InteractionTestTileState();
+}
+
+class _InteractionTestTileState extends State<_InteractionTestTile> {
+  final List<String> _receivedEvents = [];
+  late final _overlayController = Live2DOverlayController();
+  StreamSubscription<InteractionEvent>? _eventSubscription;
+  bool _isListening = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _overlayController.initialize().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _stopListening();
+    _overlayController.dispose();
+    super.dispose();
+  }
+
+  void _startListening() async {
+    if (_isListening) return;
+    
+    // InteractionManager 사용
+    final manager = InteractionManager();
+    await manager.initialize();
+    
+    _eventSubscription = manager.eventStream.listen((event) {
+      if (mounted) {
+        setState(() {
+          _receivedEvents.insert(0, 
+            '${DateTime.now().toString().substring(11, 19)} - ${event.type.name}'
+            '${event.position != null ? " (${event.position!.dx.toInt()}, ${event.position!.dy.toInt()})" : ""}'
+          );
+          // 최대 20개만 유지
+          if (_receivedEvents.length > 20) {
+            _receivedEvents.removeLast();
+          }
+        });
+      }
+    });
+    
+    setState(() => _isListening = true);
+    live2dLog.info('InteractionTest', '이벤트 수신 시작');
+  }
+
+  void _stopListening() {
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
+    if (mounted) {
+      setState(() => _isListening = false);
+    }
+    live2dLog.info('InteractionTest', '이벤트 수신 중지');
+  }
+
+  void _clearEvents() {
+    setState(() => _receivedEvents.clear());
+  }
+
+  Future<void> _testTriggerHappy() async {
+    final manager = InteractionManager();
+    await manager.triggerEmotion('happy');
+    live2dLog.info('InteractionTest', '감정 트리거: happy');
+  }
+
+  Future<void> _testTriggerMotion() async {
+    final manager = InteractionManager();
+    await manager.triggerMotion('tap');
+    live2dLog.info('InteractionTest', '모션 트리거: tap');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canTest = widget.hasOverlayPermission;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 제목
+            Row(
+              children: [
+                Icon(
+                  Icons.gamepad,
+                  color: theme.colorScheme.secondary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '상호작용 시스템 테스트',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '오버레이를 표시한 후 터치/제스처를 수행하여 이벤트를 테스트합니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // 이벤트 리스닝 토글
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: canTest 
+                        ? (_isListening ? _stopListening : _startListening)
+                        : null,
+                    icon: Icon(_isListening ? Icons.stop : Icons.play_arrow),
+                    label: Text(_isListening ? '이벤트 수신 중지' : '이벤트 수신 시작'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: _receivedEvents.isNotEmpty ? _clearEvents : null,
+                  icon: const Icon(Icons.clear_all),
+                  tooltip: '이벤트 기록 삭제',
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // 외부 트리거 테스트
+            Text(
+              '외부 트리거 테스트',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: canTest ? _testTriggerHappy : null,
+                    icon: const Icon(Icons.mood, size: 18),
+                    label: const Text('Happy 표정'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: canTest ? _testTriggerMotion : null,
+                    icon: const Icon(Icons.animation, size: 18),
+                    label: const Text('Tap 모션'),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // 수신된 이벤트 목록
+            Text(
+              '수신된 이벤트 (${_receivedEvents.length})',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 150,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: _receivedEvents.isEmpty
+                  ? Center(
+                      child: Text(
+                        _isListening 
+                            ? '오버레이에서 터치/제스처를 수행하세요...'
+                            : '이벤트 수신을 시작하세요',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _receivedEvents.length,
+                      itemBuilder: (context, index) {
+                        return Text(
+                          _receivedEvents[index],
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+/// Native 오버레이 테스트 위젯
+class _NativeOverlayTestTile extends StatefulWidget {
+  final bool hasOverlayPermission;
+  final String? selectedModelPath;
+  
+  const _NativeOverlayTestTile({
+    required this.hasOverlayPermission,
+    this.selectedModelPath,
+  });
+  
+  @override
+  State<_NativeOverlayTestTile> createState() => _NativeOverlayTestTileState();
+}
+
+class _NativeOverlayTestTileState extends State<_NativeOverlayTestTile> {
+  final Live2DOverlayController _overlayController = Live2DOverlayController();
+  bool _isInitialized = false;
+  bool _isLoading = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _initController();
+  }
+  
+  Future<void> _initController() async {
+    live2dLog.info('TestTile', 'Native 오버레이 컨트롤러 초기화 시작');
+    final result = await _overlayController.initialize();
+    if (mounted) {
+      setState(() => _isInitialized = result);
+      live2dLog.info('TestTile', 'Native 오버레이 컨트롤러 초기화 완료', details: 'result=$result');
+    }
+  }
+  
+  @override
+  void dispose() {
+    _overlayController.dispose();
+    super.dispose();
+  }
+  
+  Future<void> _showOverlay() async {
+    setState(() => _isLoading = true);
+    live2dLog.info('TestTile', '오버레이 표시 요청');
+    
+    try {
+      final result = await _overlayController.show();
+      live2dLog.info('TestTile', '오버레이 표시 결과', details: 'success=$result');
+      
+      if (result && widget.selectedModelPath != null) {
+        live2dLog.info('TestTile', '모델 로드 시도', details: widget.selectedModelPath);
+        await _overlayController.loadModel(widget.selectedModelPath!);
+      }
+    } catch (e, stack) {
+      live2dLog.error('TestTile', '오버레이 표시 실패', error: e, stackTrace: stack);
+    }
+    
+    if (mounted) setState(() => _isLoading = false);
+  }
+  
+  Future<void> _hideOverlay() async {
+    setState(() => _isLoading = true);
+    live2dLog.info('TestTile', '오버레이 숨김 요청');
+    
+    try {
+      final result = await _overlayController.hide();
+      live2dLog.info('TestTile', '오버레이 숨김 결과', details: 'success=$result');
+    } catch (e, stack) {
+      live2dLog.error('TestTile', '오버레이 숨김 실패', error: e, stackTrace: stack);
+    }
+    
+    if (mounted) setState(() => _isLoading = false);
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final canTest = widget.hasOverlayPermission && _isInitialized;
+    
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 상태 표시
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _overlayController.isVisible 
+                        ? Colors.green 
+                        : (canTest ? Colors.orange : Colors.grey),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _overlayController.isVisible 
+                      ? '오버레이 표시 중'
+                      : (_isInitialized ? '대기 중' : '초기화 중...'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const Spacer(),
+                // 상태 배지
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _overlayController.state.name,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            // 설명
+            Text(
+              'Native OpenGL 기반 오버레이를 테스트합니다.\n'
+              '플레이스홀더(원형)가 표시되면 성공입니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // 버튼 행
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: canTest && !_isLoading && !_overlayController.isVisible
+                        ? _showOverlay
+                        : null,
+                    icon: _isLoading 
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_arrow),
+                    label: const Text('표시'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: canTest && !_isLoading && _overlayController.isVisible
+                        ? _hideOverlay
+                        : null,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('숨김'),
+                  ),
+                ),
+              ],
+            ),
+            
+            // 권한 경고
+            if (!widget.hasOverlayPermission) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber,
+                      size: 16,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '오버레이 권한이 필요합니다',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            
+            // 디버그 정보
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '디버그 정보',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '• 초기화: ${_isInitialized ? "완료" : "진행 중"}\n'
+                    '• 권한: ${widget.hasOverlayPermission ? "허용됨" : "없음"}\n'
+                    '• 모델: ${widget.selectedModelPath?.split('/').last ?? "선택 안됨"}\n'
+                    '• 상태: ${_overlayController.state.name}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 고급 설정 메뉴
+// ============================================================================
+
+class _AdvancedSettingsMenu extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.touch_app),
+          title: const Text('제스처 설정'),
+          subtitle: const Text('제스처별 모션/표정 매핑'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const GestureSettingsScreen(),
+              ),
+            );
+          },
+        ),
+        
+        ListTile(
+          leading: const Icon(Icons.auto_awesome),
+          title: const Text('자동 동작 설정'),
+          subtitle: const Text('눈 깜빡임, 호흡, 시선 추적'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AutoBehaviorSettingsScreen(),
+              ),
+            );
+          },
+        ),
+        
+        ListTile(
+          leading: const Icon(Icons.display_settings),
+          title: const Text('디스플레이 설정'),
+          subtitle: const Text('크기, 투명도, 위치 상세 설정'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const DisplaySettingsScreen(),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

@@ -68,6 +68,19 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Live2D character overlay display on top of other apps" />
         </service>
+        
+        <!-- ================================================================== -->
+        <!-- Live2D Native Overlay Service (NEW) -->
+        <!-- Native OpenGL 기반 Live2D 오버레이 서비스 -->
+        <!-- ================================================================== -->
+        <service
+            android:name=".live2d.overlay.Live2DOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Native Live2D character overlay using OpenGL" />
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -3,6 +3,7 @@
 // ============================================================================
 // Live2D 관련 로그를 수집하고 표시하는 서비스입니다.
 // 모델 로드 오류, 서버 오류 등을 추적할 수 있습니다.
+// Native 측 로그도 수신하여 통합 관리합니다.
 // ============================================================================
 
 import 'dart:collection';
@@ -16,6 +17,12 @@ enum Live2DLogLevel {
   error,
 }
 
+/// 로그 소스 (Flutter 또는 Native)
+enum Live2DLogSource {
+  flutter,
+  native,
+}
+
 /// 로그 항목
 class Live2DLogEntry {
   final DateTime timestamp;
@@ -25,6 +32,7 @@ class Live2DLogEntry {
   final String? details;
   final Object? error;
   final StackTrace? stackTrace;
+  final Live2DLogSource source;
 
   const Live2DLogEntry({
     required this.timestamp,
@@ -34,6 +42,7 @@ class Live2DLogEntry {
     this.details,
     this.error,
     this.stackTrace,
+    this.source = Live2DLogSource.flutter,
   });
 
   String get levelIcon {
@@ -48,6 +57,15 @@ class Live2DLogEntry {
         return '❌';
     }
   }
+  
+  String get sourceIcon {
+    switch (source) {
+      case Live2DLogSource.flutter:
+        return '🐦';
+      case Live2DLogSource.native:
+        return '🤖';
+    }
+  }
 
   String get formattedTime {
     final h = timestamp.hour.toString().padLeft(2, '0');
@@ -60,7 +78,7 @@ class Live2DLogEntry {
   @override
   String toString() {
     final buffer = StringBuffer();
-    buffer.write('[$formattedTime] $levelIcon [$tag] $message');
+    buffer.write('[$formattedTime] $sourceIcon $levelIcon [$tag] $message');
     if (details != null) {
       buffer.write('\n  → $details');
     }
@@ -68,6 +86,30 @@ class Live2DLogEntry {
       buffer.write('\n  Error: $error');
     }
     return buffer.toString();
+  }
+  
+  /// Native 로그 Map에서 생성
+  factory Live2DLogEntry.fromNativeLog(Map<String, dynamic> map) {
+    final levelStr = (map['level'] as String?) ?? 'debug';
+    final level = Live2DLogLevel.values.firstWhere(
+      (e) => e.name == levelStr,
+      orElse: () => Live2DLogLevel.debug,
+    );
+    
+    return Live2DLogEntry(
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        (map['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
+      ),
+      level: level,
+      tag: (map['tag'] as String?) ?? 'Native',
+      message: (map['message'] as String?) ?? '',
+      details: map['details'] as String?,
+      error: map['error'],
+      stackTrace: map['stackTrace'] != null 
+          ? StackTrace.fromString(map['stackTrace'] as String)
+          : null,
+      source: Live2DLogSource.native,
+    );
   }
 }
 
@@ -209,6 +251,40 @@ class Live2DLogService extends ChangeNotifier {
     }
     
     return buffer.toString();
+  }
+  
+  // ============================================================================
+  // Native 로그 수신
+  // ============================================================================
+  
+  /// Native에서 수신한 로그 추가
+  void addNativeLog(Map<String, dynamic> logData) {
+    final entry = Live2DLogEntry.fromNativeLog(logData);
+    _addLog(entry);
+  }
+  
+  /// 특정 소스의 로그만 가져오기
+  List<Live2DLogEntry> getLogsBySource(Live2DLogSource source) {
+    return _logs.where((e) => e.source == source).toList();
+  }
+  
+  /// Flutter 로그만 가져오기
+  List<Live2DLogEntry> get flutterLogs => getLogsBySource(Live2DLogSource.flutter);
+  
+  /// Native 로그만 가져오기
+  List<Live2DLogEntry> get nativeLogs => getLogsBySource(Live2DLogSource.native);
+  
+  /// 로그 통계
+  Map<String, int> getStatistics() {
+    return {
+      'total': _logs.length,
+      'flutter': flutterLogs.length,
+      'native': nativeLogs.length,
+      'debug': _logs.where((e) => e.level == Live2DLogLevel.debug).length,
+      'info': _logs.where((e) => e.level == Live2DLogLevel.info).length,
+      'warning': warningLogs.length,
+      'error': errorLogs.length,
+    };
   }
 }
 

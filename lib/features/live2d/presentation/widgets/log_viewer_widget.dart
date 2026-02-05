@@ -2,6 +2,7 @@
 // 로그 뷰어 위젯 (Log Viewer Widget)
 // ============================================================================
 // Live2D 관련 로그를 확인하는 위젯입니다.
+// Flutter 및 Native 로그를 통합 표시합니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,13 @@ void showLive2DLogViewer(BuildContext context) {
   );
 }
 
+/// 로그 소스 필터
+enum LogSourceFilter {
+  all,
+  flutter,
+  native,
+}
+
 /// 로그 뷰어 위젯
 class Live2DLogViewer extends StatefulWidget {
   const Live2DLogViewer({super.key});
@@ -32,7 +40,9 @@ class Live2DLogViewer extends StatefulWidget {
 class _Live2DLogViewerState extends State<Live2DLogViewer> {
   final Live2DLogService _logService = Live2DLogService();
   Live2DLogLevel _filterLevel = Live2DLogLevel.debug;
+  LogSourceFilter _sourceFilter = LogSourceFilter.all;
   final ScrollController _scrollController = ScrollController();
+  bool _autoScroll = true;
 
   @override
   void initState() {
@@ -48,17 +58,42 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
   }
 
   void _onLogsChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      // 자동 스크롤
+      if (_autoScroll && _scrollController.hasClients) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(0); // 최신이 위에 있으므로 0으로
+          }
+        });
+      }
+    }
   }
 
   List<Live2DLogEntry> get filteredLogs {
-    return _logService.getLogsAboveLevel(_filterLevel);
+    var logs = _logService.getLogsAboveLevel(_filterLevel);
+    
+    // 소스 필터 적용
+    switch (_sourceFilter) {
+      case LogSourceFilter.flutter:
+        logs = logs.where((e) => e.source == Live2DLogSource.flutter).toList();
+        break;
+      case LogSourceFilter.native:
+        logs = logs.where((e) => e.source == Live2DLogSource.native).toList();
+        break;
+      case LogSourceFilter.all:
+        break;
+    }
+    
+    return logs;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final logs = filteredLogs;
+    final stats = _logService.getStatistics();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -74,7 +109,7 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4),
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -82,68 +117,117 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
             // 헤더
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
+              child: Column(
                 children: [
-                  Icon(
-                    Icons.terminal,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Live2D 로그',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.terminal,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Live2D 디버그 로그',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '총 ${stats['total']}개 (Flutter: ${stats['flutter']}, Native: ${stats['native']})',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '${logs.length}개 항목 (에러: ${_logService.errorLogs.length})',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                      ),
+                      // 자동 스크롤 토글
+                      IconButton(
+                        icon: Icon(
+                          _autoScroll ? Icons.vertical_align_top : Icons.vertical_align_center,
+                          size: 20,
                         ),
-                      ],
-                    ),
+                        tooltip: _autoScroll ? '자동 스크롤 끄기' : '자동 스크롤 켜기',
+                        onPressed: () => setState(() => _autoScroll = !_autoScroll),
+                      ),
+                      // 복사 버튼
+                      IconButton(
+                        icon: const Icon(Icons.copy, size: 20),
+                        tooltip: '로그 복사',
+                        onPressed: () {
+                          final text = _logService.exportLogs();
+                          Clipboard.setData(ClipboardData(text: text));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('로그가 클립보드에 복사되었습니다')),
+                          );
+                        },
+                      ),
+                      // 클리어 버튼
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        tooltip: '로그 삭제',
+                        onPressed: () {
+                          _logService.clear();
+                        },
+                      ),
+                    ],
                   ),
-                  // 필터 드롭다운
-                  DropdownButton<Live2DLogLevel>(
-                    value: _filterLevel,
-                    underline: const SizedBox(),
-                    items: Live2DLogLevel.values.map((level) {
-                      return DropdownMenuItem(
-                        value: level,
-                        child: Text(level.name.toUpperCase()),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _filterLevel = value);
-                      }
-                    },
+                  const SizedBox(height: 8),
+                  // 필터 행
+                  Row(
+                    children: [
+                      // 소스 필터 칩
+                      _FilterChip(
+                        label: '전체',
+                        selected: _sourceFilter == LogSourceFilter.all,
+                        onSelected: () => setState(() => _sourceFilter = LogSourceFilter.all),
+                      ),
+                      const SizedBox(width: 4),
+                      _FilterChip(
+                        label: '🐦 Flutter',
+                        selected: _sourceFilter == LogSourceFilter.flutter,
+                        onSelected: () => setState(() => _sourceFilter = LogSourceFilter.flutter),
+                      ),
+                      const SizedBox(width: 4),
+                      _FilterChip(
+                        label: '🤖 Native',
+                        selected: _sourceFilter == LogSourceFilter.native,
+                        onSelected: () => setState(() => _sourceFilter = LogSourceFilter.native),
+                      ),
+                      const Spacer(),
+                      // 레벨 필터
+                      DropdownButton<Live2DLogLevel>(
+                        value: _filterLevel,
+                        underline: const SizedBox(),
+                        isDense: true,
+                        items: Live2DLogLevel.values.map((level) {
+                          return DropdownMenuItem(
+                            value: level,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _getLevelIcon(level),
+                                const SizedBox(width: 4),
+                                Text(level.name.toUpperCase(), style: const TextStyle(fontSize: 12)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _filterLevel = value);
+                          }
+                        },
+                      ),
+                    ],
                   ),
-                  // 복사 버튼
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    tooltip: '로그 복사',
-                    onPressed: () {
-                      final text = _logService.exportLogs();
-                      Clipboard.setData(ClipboardData(text: text));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('로그가 클립보드에 복사되었습니다')),
-                      );
-                    },
-                  ),
-                  // 클리어 버튼
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    tooltip: '로그 삭제',
-                    onPressed: () {
-                      _logService.clear();
-                    },
-                  ),
+                  const SizedBox(height: 4),
+                  // 통계 바
+                  _StatisticsBar(stats: stats),
                 ],
               ),
             ),
@@ -169,6 +253,13 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '오버레이를 시작하면 로그가 표시됩니다',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                       ),
                     )
@@ -184,6 +275,113 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
           ],
         );
       },
+    );
+  }
+  
+  Widget _getLevelIcon(Live2DLogLevel level) {
+    switch (level) {
+      case Live2DLogLevel.debug:
+        return const Text('🔍', style: TextStyle(fontSize: 12));
+      case Live2DLogLevel.info:
+        return const Text('ℹ️', style: TextStyle(fontSize: 12));
+      case Live2DLogLevel.warning:
+        return const Text('⚠️', style: TextStyle(fontSize: 12));
+      case Live2DLogLevel.error:
+        return const Text('❌', style: TextStyle(fontSize: 12));
+    }
+  }
+}
+
+/// 필터 칩 위젯
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+  
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GestureDetector(
+      onTap: onSelected,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? theme.colorScheme.primaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? theme.colorScheme.primary : theme.colorScheme.outline,
+          ),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 통계 바 위젯
+class _StatisticsBar extends StatelessWidget {
+  final Map<String, int> stats;
+  
+  const _StatisticsBar({required this.stats});
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final total = stats['total'] ?? 0;
+    if (total == 0) return const SizedBox.shrink();
+    
+    final errorCount = stats['error'] ?? 0;
+    final warningCount = stats['warning'] ?? 0;
+    final infoCount = stats['info'] ?? 0;
+    final debugCount = stats['debug'] ?? 0;
+    
+    return Container(
+      height: 4,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(2),
+        color: theme.colorScheme.surfaceContainerHighest,
+      ),
+      child: Row(
+        children: [
+          if (errorCount > 0)
+            Expanded(
+              flex: errorCount,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.error,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          if (warningCount > 0)
+            Expanded(
+              flex: warningCount,
+              child: Container(color: Colors.orange),
+            ),
+          if (infoCount > 0)
+            Expanded(
+              flex: infoCount,
+              child: Container(color: theme.colorScheme.primary),
+            ),
+          if (debugCount > 0)
+            Expanded(
+              flex: debugCount,
+              child: Container(color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -217,9 +415,9 @@ class _LogEntryTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,15 +425,21 @@ class _LogEntryTile extends StatelessWidget {
           // 헤더
           Row(
             children: [
+              // 소스 아이콘
+              Text(
+                entry.sourceIcon,
+                style: const TextStyle(fontSize: 10),
+              ),
+              const SizedBox(width: 2),
               Text(
                 entry.levelIcon,
-                style: const TextStyle(fontSize: 12),
+                style: const TextStyle(fontSize: 10),
               ),
               const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.2),
+                  color: color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -243,6 +447,7 @@ class _LogEntryTile extends StatelessWidget {
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: color,
                     fontWeight: FontWeight.bold,
+                    fontSize: 10,
                   ),
                 ),
               ),
@@ -252,6 +457,7 @@ class _LogEntryTile extends StatelessWidget {
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   fontFamily: 'monospace',
+                  fontSize: 10,
                 ),
               ),
             ],
