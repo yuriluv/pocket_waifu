@@ -14,12 +14,21 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     
+    <!-- 알림 권한 (Android 13+, 포그라운드 서비스 알림 표시용) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- 배터리 최적화 제외 요청 권한 (삼성 등 OEM 공격적 프로세스 관리 대응) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    
     <!-- 외부 저장소 읽기/쓰기 권한 (Live2D 모델 파일 접근용) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     
     <!-- Android 11+ 모든 파일 접근 권한 -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- OpenGL ES 2.0 요구사항 (Live2D 렌더링) -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     
     <application
         android:label="Pocket Waifu"
@@ -27,6 +36,12 @@
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
+        
+        <!-- CRITICAL: Impeller 비활성화 (OpenGL ES 2.0 호환성) -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"

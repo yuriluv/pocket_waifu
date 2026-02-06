@@ -8,6 +8,7 @@
 // ============================================================================
 
 import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
 import 'live2d_log_service.dart';
 import 'live2d_native_bridge.dart';
 
@@ -36,6 +37,8 @@ class Live2DOverlayService {
   String? _currentModelPath;
 
   // === Getter ===
+  // WHY: isOverlayVisible returns cached state for synchronous access.
+  // For critical decisions, use syncOverlayState() to verify with native.
   bool get isOverlayVisible => _isOverlayVisible;
   double get scale => _scale;
   double get opacity => _opacity;
@@ -47,12 +50,71 @@ class Live2DOverlayService {
   /// 현재 오버레이 높이
   int get overlayHeight => (_baseHeight * _scale).toInt();
 
+  // ============================================================================
+  // 상태 동기화 (State Synchronization)
+  // ============================================================================
+
+  /// 네이티브와 상태 동기화 후 실제 상태 반환
+  /// 
+  /// WHY: Flutter의 _isOverlayVisible과 Native의 isRunning이 
+  /// 프로세스 재시작이나 권한 취소로 인해 불일치할 수 있습니다.
+  /// 이 메서드는 Native에서 실제 상태를 가져와 로컬 상태를 수정합니다.
+  Future<bool> syncOverlayState() async {
+    try {
+      final nativeState = await _bridge.isOverlayVisible();
+      if (_isOverlayVisible != nativeState) {
+        live2dLog.warning(
+          _tag,
+          '상태 불일치 감지',
+          details: 'local=$_isOverlayVisible, native=$nativeState',
+        );
+        _isOverlayVisible = nativeState;
+      }
+      return nativeState;
+    } catch (e) {
+      live2dLog.error(_tag, '상태 동기화 실패', error: e);
+      return _isOverlayVisible;
+    }
+  }
+
   /// 서비스 초기화
   Future<void> initialize() async {
     if (!_bridge.isInitialized) {
       await _bridge.initialize();
     }
+    
+    // 상태 동기화 콜백 등록 - Native가 주기적으로 상태를 브로드캐스트할 때 호출됨
+    _bridge.setStateSyncCallback(_onStateSyncFromNative);
+    
+    // 초기화 시 Native 상태와 동기화
+    await syncOverlayState();
+    
     live2dLog.info(_tag, 'Live2D Overlay Service 초기화됨');
+  }
+  
+  /// Native 상태 동기화 이벤트 핸들러
+  /// 
+  /// WHY: Native에서 주기적으로 상태를 브로드캐스트합니다.
+  /// 이를 통해 권한 취소나 예기치 않은 서비스 종료를 감지할 수 있습니다.
+  void _onStateSyncFromNative(Map<String, dynamic> data) {
+    final isRunning = data['isRunning'] as bool? ?? false;
+    final modelLoaded = data['modelLoaded'] as bool? ?? false;
+    
+    // 상태 불일치 감지 및 수정
+    if (_isOverlayVisible != isRunning) {
+      live2dLog.warning(
+        _tag,
+        '주기적 동기화에서 상태 불일치 감지',
+        details: 'local=$_isOverlayVisible, native=$isRunning, model=$modelLoaded',
+      );
+      _isOverlayVisible = isRunning;
+    }
+    
+    // 모델 상태도 동기화 (필요시)
+    if (!isRunning && _currentModelPath != null) {
+      // Native가 종료되었는데 우리는 모델이 있다고 생각하면 초기화
+      _currentModelPath = null;
+    }
   }
 
   // ============================================================================
@@ -179,7 +241,16 @@ class Live2DOverlayService {
 
   /// 오버레이를 표시합니다
   Future<bool> showOverlay() async {
-    // 권한 확인
+    // 알림 권한 확인 (Android 13+ 포그라운드 서비스 알림에 필수)
+    if (await Permission.notification.isDenied) {
+      live2dLog.info(_tag, '알림 권한 요청 중...');
+      final status = await Permission.notification.request();
+      if (!status.isGranted) {
+        live2dLog.warning(_tag, '알림 권한 거부됨 - 서비스가 강제 종료될 수 있음');
+      }
+    }
+    
+    // 오버레이 권한 확인
     if (!await hasOverlayPermission()) {
       live2dLog.warning(_tag, '오버레이 권한 없음');
       return false;

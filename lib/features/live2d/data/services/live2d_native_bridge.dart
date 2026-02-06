@@ -91,9 +91,44 @@ class Live2DNativeBridge {
       return;
     }
     
+    // 상태 동기화 이벤트 처리
+    if (type == 'stateSync') {
+      _handleStateSync(map);
+      return;
+    }
+    
     // 일반 상호작용 이벤트 처리
     final interactionEvent = InteractionEvent.fromMap(map);
     _handleNativeEvent(interactionEvent);
+  }
+  
+  /// 상태 동기화 이벤트 처리
+  /// 
+  /// WHY: Native 서비스가 주기적으로 상태를 브로드캐스트합니다.
+  /// 이를 통해 Flutter와 Native 간의 상태 불일치를 감지하고 수정할 수 있습니다.
+  void _handleStateSync(Map<String, dynamic> data) {
+    final isRunning = data['isRunning'] as bool? ?? false;
+    final modelLoaded = data['modelLoaded'] as bool? ?? false;
+    final uptimeMs = data['uptimeMs'] as int? ?? 0;
+    
+    live2dLog.debug(
+      _tag, 
+      '상태 동기화 수신',
+      details: 'running=$isRunning, model=$modelLoaded, uptime=${uptimeMs ~/ 1000}s',
+    );
+    
+    // 상태 동기화 콜백 호출
+    _stateSyncCallback?.call(data);
+  }
+  
+  // === 상태 동기화 콜백 ===
+  void Function(Map<String, dynamic>)? _stateSyncCallback;
+  
+  /// 상태 동기화 콜백 등록
+  /// 
+  /// Native에서 주기적으로 상태를 브로드캐스트할 때 호출됩니다.
+  void setStateSyncCallback(void Function(Map<String, dynamic>)? callback) {
+    _stateSyncCallback = callback;
   }
 
   /// 브릿지 정리
@@ -570,6 +605,45 @@ class Live2DNativeBridge {
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setLowPowerMode 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  // ============================================================================
+  // 디버그 / 유지보수
+  // ============================================================================
+
+  /// 시스템 상태 조회 (디버깅용)
+  /// 
+  /// 서비스 상태, SDK 상태, 메모리 사용량 등을 반환합니다.
+  /// 디버그 화면이나 문제 진단에 사용합니다.
+  Future<Map<String, dynamic>> getHealthStatus() async {
+    try {
+      live2dLog.debug(_tag, 'Health status 조회');
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getHealthStatus');
+      if (result == null) return {'error': 'null response'};
+      return Map<String, dynamic>.from(result);
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getHealthStatus 실패', error: e);
+      return {'error': e.message};
+    } on MissingPluginException {
+      return {'error': 'Plugin not registered'};
+    }
+  }
+
+  /// 강제 재설정
+  /// 
+  /// 비정상 상태에서 복구하기 위한 긴급 조치입니다.
+  /// 오버레이를 숨기고 SDK를 재초기화합니다.
+  Future<bool> forceReset() async {
+    try {
+      live2dLog.warning(_tag, '강제 재설정 요청');
+      final result = await _methodChannel.invokeMethod<bool>('forceReset');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'forceReset 실패', error: e);
       return false;
     } on MissingPluginException {
       return false;

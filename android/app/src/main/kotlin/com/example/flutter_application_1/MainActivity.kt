@@ -1,7 +1,14 @@
 package com.example.flutter_application_1
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -30,6 +37,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
+        private const val REQUEST_NOTIFICATION_PERMISSION = 1001
         
         // 서버 설정
         private const val SERVER_PORT = 8080
@@ -44,6 +52,67 @@ class MainActivity : FlutterActivity() {
     private val localServer = Live2DLocalServer.getInstance()
     
     val serverUrl: String get() = "http://$SERVER_HOST:$SERVER_PORT"
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Android 13+ (TIRAMISU): 알림 권한 요청
+        // 포그라운드 서비스 알림 표시에 필수
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "알림 권한 요청 중...")
+                requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_NOTIFICATION_PERMISSION
+                )
+            }
+        }
+        
+        // 배터리 최적화 제외 요청 (삼성 등 OEM 공격적 프로세스 관리 대응)
+        requestBatteryOptimizationExemption()
+    }
+    
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "✅ 알림 권한 승인됨")
+            } else {
+                Log.w(TAG, "⚠️ 알림 권한 거부됨 - 포그라운드 서비스 알림이 표시되지 않을 수 있음")
+            }
+        }
+    }
+    
+    /**
+     * 배터리 최적화 제외 요청
+     * 
+     * 삼성의 FreecessController 등 OEM 공격적 프로세스 관리로 인해
+     * 포그라운드 서비스가 강제 종료되는 것을 방지합니다.
+     */
+    private fun requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                Log.d(TAG, "배터리 최적화 제외 요청 중...")
+                try {
+                    val intent = Intent().apply {
+                        action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w(TAG, "배터리 최적화 제외 요청 실패: ${e.message}")
+                }
+            } else {
+                Log.d(TAG, "배터리 최적화 이미 제외됨")
+            }
+        }
+    }
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

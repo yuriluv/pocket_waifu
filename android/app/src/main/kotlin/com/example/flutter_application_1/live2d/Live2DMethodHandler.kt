@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.os.Environment
 import android.net.Uri
 import com.example.flutter_application_1.live2d.core.Live2DLogger
+import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
@@ -68,6 +69,10 @@ class Live2DMethodHandler(
                 // ========== 렌더링 설정 ==========
                 "setTargetFps" -> setTargetFps(call, result)
                 "setLowPowerMode" -> setLowPowerMode(call, result)
+                
+                // ========== 디버그 / 유지보수 ==========
+                "getHealthStatus" -> getHealthStatus(result)
+                "forceReset" -> forceReset(result)
                 
                 else -> {
                     Live2DLogger.w("알 수 없는 메서드", call.method)
@@ -567,6 +572,82 @@ class Live2DMethodHandler(
         } catch (e: Exception) {
             Live2DLogger.e("저전력 모드 설정 실패", e)
             result.error("RENDER_ERROR", e.message, null)
+        }
+    }
+    
+    // ============================================================================
+    // 디버그 / 유지보수
+    // ============================================================================
+    
+    /**
+     * 시스템 상태 조회
+     * 
+     * WHY: 디버깅 및 모니터링을 위해 전체 시스템 상태를 Flutter에서 조회할 수 있게 합니다.
+     * 서비스 실행 여부, SDK 상태, 메모리 사용량 등을 포함합니다.
+     */
+    private fun getHealthStatus(result: MethodChannel.Result) {
+        try {
+            val runtime = Runtime.getRuntime()
+            val heapUsedMB = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024
+            val heapMaxMB = runtime.maxMemory() / 1024 / 1024
+            
+            val uptimeMs = if (Live2DOverlayService.isRunning && Live2DOverlayService.serviceStartTime > 0) {
+                System.currentTimeMillis() - Live2DOverlayService.serviceStartTime
+            } else {
+                0L
+            }
+            
+            val status = mapOf(
+                "service" to mapOf(
+                    "isRunning" to Live2DOverlayService.isRunning,
+                    "uptimeMs" to uptimeMs,
+                    "currentModel" to Live2DOverlayService.currentModelInfo
+                ),
+                "sdk" to CubismFrameworkManager.getStatusInfo(),
+                "memory" to mapOf(
+                    "heapUsedMB" to heapUsedMB,
+                    "heapMaxMB" to heapMaxMB,
+                    "heapUsagePercent" to if (heapMaxMB > 0) (heapUsedMB * 100 / heapMaxMB) else 0
+                ),
+                "timestamp" to System.currentTimeMillis()
+            )
+            
+            Live2DLogger.d("Health status 조회됨", null)
+            result.success(status)
+            
+        } catch (e: Exception) {
+            Live2DLogger.e("Health status 조회 실패", e)
+            result.error("HEALTH_ERROR", e.message, null)
+        }
+    }
+    
+    /**
+     * 강제 재설정
+     * 
+     * WHY: 비정상 상태에서 복구하기 위한 긴급 조치입니다.
+     * SDK를 재초기화하고 서비스를 재시작합니다.
+     */
+    private fun forceReset(result: MethodChannel.Result) {
+        try {
+            Live2DLogger.w("강제 재설정 요청", "SDK 및 서비스 재초기화")
+            
+            // 1. 오버레이 숨기기
+            if (Live2DOverlayService.isRunning) {
+                val hideIntent = Intent(context, Live2DOverlayService::class.java).apply {
+                    action = Live2DOverlayService.ACTION_HIDE
+                }
+                context.startService(hideIntent)
+            }
+            
+            // 2. SDK 재초기화
+            CubismFrameworkManager.reinitialize()
+            
+            Live2DLogger.i("강제 재설정 완료", null)
+            result.success(true)
+            
+        } catch (e: Exception) {
+            Live2DLogger.e("강제 재설정 실패", e)
+            result.error("RESET_ERROR", e.message, null)
         }
     }
     

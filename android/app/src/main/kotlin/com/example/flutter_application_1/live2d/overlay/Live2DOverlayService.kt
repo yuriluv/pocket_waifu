@@ -9,7 +9,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -78,9 +81,23 @@ class Live2DOverlayService : Service() {
         private const val DEFAULT_WIDTH = 300
         private const val DEFAULT_HEIGHT = 400
         
+        // ========== 상태 체크 간격 (ms) ==========
+        private const val STATE_CHECK_INTERVAL_MS = 30_000L   // 30초 상태 브로드캐스트
+        private const val PERMISSION_CHECK_INTERVAL_MS = 60_000L  // 60초 권한 체크
+        
         // ========== 상태 ==========
+        // WHY isRunning is in companion object:
+        // The service can be stopped and restarted by Android at any time.
+        // Companion object survives service recreation within the same process.
+        // This allows Flutter to query state even if service instance changed.
+        // CAVEAT: Does not survive process death - Flutter should verify via isOverlayVisible() call.
         @Volatile
         var isRunning = false
+            private set
+        
+        // 서비스 시작 시간 (디버그/메트릭용)
+        @Volatile
+        var serviceStartTime: Long = 0L
             private set
             
         // ========== 현재 모델 정보 (외부 접근용) ==========
@@ -104,6 +121,27 @@ class Live2DOverlayService : Service() {
     private var currentOpacity = 1f
     private var currentWidth = DEFAULT_WIDTH
     private var currentHeight = DEFAULT_HEIGHT
+    
+    // ========== 상태 체크 Handler ==========
+    private val stateCheckHandler = Handler(Looper.getMainLooper())
+    
+    // 상태 브로드캐스트 (30초마다)
+    private val stateCheckRunnable = object : Runnable {
+        override fun run() {
+            if (isRunning) {
+                broadcastState()
+                stateCheckHandler.postDelayed(this, STATE_CHECK_INTERVAL_MS)
+            }
+        }
+    }
+    
+    // 권한 체크 (60초마다)
+    private val permissionCheckRunnable = object : Runnable {
+        override fun run() {
+            if (!checkAndRecoverPermission()) return
+            stateCheckHandler.postDelayed(this, PERMISSION_CHECK_INTERVAL_MS)
+        }
+    }
     
     // 오버레이 파라미터
     private val overlayParams: WindowManager.LayoutParams by lazy {
@@ -132,13 +170,34 @@ class Live2DOverlayService : Service() {
     // ============================================================================
     
     override fun onCreate() {
+        android.util.Log.d("Live2D", ">>> SERVICE onCreate START")
         super.onCreate()
         Live2DLogger.Overlay.i("서비스 생성", "Live2DOverlayService 초기화")
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        createNotificationChannel()
+        
+        try {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            
+            // CRITICAL: Create notification channel FIRST
+            createNotificationChannel()
+            android.util.Log.d("Live2D", ">>> Notification channel created")
+            
+            // CRITICAL: Start foreground IMMEDIATELY in onCreate
+            // Android 12+ kills the app if startForeground() is not called within ~10 seconds
+            val notification = createNotification()
+            android.util.Log.d("Live2D", ">>> Notification created")
+            
+            startForeground(NOTIFICATION_ID, notification)
+            android.util.Log.d("Live2D", ">>> startForeground called successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("Live2D", ">>> SERVICE onCreate ERROR: ${e.message}", e)
+            Live2DLogger.Overlay.e("서비스 생성 실패", e.message, e)
+        }
+        
+        android.util.Log.d("Live2D", ">>> SERVICE onCreate END")
     }
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        android.util.Log.d("Live2D", ">>> SERVICE onStartCommand: action=${intent?.action}")
         Live2DLogger.Overlay.d("onStartCommand", "action=${intent?.action}")
         
         when (intent?.action) {
@@ -177,9 +236,28 @@ class Live2DOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     
     override fun onDestroy() {
+        android.util.Log.d("Live2D", ">>> SERVICE onDestroy")
         Live2DLogger.Overlay.i("서비스 종료", "Live2DOverlayService 정리")
         hideOverlay()
         super.onDestroy()
+    }
+    
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        android.util.Log.d("Live2D", ">>> SERVICE onTaskRemoved")
+        Live2DLogger.Overlay.w("태스크 제거됨", "onTaskRemoved 호출")
+        super.onTaskRemoved(rootIntent)
+    }
+    
+    override fun onLowMemory() {
+        android.util.Log.d("Live2D", ">>> SERVICE onLowMemory")
+        Live2DLogger.Overlay.w("메모리 부족", "onLowMemory 호출")
+        super.onLowMemory()
+    }
+    
+    override fun onTrimMemory(level: Int) {
+        android.util.Log.d("Live2D", ">>> SERVICE onTrimMemory level=$level")
+        Live2DLogger.Overlay.w("메모리 트림", "level=$level")
+        super.onTrimMemory(level)
     }
     
     // ============================================================================
@@ -192,11 +270,17 @@ class Live2DOverlayService : Service() {
             return
         }
         
+        // 권한 확인
+        if (!checkAndRecoverPermission()) {
+            Live2DLogger.Overlay.e("오버레이 표시 실패", "권한 없음")
+            return
+        }
+        
         Live2DLogger.Overlay.i("오버레이 표시 시작", "GLSurfaceView 생성")
         
-        // Foreground Service 시작
-        startForeground(NOTIFICATION_ID, createNotification())
-        Live2DLogger.Overlay.d("Foreground Service 시작됨", "notificationId=$NOTIFICATION_ID")
+        // Note: startForeground() is already called in onCreate()
+        // No need to call it again here
+        Live2DLogger.Overlay.d("Foreground Service 이미 시작됨", "notificationId=$NOTIFICATION_ID")
         
         // GLSurfaceView 생성 (Live2D 렌더링용)
         glSurfaceView = Live2DGLSurfaceView(this)
@@ -214,6 +298,9 @@ class Live2DOverlayService : Service() {
             windowManager.addView(overlayView, overlayParams)
             isRunning = true
             
+            // 상태 체크 시작
+            startStateChecks()
+            
             // Flutter로 이벤트 전송
             Live2DEventStreamHandler.getInstance()?.sendOverlayShown()
             
@@ -225,6 +312,9 @@ class Live2DOverlayService : Service() {
     }
     
     private fun hideOverlay() {
+        // 상태 체크 중지 (먼저 중지하여 정리 중 브로드캐스트 방지)
+        stopStateChecks()
+        
         overlayView?.let { view ->
             Live2DLogger.Overlay.i("오버레이 숨김 시작", "리소스 정리")
             
@@ -549,6 +639,80 @@ class Live2DOverlayService : Service() {
     }
     
     // ============================================================================
+    // 상태 관리 및 방어적 복구
+    // ============================================================================
+    
+    /**
+     * 권한 확인 및 복구
+     * 
+     * WHY: 사용자가 실행 중 권한을 취소하면 서비스가 좀비 상태가 됩니다.
+     * 이 메서드는 권한이 취소되었는지 확인하고, 취소된 경우 graceful하게 종료합니다.
+     * 
+     * @return true if permission OK, false if revoked (service will stop)
+     */
+    private fun checkAndRecoverPermission(): Boolean {
+        if (!Settings.canDrawOverlays(this)) {
+            Live2DLogger.Overlay.w("권한 취소 감지", "오버레이 권한이 취소됨 - 서비스 종료")
+            hideOverlay()
+            return false
+        }
+        return true
+    }
+    
+    /**
+     * 현재 상태를 Flutter로 브로드캐스트
+     * 
+     * WHY: Flutter측 상태와 Native측 상태가 불일치할 수 있습니다 (프로세스 재시작 등).
+     * 주기적으로 상태를 브로드캐스트하여 Flutter가 동기화할 수 있게 합니다.
+     */
+    private fun broadcastState() {
+        try {
+            val hasModel = glSurfaceView?.getModelInfo() != null
+            val uptimeMs = if (serviceStartTime > 0) System.currentTimeMillis() - serviceStartTime else 0
+            
+            Live2DEventStreamHandler.getInstance()?.sendEvent(
+                mapOf(
+                    "type" to "stateSync",
+                    "isRunning" to isRunning,
+                    "modelLoaded" to hasModel,
+                    "uptimeMs" to uptimeMs,
+                    "modelPath" to currentModelPath
+                )
+            )
+            
+            Live2DLogger.Overlay.d("상태 브로드캐스트", "running=$isRunning, model=$hasModel, uptime=${uptimeMs/1000}s")
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.w("상태 브로드캐스트 실패", e.message)
+        }
+    }
+    
+    /**
+     * 상태 체크 핸들러 시작
+     */
+    private fun startStateChecks() {
+        serviceStartTime = System.currentTimeMillis()
+        
+        // 첫 상태 브로드캐스트 (즉시)
+        broadcastState()
+        
+        // 주기적 상태 체크 시작
+        stateCheckHandler.postDelayed(stateCheckRunnable, STATE_CHECK_INTERVAL_MS)
+        stateCheckHandler.postDelayed(permissionCheckRunnable, PERMISSION_CHECK_INTERVAL_MS)
+        
+        Live2DLogger.Overlay.d("상태 체크 시작", "state=${STATE_CHECK_INTERVAL_MS}ms, perm=${PERMISSION_CHECK_INTERVAL_MS}ms")
+    }
+    
+    /**
+     * 상태 체크 핸들러 중지
+     */
+    private fun stopStateChecks() {
+        stateCheckHandler.removeCallbacks(stateCheckRunnable)
+        stateCheckHandler.removeCallbacks(permissionCheckRunnable)
+        serviceStartTime = 0
+        Live2DLogger.Overlay.d("상태 체크 중지", null)
+    }
+    
+    // ============================================================================
     // 알림
     // ============================================================================
     
@@ -583,6 +747,7 @@ class Live2DOverlayService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)  // 기본 아이콘 사용
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .build()
     }

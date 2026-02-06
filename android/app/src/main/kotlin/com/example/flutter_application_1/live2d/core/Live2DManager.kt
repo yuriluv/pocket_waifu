@@ -1,16 +1,15 @@
 package com.example.flutter_application_1.live2d.core
 
 import android.content.Context
+import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
 
 /**
  * Live2D Cubism SDK Manager
  * 
  * Live2D Cubism SDK의 초기화 및 관리를 담당합니다.
- * 실제 SDK 통합 시 이 클래스에서 CubismFramework를 초기화합니다.
+ * 실제 구현은 CubismFrameworkManager에 위임합니다.
  * 
- * TODO: Live2D Cubism SDK for Native 설치 후 구현
- * - SDK 다운로드: https://www.live2d.com/download/cubism-sdk/
- * - .so 파일들을 jniLibs 폴더에 배치
+ * 이 클래스는 기존 코드와의 호환성을 위해 유지됩니다.
  */
 class Live2DManager private constructor() {
     
@@ -23,76 +22,51 @@ class Live2DManager private constructor() {
                 instance ?: Live2DManager().also { instance = it }
             }
         }
-        
-        // SDK 로드 상태
-        private var isSdkLoaded = false
     }
-    
-    private var isInitialized = false
     
     /**
      * Live2D Cubism SDK 초기화
      * 
-     * TODO: 실제 SDK 통합 시 구현
-     * - System.loadLibrary("Live2DCubismCore")
-     * - CubismFramework.initialize()
+     * MUST: GL 스레드에서 호출
+     * 
+     * @param context Android Context (현재 미사용, 향후 확장용)
+     * @return 초기화 성공 여부
      */
     fun initialize(context: Context): Boolean {
-        if (isInitialized) {
-            Live2DLogger.d("이미 초기화됨", null)
-            return true
-        }
-        
-        try {
-            // TODO: Live2D SDK .so 파일 로드
-            // System.loadLibrary("Live2DCubismCore")
-            
-            // 현재는 플레이스홀더 - SDK 없이 작동
-            Live2DLogger.i("Live2D Manager 초기화됨", "플레이스홀더 모드")
-            isInitialized = true
-            isSdkLoaded = false // SDK 미설치 상태
-            
-            return true
-        } catch (e: Exception) {
-            Live2DLogger.e("Live2D SDK 초기화 실패", e)
-            return false
-        }
+        Live2DLogger.d("Live2DManager", "Delegating to CubismFrameworkManager")
+        return CubismFrameworkManager.initialize()
     }
     
     /**
      * SDK 로드 상태 확인
+     * 
+     * @return 네이티브 라이브러리가 로드되었으면 true
      */
-    fun isSdkAvailable(): Boolean = isSdkLoaded
+    fun isSdkAvailable(): Boolean = CubismFrameworkManager.isSdkAvailable()
     
     /**
      * 초기화 상태 확인
+     * 
+     * @return Framework가 초기화되었으면 true
      */
-    fun isReady(): Boolean = isInitialized
+    fun isReady(): Boolean = CubismFrameworkManager.isReady()
     
     /**
      * SDK 정리
+     * 
+     * MUST: GL 스레드에서 호출
      */
     fun dispose() {
-        if (!isInitialized) return
-        
-        try {
-            // TODO: CubismFramework.dispose()
-            Live2DLogger.i("Live2D Manager 정리됨", null)
-            isInitialized = false
-        } catch (e: Exception) {
-            Live2DLogger.e("Live2D SDK 정리 오류", e)
-        }
+        CubismFrameworkManager.dispose()
     }
     
     /**
-     * SDK 버전 정보 (플레이스홀더)
+     * SDK 버전 정보 반환
      */
-    fun getVersion(): String {
-        return if (isSdkLoaded) {
-            // TODO: CubismFramework.getVersion()
-            "Cubism SDK (version TBD)"
-        } else {
-            "Placeholder Mode (SDK not installed)"
-        }
-    }
+    fun getVersion(): String = CubismFrameworkManager.getVersionString()
+    
+    /**
+     * 상태 정보 반환 (디버깅용)
+     */
+    fun getStatusInfo(): Map<String, Any?> = CubismFrameworkManager.getStatusInfo()
 }
