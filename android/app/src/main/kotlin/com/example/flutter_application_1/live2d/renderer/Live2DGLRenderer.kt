@@ -119,7 +119,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // ============================================
         // Phase 7: Cubism Framework 초기화
         // ============================================
-        val sdkResult = CubismFrameworkManager.initialize()
+        val sdkResult = CubismFrameworkManager.initialize(context)
         val sdkStatus = CubismFrameworkManager.getStatusInfo()
         Live2DLogger.Renderer.i("Cubism Framework", 
             "초기화=${if (sdkResult) "성공" else "실패"}, " +

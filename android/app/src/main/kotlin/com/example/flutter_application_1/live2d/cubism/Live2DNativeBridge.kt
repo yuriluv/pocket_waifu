@@ -23,6 +23,7 @@ object Live2DNativeBridge {
         }
     }
 
+    external fun nativeSetAssetManager(assetManager: android.content.res.AssetManager)
     external fun nativeInitializeFramework(): Boolean
     external fun nativeGetVersion(): Int
     external fun nativeDisposeFramework()

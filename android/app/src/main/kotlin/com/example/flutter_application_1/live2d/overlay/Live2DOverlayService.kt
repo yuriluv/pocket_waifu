@@ -22,6 +22,7 @@ import com.example.flutter_application_1.MainActivity
 import com.example.flutter_application_1.R
 import com.example.flutter_application_1.live2d.Live2DEventStreamHandler
 import com.example.flutter_application_1.live2d.core.Live2DLogger
+import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
 import com.example.flutter_application_1.live2d.gesture.GestureConfig
 import com.example.flutter_application_1.live2d.gesture.GestureDetectorManager
 import com.example.flutter_application_1.live2d.gesture.GestureType
@@ -340,6 +341,15 @@ class Live2DOverlayService : Service() {
         overlayView = null
         glSurfaceView = null
         isRunning = false
+
+        // Dispose CubismFramework so shader cache is invalidated.
+        // On next overlay open, the SDK re-initializes with a fresh GL context.
+        try {
+            CubismFrameworkManager.dispose()
+            Live2DLogger.Overlay.d("CubismFramework 정리완료", null)
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.e("CubismFramework dispose 실패", null, e)
+        }
         
         // Flutter로 이벤트 전송
         Live2DEventStreamHandler.getInstance()?.sendOverlayHidden()

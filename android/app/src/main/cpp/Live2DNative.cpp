@@ -1,10 +1,13 @@
 #include <jni.h>
 #include <android/log.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
 #include <vector>
 #include <string>
 #include <fstream>
 #include <mutex>
 #include <cstdlib>
+#include <cstring>
 
 // NOTE: Do NOT include "Live2DCubismCore.h" directly.
 // CubismFramework.hpp includes "Live2DCubismCore.hpp" which wraps the C header
@@ -26,6 +29,13 @@ namespace {
     std::mutex gMutex;
     ICubismAllocator* gAllocator = nullptr;
     bool gFrameworkInitialized = false;
+
+    // AssetManager for loading shader files from APK assets
+    AAssetManager* gAssetManager = nullptr;
+
+    // IMPORTANT: CubismFramework stores Option as a POINTER (not copy).
+    // This must be global so it outlives nativeInitializeFramework().
+    CubismFramework::Option gOption;
 
     CubismMoc* gMoc = nullptr;
     CubismModel* gModel = nullptr;
@@ -51,6 +61,65 @@ namespace {
             std::free(alignedMemory);
         }
     };
+
+    // ================================================================
+    // File loader via Android AssetManager
+    // Cubism SDK calls this to load shader .frag/.vert files.
+    // It tries multiple asset paths to find the shader file.
+    // ================================================================
+    csmByte* LoadFileFromAssets(const std::string filePath, csmSizeInt* outSize) {
+        if (!gAssetManager) {
+            __android_log_print(ANDROID_LOG_ERROR, kTag,
+                "LoadFileFromAssets: AssetManager not set! path=%s", filePath.c_str());
+            return nullptr;
+        }
+
+        // Try multiple prefixes — SDK may request with bare filename or relative path
+        const std::string prefixes[] = {
+            "Live2DShaders/StandardES/",
+            "Live2DShaders/",
+            ""
+        };
+
+        for (const auto& prefix : prefixes) {
+            std::string assetPath = prefix + filePath;
+            AAsset* asset = AAssetManager_open(gAssetManager, assetPath.c_str(), AASSET_MODE_BUFFER);
+            if (asset) {
+                off_t length = AAsset_getLength(asset);
+                if (length > 0) {
+                    auto* buffer = static_cast<csmByte*>(std::malloc(static_cast<size_t>(length)));
+                    if (buffer) {
+                        int bytesRead = AAsset_read(asset, buffer, static_cast<size_t>(length));
+                        AAsset_close(asset);
+                        if (bytesRead == length) {
+                            *outSize = static_cast<csmSizeInt>(length);
+                            __android_log_print(ANDROID_LOG_DEBUG, kTag,
+                                "LoadFileFromAssets OK: %s (%ld bytes)", assetPath.c_str(), (long)length);
+                            return buffer;
+                        }
+                        std::free(buffer);
+                    } else {
+                        AAsset_close(asset);
+                    }
+                } else {
+                    AAsset_close(asset);
+                }
+            }
+        }
+
+        __android_log_print(ANDROID_LOG_WARN, kTag,
+            "LoadFileFromAssets FAILED: %s (tried all prefixes)", filePath.c_str());
+        return nullptr;
+    }
+
+    void ReleaseBytes(csmByte* byteData) {
+        std::free(byteData);
+    }
+
+    // SDK logging callback
+    void CubismLogFunction(const char* message) {
+        __android_log_print(ANDROID_LOG_INFO, kTag, "%s", message);
+    }
 
     void ReleaseModelResources() {
         if (gRenderer) {
@@ -85,6 +154,17 @@ namespace {
     }
 }
 
+// ================================================================
+// Set Android AssetManager for shader file loading
+// MUST be called before nativeInitializeFramework()
+// ================================================================
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeSetAssetManager(
+    JNIEnv* env, jobject, jobject assetManager) {
+    gAssetManager = AAssetManager_fromJava(env, assetManager);
+    __android_log_print(ANDROID_LOG_INFO, kTag, "AssetManager set");
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeInitializeFramework(
     JNIEnv*, jobject) {
@@ -98,7 +178,14 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
         gAllocator = new SimpleAllocator();
     }
 
-    if (!CubismFramework::StartUp(gAllocator, nullptr)) {
+    // Configure framework options with file loader and logging
+    // Use global gOption because SDK stores pointer, NOT a copy!
+    gOption.LogFunction = CubismLogFunction;
+    gOption.LoggingLevel = CubismFramework::Option::LogLevel_Info;
+    gOption.LoadFileFunction = LoadFileFromAssets;
+    gOption.ReleaseBytesFunction = ReleaseBytes;
+
+    if (!CubismFramework::StartUp(gAllocator, &gOption)) {
         __android_log_print(ANDROID_LOG_ERROR, kTag, "StartUp failed");
         return JNI_FALSE;
     }
@@ -128,10 +215,10 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
         gFrameworkInitialized = false;
     }
 
-    if (gAllocator) {
-        delete gAllocator;
-        gAllocator = nullptr;
-    }
+    // Do NOT delete gAllocator here! CubismFramework::StartUp() is a one-time call
+    // that caches the allocator pointer. If we delete it, re-initialisation will
+    // crash because StartUp() will report "already done" while gAllocator dangles.
+    // Keep the allocator alive for the entire process lifetime.
 
     __android_log_print(ANDROID_LOG_INFO, kTag, "[Phase7-2] CubismFramework disposed");
 }
@@ -218,6 +305,17 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
 
     if (!gModel) {
         __android_log_print(ANDROID_LOG_ERROR, kTag, "Model not created");
+        return JNI_FALSE;
+    }
+
+    // Guard: CubismRenderer_OpenGLES2 loads shader files via the framework's
+    // load/release callbacks. If they are not set, shader loading will crash.
+    if (!CubismFramework::GetLoadFileFunction() || !CubismFramework::GetReleaseBytesFunction()) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            kTag,
+            "LoadFile/ReleaseBytes callbacks not set. Disable SDK rendering (fallback mode)."
+        );
         return JNI_FALSE;
     }
 

@@ -134,8 +134,15 @@ object CubismFrameworkManager {
      * 
      * @return 초기화 완료 여부 (폴백 모드 포함, 항상 true)
      */
+    // Context used for AssetManager access
+    @Volatile
+    private var appContext: android.content.Context? = null
+
     @Synchronized
-    fun initialize(): Boolean {
+    fun initialize(context: android.content.Context? = null): Boolean {
+        if (context != null) {
+            appContext = context.applicationContext
+        }
         if (isInitialized) {
             Live2DLogger.d("$TAG: Already initialized", getStatusSummary())
             return true
@@ -199,6 +206,11 @@ object CubismFrameworkManager {
             if (!Live2DNativeBridge.ensureLoaded()) {
                 lastError = "JNI library load failed"
                 return false
+            }
+
+            // Pass AssetManager to native before framework init (for shader file loading)
+            appContext?.let { ctx ->
+                Live2DNativeBridge.nativeSetAssetManager(ctx.assets)
             }
 
             val initResult = Live2DNativeBridge.nativeInitializeFramework()

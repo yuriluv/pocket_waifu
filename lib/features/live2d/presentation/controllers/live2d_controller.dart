@@ -94,7 +94,13 @@ class Live2DController extends ChangeNotifier {
       // 4. 저장소 서비스에 폴더 정보 복원
       _storageService.restoreFromSettings(_settings);
 
-      // 5. 폴더가 유효한지 확인
+      // 5. Native 상태 동기화 콜백 등록
+      _nativeBridge.setStateSyncCallback(_handleNativeStateSync);
+
+      // 6. Native 오버레이 실제 상태 동기화
+      await _syncOverlayStateFromNative();
+
+      // 7. 폴더가 유효한지 확인
       if (_storageService.hasFolderSelected) {
         final isValid = await _storageService.validateCurrentFolder();
         
@@ -258,6 +264,14 @@ class Live2DController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 위치 설정
+  Future<void> setPosition(double x, double y) async {
+    _settings = _settings.copyWith(positionX: x, positionY: y);
+    await _nativeBridge.setPosition(x, y);
+    await _settings.save();
+    notifyListeners();
+  }
+
   /// 위치 초기화
   Future<void> resetPosition() async {
     _settings = _settings.copyWith(
@@ -363,8 +377,36 @@ class Live2DController extends ChangeNotifier {
     }
   }
 
+  /// Native 오버레이 실제 상태와 동기화
+  Future<void> _syncOverlayStateFromNative() async {
+    try {
+      final isActuallyVisible = await _nativeBridge.isOverlayVisible();
+      if (_settings.isEnabled != isActuallyVisible) {
+        live2dLog.info(_tag, '오버레이 상태 불일치 수정',
+            details: 'settings=${_settings.isEnabled}, actual=$isActuallyVisible');
+        _settings = _settings.copyWith(isEnabled: isActuallyVisible);
+        await _settings.save();
+        notifyListeners();
+      }
+    } catch (e) {
+      live2dLog.warning(_tag, 'Native 상태 동기화 실패', details: '$e');
+    }
+  }
+
+  /// Native 상태 동기화 콜백
+  void _handleNativeStateSync(Map<String, dynamic> data) {
+    final isRunning = data['isRunning'] as bool? ?? false;
+    if (_settings.isEnabled != isRunning) {
+      live2dLog.info(_tag, '상태 동기화: isEnabled=$isRunning');
+      _settings = _settings.copyWith(isEnabled: isRunning);
+      _settings.save();
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
+    _nativeBridge.setStateSyncCallback(null);
     _interactionManager.dispose();
     _nativeBridge.dispose();
     super.dispose();

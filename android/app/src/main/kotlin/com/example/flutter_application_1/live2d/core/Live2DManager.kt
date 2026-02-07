@@ -34,7 +34,7 @@ class Live2DManager private constructor() {
      */
     fun initialize(context: Context): Boolean {
         Live2DLogger.d("Live2DManager", "Delegating to CubismFrameworkManager")
-        return CubismFrameworkManager.initialize()
+        return CubismFrameworkManager.initialize(context)
     }
     
     /**
