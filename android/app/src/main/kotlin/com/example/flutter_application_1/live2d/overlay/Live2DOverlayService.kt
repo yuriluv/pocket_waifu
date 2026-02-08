@@ -23,6 +23,7 @@ import com.example.flutter_application_1.R
 import com.example.flutter_application_1.live2d.Live2DEventStreamHandler
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
+import com.example.flutter_application_1.live2d.cubism.CubismTextureManager
 import com.example.flutter_application_1.live2d.gesture.GestureConfig
 import com.example.flutter_application_1.live2d.gesture.GestureDetectorManager
 import com.example.flutter_application_1.live2d.gesture.GestureType
@@ -319,17 +320,18 @@ class Live2DOverlayService : Service() {
         overlayView?.let { view ->
             Live2DLogger.Overlay.i("오버레이 숨김 시작", "리소스 정리")
             
-            // 제스처 감지기 정리
+            // 1. 제스처 감지기 정리 (입력 차단)
             gestureDetector?.dispose()
             gestureDetector = null
             
-            // GLSurfaceView 정리
+            // 2. GLSurfaceView 정리 (렌더링 중지 → 리소스 해제)
             glSurfaceView?.let { gl ->
                 Live2DLogger.Overlay.d("GLSurfaceView 정리", "onPause, dispose 호출")
                 gl.onPause()
                 gl.dispose()
             }
             
+            // 3. WindowManager에서 뷰 제거
             try {
                 windowManager.removeView(view)
                 Live2DLogger.Overlay.d("WindowManager에서 뷰 제거됨", null)
@@ -342,8 +344,15 @@ class Live2DOverlayService : Service() {
         glSurfaceView = null
         isRunning = false
 
-        // Dispose CubismFramework so shader cache is invalidated.
-        // On next overlay open, the SDK re-initializes with a fresh GL context.
+        // 4. 텍스처 캐시 무효화 (GL context가 파괴되었으므로)
+        try {
+            CubismTextureManager.invalidateGlobalCache()
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.w("텍스처 캐시 무효화 실패", e.message)
+        }
+
+        // 5. CubismFramework 정리 (셰이더 캐시 무효화)
+        // GL context가 새로 생성되면 재초기화됩니다.
         try {
             CubismFrameworkManager.dispose()
             Live2DLogger.Overlay.d("CubismFramework 정리완료", null)
@@ -351,11 +360,11 @@ class Live2DOverlayService : Service() {
             Live2DLogger.Overlay.e("CubismFramework dispose 실패", null, e)
         }
         
-        // Flutter로 이벤트 전송
+        // 6. Flutter로 이벤트 전송
         Live2DEventStreamHandler.getInstance()?.sendOverlayHidden()
         Live2DLogger.Overlay.i("오버레이 숨김 완료", "서비스 중지")
         
-        // 서비스 중지
+        // 7. 서비스 중지
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

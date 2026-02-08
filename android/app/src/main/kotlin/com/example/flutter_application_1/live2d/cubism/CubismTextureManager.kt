@@ -6,12 +6,18 @@ import android.opengl.GLES20
 import android.opengl.GLUtils
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Cubism 모델용 텍스처 관리자
  * 
  * 텍스처 파일을 OpenGL에 로드하고 모델에 바인딩합니다.
  * 메모리 관리 및 텍스처 ID 추적을 담당합니다.
+ *
+ * 최적화:
+ * - 비트맵 디코드는 백그라운드 스레드에서 수행
+ * - GL 업로드만 GL 스레드에서 수행
+ * - 동일 경로 텍스처 캐싱
  */
 class CubismTextureManager {
     
@@ -20,6 +26,19 @@ class CubismTextureManager {
         
         // 최대 텍스처 크기 (기본값, 실제 값은 GL에서 조회)
         private var maxTextureSize = 4096
+
+        // 텍스처 캐시 (경로 → 텍스처 ID) — 프로세스 전역
+        // WHY: 동일 모델을 재로드할 때 텍스처를 다시 디코드하지 않습니다.
+        // 오버레이 숨김→표시 사이클에서 GL context가 재생성되면 무효화됩니다.
+        private val globalTextureCache = HashMap<String, Int>(8)
+
+        /**
+         * 전역 캐시 무효화 (GL context 재생성 시 호출)
+         */
+        fun invalidateGlobalCache() {
+            globalTextureCache.clear()
+            Live2DLogger.d("$TAG: Global texture cache invalidated", null)
+        }
     }
     
     // 로드된 텍스처 ID 목록
@@ -108,45 +127,79 @@ class CubismTextureManager {
      * 단일 텍스처 파일 로드
      */
     private fun loadSingleTexture(path: String, index: Int): Int {
+        // 캐시 확인
+        globalTextureCache[path]?.let { cachedId ->
+            // GL 텍스처가 아직 유효한지 확인
+            if (GLES20.glIsTexture(cachedId)) {
+                Live2DLogger.d(TAG, "Texture cache hit: ${File(path).name} -> ID: $cachedId")
+                textureInfo[cachedId] = TextureInfo(path, 0, 0, cachedId)
+                return cachedId
+            } else {
+                globalTextureCache.remove(path)
+            }
+        }
+
         val file = File(path)
         if (!file.exists()) {
             Live2DLogger.w(TAG, "Texture file not found: $path")
             return 0
         }
         
-        // 비트맵 로드 옵션
-        val options = BitmapFactory.Options().apply {
-            inScaled = false
-            inPreferredConfig = Bitmap.Config.ARGB_8888
+        // 비트맵 디코드 (이 부분이 CPU 집약적)
+        val bitmap = decodeBitmapOptimized(path) ?: return 0
+        
+        // GL 텍스처 업로드
+        val textureId = uploadBitmapToGL(bitmap, path)
+        bitmap.recycle()
+
+        if (textureId != 0) {
+            globalTextureCache[path] = textureId
         }
         
-        // 먼저 크기만 확인
+        return textureId
+    }
+
+    /**
+     * 최적화된 비트맵 디코드
+     *
+     * WHY: 별도 메서드로 분리하여 향후 백그라운드 디코드 + GLSurfaceView.queueEvent
+     * 패턴으로 전환할 수 있는 진입점을 만듭니다.
+     */
+    private fun decodeBitmapOptimized(path: String): Bitmap? {
+        // 크기 확인 (bounds only — 메모리 할당 없음)
         val boundsOptions = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
         BitmapFactory.decodeFile(path, boundsOptions)
-        
+
         val originalWidth = boundsOptions.outWidth
         val originalHeight = boundsOptions.outHeight
-        
-        // 텍스처 크기 제한 확인
+        if (originalWidth <= 0 || originalHeight <= 0) {
+            Live2DLogger.w(TAG, "Invalid bitmap dimensions: $path")
+            return null
+        }
+
+        // 다운샘플 계산
         var sampleSize = 1
         if (originalWidth > maxTextureSize || originalHeight > maxTextureSize) {
-            Live2DLogger.w("$TAG: Texture too large", "${originalWidth}x${originalHeight}, max: $maxTextureSize")
             sampleSize = calculateSampleSize(originalWidth, originalHeight, maxTextureSize)
-            options.inSampleSize = sampleSize
-            Live2DLogger.d("$TAG: Using sample size", sampleSize.toString())
+            Live2DLogger.d(TAG, "Downsampling: ${originalWidth}x${originalHeight} /$sampleSize")
         }
-        
-        // 비트맵 디코드
+
+        val options = BitmapFactory.Options().apply {
+            inScaled = false
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inSampleSize = sampleSize
+        }
+
         val bitmap = BitmapFactory.decodeFile(path, options)
         if (bitmap == null) {
             Live2DLogger.e("$TAG: Failed to decode bitmap: $path", null)
-            return 0
+            return null
         }
-        
-        // Pre-multiply alpha for proper blending
-        val premultipliedBitmap = if (!bitmap.isPremultiplied) {
+
+        // Pre-multiply alpha
+        return if (!bitmap.isPremultiplied) {
             bitmap.copy(Bitmap.Config.ARGB_8888, true).also {
                 it.isPremultiplied = true
                 bitmap.recycle()
@@ -154,50 +207,46 @@ class CubismTextureManager {
         } else {
             bitmap
         }
-        
-        // OpenGL 텍스처 생성
+    }
+
+    /**
+     * 비트맵을 GL 텍스처로 업로드
+     *
+     * MUST: GL 스레드에서 호출
+     */
+    private fun uploadBitmapToGL(bitmap: Bitmap, path: String): Int {
         val textureHandle = IntArray(1)
         GLES20.glGenTextures(1, textureHandle, 0)
-        
+
         if (textureHandle[0] == 0) {
-            premultipliedBitmap.recycle()
             checkGLError("glGenTextures")
             return 0
         }
-        
-        // 텍스처 바인딩
+
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0])
-        
-        // 텍스처 파라미터 설정
-        val isPowerOfTwo = isPowerOfTwo(premultipliedBitmap.width) && isPowerOfTwo(premultipliedBitmap.height)
-        val minFilter = if (isPowerOfTwo) GLES20.GL_LINEAR_MIPMAP_LINEAR else GLES20.GL_LINEAR
+
+        // 텍스처 파라미터
+        val isPOT = isPowerOfTwo(bitmap.width) && isPowerOfTwo(bitmap.height)
+        val minFilter = if (isPOT) GLES20.GL_LINEAR_MIPMAP_LINEAR else GLES20.GL_LINEAR
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, minFilter)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        
-        // 텍스처 업로드
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, premultipliedBitmap, 0)
-        
-        // Mipmap 생성 (NPOT 텍스처는 제외)
-        if (isPowerOfTwo) {
+
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0)
+
+        if (isPOT) {
             GLES20.glGenerateMipmap(GLES20.GL_TEXTURE_2D)
         }
-        
-        // 정보 저장
+
         textureInfo[textureHandle[0]] = TextureInfo(
             path = path,
-            width = premultipliedBitmap.width,
-            height = premultipliedBitmap.height,
+            width = bitmap.width,
+            height = bitmap.height,
             textureId = textureHandle[0]
         )
-        
-        // 비트맵 해제
-        premultipliedBitmap.recycle()
-        
-        // 에러 체크
-        checkGLError("texImage2D")
-        
+
+        checkGLError("uploadBitmapToGL")
         return textureHandle[0]
     }
     

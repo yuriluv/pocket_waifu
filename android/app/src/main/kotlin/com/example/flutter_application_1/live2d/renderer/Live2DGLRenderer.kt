@@ -99,6 +99,15 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var enableFpsLimit = true
     private var lowPowerMode = false
     
+    // ========== 최적화: 프레임 메트릭 ==========
+    private var frameCount = 0L
+    private var lastMetricTime = 0L
+    private var droppedFrames = 0L
+    private var measuredFps = 0f
+    
+    // 화면 가시성 기반 절전
+    @Volatile private var isOverlayInvisible = false
+    
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         Live2DLogger.Renderer.i("Surface created", "OpenGL ES 2.0 초기화 시작")
         
@@ -146,6 +155,9 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         
         isReady = true
         lastFrameTime = System.currentTimeMillis()
+        lastMetricTime = lastFrameTime
+        frameCount = 0L
+        droppedFrames = 0L
         Live2DLogger.Renderer.i("렌더러 준비 완료", "isReady=true")
         
         // Surface 재생성 시 모델 복원
@@ -188,7 +200,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     }
     
     override fun onDrawFrame(gl: GL10?) {
-        if (!isReady || isPaused) return
+        if (!isReady || isPaused || isDisposed) return
         
         // FPS 제한 (프레임 스킵 방식)
         val currentTime = System.currentTimeMillis()
@@ -196,9 +208,22 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         
         // 목표 프레임 시간보다 빠르면 이전 프레임 유지
         if (enableFpsLimit && elapsed < frameTimeMs) {
+            droppedFrames++
             return
         }
         lastFrameTime = currentTime
+        
+        // ========== 프레임 메트릭 수집 (5초 간격) ==========
+        frameCount++
+        if (currentTime - lastMetricTime >= 5000L) {
+            measuredFps = frameCount * 1000f / (currentTime - lastMetricTime).coerceAtLeast(1L)
+            if (measuredFps < targetFps * 0.7f) {
+                Live2DLogger.Renderer.w("FPS 저하 감지", "measured=%.1f, target=$targetFps, dropped=$droppedFrames".format(measuredFps))
+            }
+            frameCount = 0L
+            droppedFrames = 0L
+            lastMetricTime = currentTime
+        }
         
         // 델타 타임 계산 (초 단위, 안전 범위 제한)
         val deltaTime = (elapsed.coerceIn(1L, 100L) / 1000f)
@@ -498,8 +523,13 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         lowPowerMode = enabled
         targetFps = if (enabled) LOW_POWER_FPS else DEFAULT_FPS
         frameTimeMs = 1000L / targetFps
-        Live2DLogger.Renderer.d("저전력 모드", if (enabled) "활성화" else "비활성화")
+        Live2DLogger.Renderer.d("저전력 모드", if (enabled) "활성화 (${LOW_POWER_FPS}fps)" else "비활성화 (${DEFAULT_FPS}fps)")
     }
+    
+    /**
+     * 현재 측정 FPS 반환 (디버깅/모니터링용)
+     */
+    fun getMeasuredFps(): Float = measuredFps
     
     /**
      * FPS 제한 설정

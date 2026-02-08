@@ -29,6 +29,21 @@ object Live2DLogger {
     private var isEnabled = true
     private var sendToFlutter = true
     
+    // ========== 최적화: 로그 스로틀링 ==========
+    // WHY: 렌더 루프 등 고빈도 경로에서 동일 메시지가 반복 출력되면
+    // Logcat/Flutter EventChannel 모두 병목이 됩니다.
+    // 동일 키(tag+message)를 minThrottleIntervalMs 이내에 재전송하지 않습니다.
+    private const val MIN_THROTTLE_INTERVAL_MS = 2000L
+    private val lastLogTimestamps = HashMap<String, Long>(64)
+
+    // Flutter 전송 스로틀 (별도 간격)
+    private const val FLUTTER_THROTTLE_INTERVAL_MS = 3000L
+    private val lastFlutterTimestamps = HashMap<String, Long>(64)
+
+    // 주기적으로 스로틀 맵을 정리 (메모리 누수 방지)
+    private var lastCleanupTime = 0L
+    private const val CLEANUP_INTERVAL_MS = 60_000L
+
     private val mainHandler = Handler(Looper.getMainLooper())
     
     /**
@@ -93,6 +108,25 @@ object Live2DLogger {
         if (!isEnabled) return
         if (level.value < minLevel.value) return
         
+        // ========== 최적화: 스로틀링 ==========
+        // ERROR는 항상 출력, DEBUG/INFO는 스로틀 적용
+        val now = System.currentTimeMillis()
+        if (level != Level.ERROR && level != Level.WARNING) {
+            val throttleKey = "$tag:$message"
+            val lastTime = lastLogTimestamps[throttleKey]
+            if (lastTime != null && (now - lastTime) < MIN_THROTTLE_INTERVAL_MS) {
+                return // 스로틀: 너무 빈번한 동일 로그 무시
+            }
+            lastLogTimestamps[throttleKey] = now
+        }
+
+        // 주기적 정리 (맵이 무한히 커지지 않도록)
+        if (now - lastCleanupTime > CLEANUP_INTERVAL_MS) {
+            lastCleanupTime = now
+            lastLogTimestamps.entries.removeAll { (now - it.value) > CLEANUP_INTERVAL_MS }
+            lastFlutterTimestamps.entries.removeAll { (now - it.value) > FLUTTER_THROTTLE_INTERVAL_MS }
+        }
+        
         val fullTag = "$TAG:$tag"
         val fullMessage = buildString {
             append(message)
@@ -109,9 +143,15 @@ object Live2DLogger {
             Level.ERROR -> Log.e(fullTag, fullMessage, error)
         }
         
-        // Flutter로 전송
+        // Flutter로 전송 (별도 스로틀)
         if (sendToFlutter) {
-            sendLogToFlutter(level, tag, message, details, error)
+            val flutterKey = "$tag:$message"
+            val lastFlutterTime = lastFlutterTimestamps[flutterKey]
+            if (level == Level.ERROR || level == Level.WARNING ||
+                lastFlutterTime == null || (now - lastFlutterTime) >= FLUTTER_THROTTLE_INTERVAL_MS) {
+                lastFlutterTimestamps[flutterKey] = now
+                sendLogToFlutter(level, tag, message, details, error)
+            }
         }
     }
     

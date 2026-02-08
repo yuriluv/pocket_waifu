@@ -194,10 +194,17 @@ class CubismModel(
         
         val safeDelta = deltaTime.coerceIn(0.001f, 0.1f)
         
-        if (isSdkMode && lappModel != null) {
-            // SDK 모드: LAppModel에 위임
-            lappModel!!.update(safeDelta)
-            lappModel!!.setOpacity(opacity)
+        val model = lappModel
+        if (isSdkMode && model != null) {
+            // SDK 모드: LAppModel에 위임 (로컬 변수로 NPE 방지)
+            try {
+                model.update(safeDelta)
+                model.setOpacity(opacity)
+            } catch (e: Exception) {
+                Live2DLogger.e("$TAG: SDK update error - Switching to fallback", e)
+                lappModel = null
+                isSdkMode = false
+            }
         } else {
             // 폴백 모드: 타이머만 업데이트
             motionTime += safeDelta
@@ -223,9 +230,14 @@ class CubismModel(
         // MVP 행렬 계산
         Matrix.multiplyMM(mvpMatrix, 0, projectionMatrix, 0, modelMatrix, 0)
         
-        if (isSdkMode && lappModel != null) {
-            // SDK 모드: LAppModel로 렌더링
-            lappModel!!.draw(mvpMatrix)
+        val model = lappModel
+        if (isSdkMode && model != null) {
+            // SDK 모드: LAppModel로 렌더링 (로컬 변수로 NPE 방지)
+            try {
+                model.draw(mvpMatrix)
+            } catch (e: Exception) {
+                Live2DLogger.e("$TAG: SDK draw error - Frame skipped", e)
+            }
         }
         
         // 폴백 모드: 렌더링은 Live2DGLRenderer에서 TextureModelRenderer로 처리
@@ -370,11 +382,20 @@ class CubismModel(
         Live2DLogger.d("$TAG: Releasing model", modelName)
         
         // 1. LAppModel 해제 (SDK 모드)
-        lappModel?.release()
-        lappModel = null
+        try {
+            lappModel?.release()
+        } catch (e: Exception) {
+            Live2DLogger.e("$TAG: LAppModel release error", e)
+        } finally {
+            lappModel = null
+        }
         
         // 2. 텍스처 해제 (폴백 모드)
-        textureManager.release()
+        try {
+            textureManager.release()
+        } catch (e: Exception) {
+            Live2DLogger.e("$TAG: Texture release error", e)
+        }
         
         // 3. 상태 초기화
         parser = null

@@ -209,9 +209,15 @@ object CubismFrameworkManager {
             }
 
             // Pass AssetManager to native before framework init (for shader file loading)
-            appContext?.let { ctx ->
-                Live2DNativeBridge.nativeSetAssetManager(ctx.assets)
+            // CRITICAL: AssetManager가 없으면 셰이더 로딩이 실패합니다.
+            val ctx = appContext
+            if (ctx == null) {
+                lastError = "AppContext not set — cannot load shaders"
+                Live2DLogger.e("$TAG: [Phase7-2] AppContext is null, shader loading will fail", null)
+                return false
             }
+            Live2DNativeBridge.nativeSetAssetManager(ctx.assets)
+            Live2DLogger.d("$TAG: [Phase7-2] AssetManager passed to native", null)
 
             val initResult = Live2DNativeBridge.nativeInitializeFramework()
             if (!initResult) {
@@ -228,6 +234,10 @@ object CubismFrameworkManager {
 
             Live2DLogger.i("$TAG: [Phase7-2] Cubism framework initialized", sdkVersion)
             Live2DLogger.i("$TAG: SDK Version", sdkVersion)
+
+            // 셰이더 로딩 검증
+            Live2DLogger.i("$TAG: [Phase7-2] Shader loading verification:", 
+                "AssetManager set=true, Framework init=true")
 
             true
 

@@ -319,6 +319,21 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
         return JNI_FALSE;
     }
 
+    // Shader file pre-flight check: try to load one shader to verify asset pipeline
+    {
+        csmSizeInt shaderSize = 0;
+        csmByte* shaderData = CubismFramework::GetLoadFileFunction()("VertShaderSrc.vert", &shaderSize);
+        if (shaderData && shaderSize > 0) {
+            CubismFramework::GetReleaseBytesFunction()(shaderData);
+            __android_log_print(ANDROID_LOG_INFO, kTag,
+                "[Phase7-2] Shader pre-flight OK: VertShaderSrc.vert (%d bytes)", (int)shaderSize);
+        } else {
+            __android_log_print(ANDROID_LOG_ERROR, kTag,
+                "[Phase7-2] Shader pre-flight FAILED: cannot load VertShaderSrc.vert — SDK rendering disabled");
+            return JNI_FALSE;
+        }
+    }
+
     if (gRenderer) {
         CubismRenderer::Delete(gRenderer);
         gRenderer = nullptr;
