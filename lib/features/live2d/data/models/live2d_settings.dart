@@ -58,6 +58,21 @@ class Live2DSettings {
   /// 편집 모드 활성화 여부 (기본값 false)
   final bool editModeEnabled;
 
+  /// 캐릭터 고정 모드 (기본값 false)
+  final bool characterPinned;
+
+  /// 캐릭터 상대적 크기 (투명상자 대비, 0.1~3.0, 기본값 1.0)
+  final double relativeCharacterScale;
+
+  /// 캐릭터 오프셋 X (투명상자 내 상대 위치, 픽셀)
+  final double characterOffsetX;
+
+  /// 캐릭터 오프셋 Y (투명상자 내 상대 위치, 픽셀)
+  final double characterOffsetY;
+
+  /// 캐릭터 회전 (0~359도, 기본값 0)
+  final int characterRotation;
+
   const Live2DSettings({
     this.isEnabled = false,
     this.dataFolderUri,
@@ -73,6 +88,11 @@ class Live2DSettings {
     this.overlayWidth = 300,
     this.overlayHeight = 400,
     this.editModeEnabled = false,
+    this.characterPinned = false,
+    this.relativeCharacterScale = 1.0,
+    this.characterOffsetX = 0.0,
+    this.characterOffsetY = 0.0,
+    this.characterRotation = 0,
   });
 
   /// 기본 설정
@@ -127,6 +147,11 @@ class Live2DSettings {
     int? overlayWidth,
     int? overlayHeight,
     bool? editModeEnabled,
+    bool? characterPinned,
+    double? relativeCharacterScale,
+    double? characterOffsetX,
+    double? characterOffsetY,
+    int? characterRotation,
     bool clearDataFolder = false,
     bool clearSelectedModel = false,
   }) {
@@ -145,6 +170,11 @@ class Live2DSettings {
       overlayWidth: overlayWidth ?? this.overlayWidth,
       overlayHeight: overlayHeight ?? this.overlayHeight,
       editModeEnabled: editModeEnabled ?? this.editModeEnabled,
+      characterPinned: characterPinned ?? this.characterPinned,
+      relativeCharacterScale: (relativeCharacterScale ?? this.relativeCharacterScale).clamp(0.1, 3.0),
+      characterOffsetX: characterOffsetX ?? this.characterOffsetX,
+      characterOffsetY: characterOffsetY ?? this.characterOffsetY,
+      characterRotation: (characterRotation ?? this.characterRotation) % 360,
     );
   }
 
@@ -165,6 +195,11 @@ class Live2DSettings {
       'overlayWidth': overlayWidth,
       'overlayHeight': overlayHeight,
       'editModeEnabled': editModeEnabled,
+      'characterPinned': characterPinned,
+      'relativeCharacterScale': relativeCharacterScale,
+      'characterOffsetX': characterOffsetX,
+      'characterOffsetY': characterOffsetY,
+      'characterRotation': characterRotation,
     };
   }
 
@@ -185,6 +220,11 @@ class Live2DSettings {
       overlayWidth: json['overlayWidth'] as int? ?? 300,
       overlayHeight: json['overlayHeight'] as int? ?? 400,
       editModeEnabled: json['editModeEnabled'] as bool? ?? false,
+      characterPinned: json['characterPinned'] as bool? ?? false,
+      relativeCharacterScale: (json['relativeCharacterScale'] as num?)?.toDouble() ?? 1.0,
+      characterOffsetX: (json['characterOffsetX'] as num?)?.toDouble() ?? 0.0,
+      characterOffsetY: (json['characterOffsetY'] as num?)?.toDouble() ?? 0.0,
+      characterRotation: json['characterRotation'] as int? ?? 0,
     );
   }
 

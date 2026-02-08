@@ -58,6 +58,10 @@ class Live2DMethodHandler(
                 
                 // ========== 편집 모드 ==========
                 "setEditMode" -> setEditMode(call, result)
+                "setCharacterPinned" -> setCharacterPinned(call, result)
+                "setRelativeScale" -> setRelativeScale(call, result)
+                "setCharacterOffset" -> setCharacterOffset(call, result)
+                "setCharacterRotation" -> setCharacterRotation(call, result)
                 
                 // ========== 자동 동작 설정 ==========
                 "setEyeBlink" -> setEyeBlink(call, result)
@@ -397,6 +401,72 @@ class Live2DMethodHandler(
             result.success(true)
         } catch (e: Exception) {
             Live2DLogger.e("편집 모드 설정 실패", e)
+            result.error("EDIT_MODE_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setCharacterPinned(call: MethodCall, result: MethodChannel.Result) {
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_CHARACTER_PINNED
+                putExtra(Live2DOverlayService.EXTRA_CHARACTER_PINNED, enabled)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("캐릭터 고정 설정 실패", e)
+            result.error("EDIT_MODE_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setRelativeScale(call: MethodCall, result: MethodChannel.Result) {
+        val scale = call.argument<Double>("scale")?.toFloat() ?: 1f
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_RELATIVE_SCALE
+                putExtra(Live2DOverlayService.EXTRA_RELATIVE_SCALE, scale)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("상대 스케일 설정 실패", e)
+            result.error("EDIT_MODE_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setCharacterOffset(call: MethodCall, result: MethodChannel.Result) {
+        val x = call.argument<Double>("x")?.toFloat() ?: 0f
+        val y = call.argument<Double>("y")?.toFloat() ?: 0f
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_CHARACTER_OFFSET
+                putExtra(Live2DOverlayService.EXTRA_OFFSET_X, x)
+                putExtra(Live2DOverlayService.EXTRA_OFFSET_Y, y)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("캐릭터 오프셋 설정 실패", e)
+            result.error("EDIT_MODE_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setCharacterRotation(call: MethodCall, result: MethodChannel.Result) {
+        val degrees = call.argument<Int>("degrees") ?: 0
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_CHARACTER_ROTATION
+                putExtra(Live2DOverlayService.EXTRA_ROTATION, degrees)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("캐릭터 회전 설정 실패", e)
             result.error("EDIT_MODE_ERROR", e.message, null)
         }
     }

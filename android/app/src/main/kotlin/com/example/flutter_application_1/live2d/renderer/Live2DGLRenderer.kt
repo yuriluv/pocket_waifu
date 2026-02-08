@@ -107,6 +107,13 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     // 윈도우 알파(터치스루)와 독립적으로 캐릭터의 시각적 투명도를 제어
     @Volatile private var characterOpacity = 1.0f
     
+    // ========== 편집 모드 변환 (Edit Transform) ==========
+    // 투명상자 내 캐릭터의 상대적 위치, 크기, 회전
+    @Volatile private var relativeCharacterScale = 1.0f
+    @Volatile private var characterOffsetPixelX = 0f  // 픽셀 단위
+    @Volatile private var characterOffsetPixelY = 0f  // 픽셀 단위
+    @Volatile private var characterRotationDeg = 0    // 도 (0~359)
+    
     // ============================================
     // Live2D 모델 (Phase 7: 이중 모드 지원)
     // ============================================
@@ -311,6 +318,30 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // Phase 7: 이중 모드 렌더링
         // ============================================
         
+        // ========== 편집 모드 변환 적용 ==========
+        // 캐릭터 오프셋, 회전, 상대적 크기를 MVP 행렬에 적용
+        val editedMvp = FloatArray(16)
+        System.arraycopy(mvpMatrix, 0, editedMvp, 0, 16)
+        
+        val hasEditTransform = characterOffsetPixelX != 0f || characterOffsetPixelY != 0f ||
+                characterRotationDeg != 0 || relativeCharacterScale != 1.0f
+        
+        if (hasEditTransform && surfaceHeight > 0) {
+            // 픽셀→GL 좌표 변환: 1 pixel = 2.0/surfaceHeight GL units
+            val pixelToGL = 2.0f / surfaceHeight
+            val glOffsetX = characterOffsetPixelX * pixelToGL
+            val glOffsetY = -characterOffsetPixelY * pixelToGL  // Y축 반전 (GL은 위가 +)
+            
+            // 적용 순서: 이동 → 회전 → 스케일 (OpenGL에서는 역순으로 적용)
+            Matrix.translateM(editedMvp, 0, glOffsetX, glOffsetY, 0f)
+            if (characterRotationDeg != 0) {
+                Matrix.rotateM(editedMvp, 0, characterRotationDeg.toFloat(), 0f, 0f, 1f)
+            }
+            if (relativeCharacterScale != 1.0f) {
+                Matrix.scaleM(editedMvp, 0, relativeCharacterScale, relativeCharacterScale, 1f)
+            }
+        }
+        
         // 1. CubismModel 시도 (SDK 모드)
         cubismModel?.let { model ->
             if (model.isReady()) {
@@ -341,7 +372,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                     GLES20.glEnable(GLES20.GL_BLEND)
                     GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                     model.update(deltaTime)
-                    model.draw(mvpMatrix)
+                    model.draw(editedMvp)
                     
                     // ======== FBO 텍스처를 화면에 알파 보정하여 출력 ========
                     GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
@@ -354,7 +385,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 GLES20.glEnable(GLES20.GL_BLEND)
                 GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                 model.update(deltaTime)
-                model.draw(mvpMatrix)
+                model.draw(editedMvp)
                 
                 if (model.isUsingSdk()) {
                     GLES20.glEnable(GLES20.GL_BLEND)
@@ -369,7 +400,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val texturePath = model.getFirstTexturePath()
             if (texturePath != null && textureRenderer?.hasLoadedTexture() == true) {
                 textureRenderer?.render(
-                    mvpMatrix,
+                    editedMvp,
                     model.getX(),
                     model.getY(),
                     model.getScale(),
@@ -390,7 +421,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val texturePath = model.getFirstTexturePath()
             if (texturePath != null && textureRenderer?.hasLoadedTexture() == true) {
                 textureRenderer?.render(
-                    mvpMatrix,
+                    editedMvp,
                     model.getX(),
                     model.getY(),
                     model.getScale(),
@@ -595,8 +626,28 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 폴백 렌더러에도 적용
         cubismModel?.setOpacity(opacity)
         currentModel?.setOpacity(opacity)
+    }    
+    /**
+     * 캐릭터 상대적 크기 설정 (투명상자 대비)
+     */
+    fun setRelativeScale(scale: Float) {
+        relativeCharacterScale = scale.coerceIn(0.1f, 3.0f)
     }
     
+    /**
+     * 캐릭터 오프셋 설정 (픽셀 단위)
+     */
+    fun setCharacterOffset(xPixel: Float, yPixel: Float) {
+        characterOffsetPixelX = xPixel
+        characterOffsetPixelY = yPixel
+    }
+    
+    /**
+     * 캐릭터 회전 설정 (도)
+     */
+    fun setCharacterRotation(degrees: Int) {
+        characterRotationDeg = degrees % 360
+    }    
     /**
      * 위치 설정
      */

@@ -9,6 +9,7 @@
 import 'package:flutter/foundation.dart';
 import '../../data/models/live2d_model_info.dart';
 import '../../data/models/live2d_settings.dart';
+import '../../data/models/display_preset.dart';
 import '../../data/repositories/live2d_repository.dart';
 import '../../data/services/live2d_log_service.dart';
 import '../../data/services/live2d_storage_service.dart';
@@ -37,6 +38,7 @@ class Live2DController extends ChangeNotifier {
   Live2DControllerState _state = Live2DControllerState.initial;
   Live2DSettings _settings = Live2DSettings.defaults();
   String? _errorMessage;
+  List<DisplayPreset> _presets = [];
 
   // === Getter: 상태 ===
   Live2DControllerState get state => _state;
@@ -45,6 +47,9 @@ class Live2DController extends ChangeNotifier {
   bool get isLoading => _state == Live2DControllerState.loading;
   bool get isReady => _state == Live2DControllerState.ready;
   bool get hasError => _state == Live2DControllerState.error;
+
+  // === Getter: 프리셋 ===
+  List<DisplayPreset> get presets => _presets;
 
   // === Getter: 모델 ===
   List<Live2DModelInfo> get models => _repository.models;
@@ -126,6 +131,10 @@ class Live2DController extends ChangeNotifier {
       }
 
       _setState(Live2DControllerState.ready);
+      
+      // 8. 프리셋 로드
+      _presets = await DisplayPresetManager.loadAll();
+      
       live2dLog.info(_tag, '컨트롤러 초기화 완료');
     } catch (e, stack) {
       _setError('초기화 실패: $e');
@@ -240,6 +249,18 @@ class Live2DController extends ChangeNotifier {
     await _settings.save();
     live2dLog.info(_tag, '모델 선택됨', details: model?.name ?? 'none');
 
+    // 링크된 프리셋 자동 적용
+    if (model != null) {
+      final folderName = model.relativePath.split('/').first;
+      final linkedPreset = await DisplayPresetManager.findLinkedPresetForModel(
+        folderName, model.id,
+      );
+      if (linkedPreset != null) {
+        live2dLog.info(_tag, '링크된 프리셋 적용', details: linkedPreset.name);
+        await loadPreset(linkedPreset);
+      }
+    }
+
     // 오버레이가 활성화 상태면 모델 업데이트
     if (_settings.isEnabled && model != null) {
       await _loadModelToOverlay(model);
@@ -303,7 +324,125 @@ class Live2DController extends ChangeNotifier {
   Future<void> setEditMode(bool enabled) async {
     _settings = _settings.copyWith(editModeEnabled: enabled);
     await _nativeBridge.setEditMode(enabled);
+    if (!enabled) {
+      _settings = _settings.copyWith(characterPinned: false);
+      await _nativeBridge.setCharacterPinned(false);
+    }
     await _settings.save();
+    notifyListeners();
+  }
+
+  /// 캐릭터 고정 모드 설정
+  Future<void> setCharacterPinned(bool enabled) async {
+    _settings = _settings.copyWith(characterPinned: enabled);
+    await _nativeBridge.setCharacterPinned(enabled);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  /// 캐릭터 상대적 크기 설정
+  Future<void> setRelativeCharacterScale(double scale) async {
+    _settings = _settings.copyWith(relativeCharacterScale: scale);
+    await _nativeBridge.setRelativeScale(scale);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  /// 캐릭터 오프셋 설정 (픽셀)
+  Future<void> setCharacterOffset(double x, double y) async {
+    _settings = _settings.copyWith(characterOffsetX: x, characterOffsetY: y);
+    await _nativeBridge.setCharacterOffset(x, y);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  /// 캐릭터 회전 설정 (도)
+  Future<void> setCharacterRotation(int degrees) async {
+    _settings = _settings.copyWith(characterRotation: degrees);
+    await _nativeBridge.setCharacterRotation(degrees);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  // ============================================================================
+  // 프리셋 관리
+  // ============================================================================
+
+  /// 프리셋 목록 로드
+  Future<void> loadPresets() async {
+    _presets = await DisplayPresetManager.loadAll();
+    notifyListeners();
+  }
+
+  /// 현재 상태로 프리셋 저장
+  Future<void> savePreset(String name) async {
+    final preset = DisplayPreset(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      relativeCharacterScale: _settings.relativeCharacterScale,
+      characterOffsetX: _settings.characterOffsetX,
+      characterOffsetY: _settings.characterOffsetY,
+      characterRotation: _settings.characterRotation,
+      overlayWidth: _settings.overlayWidth,
+      overlayHeight: _settings.overlayHeight,
+      positionX: _settings.positionX,
+      positionY: _settings.positionY,
+      scale: _settings.scale,
+    );
+    await DisplayPresetManager.add(preset);
+    _presets = await DisplayPresetManager.loadAll();
+    notifyListeners();
+  }
+
+  /// 프리셋 불러오기
+  Future<void> loadPreset(DisplayPreset preset) async {
+    _settings = _settings.copyWith(
+      relativeCharacterScale: preset.relativeCharacterScale,
+      characterOffsetX: preset.characterOffsetX,
+      characterOffsetY: preset.characterOffsetY,
+      characterRotation: preset.characterRotation,
+      scale: preset.scale,
+      positionX: preset.positionX,
+      positionY: preset.positionY,
+    );
+    await _settings.save();
+    
+    // Native에 적용
+    await _nativeBridge.setRelativeScale(preset.relativeCharacterScale);
+    await _nativeBridge.setCharacterOffset(preset.characterOffsetX, preset.characterOffsetY);
+    await _nativeBridge.setCharacterRotation(preset.characterRotation);
+    await _nativeBridge.setScale(preset.scale);
+    await _nativeBridge.setPosition(preset.positionX, preset.positionY);
+    notifyListeners();
+  }
+
+  /// 프리셋 삭제
+  Future<void> deletePreset(String presetId) async {
+    await DisplayPresetManager.delete(presetId);
+    _presets = await DisplayPresetManager.loadAll();
+    notifyListeners();
+  }
+
+  /// 프리셋에 모델 링크
+  Future<void> linkPresetToModel(String presetId, String modelFolder, String? modelId) async {
+    final index = _presets.indexWhere((p) => p.id == presetId);
+    if (index < 0) return;
+    final updated = _presets[index].copyWith(
+      linkedModelFolder: modelFolder,
+      linkedModelId: modelId,
+    );
+    await DisplayPresetManager.update(updated);
+    _presets = await DisplayPresetManager.loadAll();
+    notifyListeners();
+  }
+
+  /// 프리셋 링크 해제
+  Future<void> unlinkPreset(String presetId) async {
+    final index = _presets.indexWhere((p) => p.id == presetId);
+    if (index < 0) return;
+    final updated = _presets[index].copyWith(clearLink: true);
+    await DisplayPresetManager.update(updated);
+    _presets = await DisplayPresetManager.loadAll();
     notifyListeners();
   }
 
@@ -338,6 +477,11 @@ class Live2DController extends ChangeNotifier {
       await _nativeBridge.setTouchThroughEnabled(_settings.touchThroughEnabled);
       await _nativeBridge.setTouchThroughAlpha(_settings.touchThroughAlpha);
       await _nativeBridge.setEditMode(_settings.editModeEnabled);
+      
+      // 편집 모드 변환 동기화
+      await _nativeBridge.setRelativeScale(_settings.relativeCharacterScale);
+      await _nativeBridge.setCharacterOffset(_settings.characterOffsetX, _settings.characterOffsetY);
+      await _nativeBridge.setCharacterRotation(_settings.characterRotation);
 
       // 모델 로드
       await _loadModelToOverlay(selectedModel!);

@@ -179,6 +179,33 @@ class Live2DGLSurfaceView : GLSurfaceView {
     }
     
     /**
+     * 캐릭터 상대적 크기 설정 (투명상자 대비)
+     */
+    fun setRelativeScale(scale: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setRelativeScale(scale) }
+        }
+    }
+    
+    /**
+     * 캐릭터 오프셋 설정 (픽셀 단위)
+     */
+    fun setCharacterOffset(xPixel: Float, yPixel: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setCharacterOffset(xPixel, yPixel) }
+        }
+    }
+    
+    /**
+     * 캐릭터 회전 설정 (도)
+     */
+    fun setCharacterRotation(degrees: Int) {
+        renderer?.let { r ->
+            queueEvent { r.setCharacterRotation(degrees) }
+        }
+    }
+    
+    /**
      * 위치 설정
      */
     fun setModelPosition(x: Float, y: Float) {

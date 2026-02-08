@@ -454,6 +454,67 @@ class Live2DNativeBridge {
     }
   }
 
+  /// 캐릭터 고정 모드 설정
+  Future<bool> setCharacterPinned(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setCharacterPinned', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setCharacterPinned 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 캐릭터 상대적 크기 설정
+  Future<bool> setRelativeScale(double scale) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setRelativeScale', {
+        'scale': scale,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setRelativeScale 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 캐릭터 오프셋 설정 (픽셀)
+  Future<bool> setCharacterOffset(double x, double y) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setCharacterOffset', {
+        'x': x,
+        'y': y,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setCharacterOffset 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 캐릭터 회전 설정 (도)
+  Future<bool> setCharacterRotation(int degrees) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setCharacterRotation', {
+        'degrees': degrees,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setCharacterRotation 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   /// 위치 설정 (비율 0.0 ~ 1.0 또는 픽셀 값)
   Future<bool> setPosition(double x, double y) async {
     try {

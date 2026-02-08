@@ -15,6 +15,7 @@ import '../widgets/size_slider_tile.dart';
 import '../widgets/overlay_toggle_tile.dart';
 import '../widgets/log_viewer_widget.dart';
 import '../../data/controllers/live2d_overlay_controller.dart';
+import '../../data/models/display_preset.dart';
 import '../../data/services/live2d_log_service.dart';
 import '../../data/services/interaction_manager.dart';
 import '../../domain/entities/interaction_event.dart';
@@ -760,7 +761,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
   void _onAlphaSubmitted(String value) {
     final parsed = int.tryParse(value);
     if (parsed != null) {
-      final clamped = parsed.clamp(0, 80);
+      final clamped = parsed.clamp(0, 100);
       widget.onAlphaChanged(clamped);
       _alphaController.text = clamped.toString();
     } else {
@@ -798,7 +799,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
                         style: theme.textTheme.titleMedium,
                       ),
                       Text(
-                        'ON: 앱 외부에서 터치 통과, 앱 내부에서 드래그 가능',
+                        'ON: 앱 외부에서 터치 통과 + 반투명, 앱 내부에서 드래그 가능',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -828,7 +829,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '현재 윈도우 알파: ${widget.alpha}%',
+                    '배경 시 캐릭터 투명도: ${widget.alpha}%',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                     ),
@@ -843,7 +844,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
                 children: [
                   Expanded(
                     child: Text(
-                      '터치스루 투명도',
+                      '배경 시 투명도',
                       style: theme.textTheme.bodyMedium,
                     ),
                   ),
@@ -888,7 +889,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Android 12+: 최대 80% (터치 패스스루 정책)',
+                      '앱 외부 사용 시 캐릭터가 이 투명도로 표시됩니다',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -905,7 +906,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
 }
 
 // ============================================================================
-// 편집 모드 타일
+// 편집 모드 타일 — 전체 편집 패널
 // ============================================================================
 
 class _EditModeTile extends StatelessWidget {
@@ -944,12 +945,9 @@ class _EditModeTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text('디스플레이 편집 모드', style: theme.textTheme.titleMedium),
                       Text(
-                        '디스플레이 편집 모드',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      Text(
-                        '활성화 시 투명상자 테두리가 표시됩니다',
+                        '캐릭터 위치, 크기, 회전을 편집합니다',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -968,11 +966,8 @@ class _EditModeTile extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  Icon(Icons.info_outline, size: 14,
+                      color: theme.colorScheme.onSurfaceVariant),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
@@ -990,39 +985,398 @@ class _EditModeTile extends StatelessWidget {
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 12),
-              
-              // 편집 모드 안내
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.border_style,
-                      color: theme.colorScheme.primary,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '파란색 테두리가 투명상자 영역을 표시합니다.\n이후 투명상자에 대한 추가 설정이 여기에 추가됩니다.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              // 편집 모드 컨트롤 패널
+              const _EditModeControlPanel(),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 편집 모드 컨트롤 패널
+// ============================================================================
+
+class _EditModeControlPanel extends StatelessWidget {
+  const _EditModeControlPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<Live2DController>();
+    final settings = controller.settings;
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. 캐릭터 고정 버튼
+        _buildToggleTile(
+          theme: theme,
+          icon: Icons.push_pin,
+          title: '캐릭터 고정',
+          subtitle: settings.characterPinned
+              ? '투명상자만 이동/리사이즈 가능'
+              : '캐릭터와 투명상자가 함께 이동',
+          value: settings.characterPinned,
+          onChanged: controller.setCharacterPinned,
+        ),
+
+        const SizedBox(height: 12),
+
+        // 2. 캐릭터 크기 변경 바
+        Text('캐릭터 상대 크기', style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w500,
+        )),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            const Text('0.1x'),
+            Expanded(
+              child: Slider(
+                value: settings.relativeCharacterScale.clamp(0.1, 3.0),
+                min: 0.1,
+                max: 3.0,
+                divisions: 29,
+                label: '${settings.relativeCharacterScale.toStringAsFixed(1)}x',
+                onChanged: controller.setRelativeCharacterScale,
+              ),
+            ),
+            const Text('3.0x'),
+          ],
+        ),
+        Center(
+          child: Text(
+            '현재: ${settings.relativeCharacterScale.toStringAsFixed(1)}x',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // 3. 캐릭터 회전 입력
+        Row(
+          children: [
+            Icon(Icons.rotate_right, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text('캐릭터 회전', style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            )),
+            const Spacer(),
+            SizedBox(
+              width: 80,
+              height: 40,
+              child: _RotationInput(
+                value: settings.characterRotation,
+                onChanged: controller.setCharacterRotation,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Text('°'),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+        const Divider(height: 1),
+        const SizedBox(height: 12),
+
+        // 4. 프리셋 저장 & 보기
+        Row(
+          children: [
+            Icon(Icons.bookmark, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text('디스플레이 프리셋', style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            )),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => _showSavePresetDialog(context, controller),
+              icon: const Icon(Icons.save, size: 18),
+              label: const Text('저장'),
+            ),
+            TextButton.icon(
+              onPressed: () => _showPresetsDialog(context, controller),
+              icon: const Icon(Icons.list, size: 18),
+              label: const Text('보기'),
+            ),
+          ],
+        ),
+        if (controller.presets.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '저장된 프리셋: ${controller.presets.length}개',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildToggleTile({
+    required ThemeData theme,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: value ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+              Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            ],
+          ),
+        ),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+
+  void _showSavePresetDialog(BuildContext context, Live2DController controller) {
+    final nameController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('프리셋 저장'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: '프리셋 이름',
+            hintText: '예: 기본 설정',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty) {
+                controller.savePreset(name);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('프리셋 "$name" 저장됨')),
+                );
+              }
+            },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPresetsDialog(BuildContext context, Live2DController controller) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _PresetsDialog(controller: controller),
+    );
+  }
+}
+
+// ============================================================================
+// 회전 입력 위젯
+// ============================================================================
+
+class _RotationInput extends StatefulWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  const _RotationInput({required this.value, required this.onChanged});
+
+  @override
+  State<_RotationInput> createState() => _RotationInputState();
+}
+
+class _RotationInputState extends State<_RotationInput> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _RotationInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _controller.text = widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onSubmitted(String val) {
+    final parsed = int.tryParse(val);
+    if (parsed != null) {
+      widget.onChanged(parsed % 360);
+    } else {
+      _controller.text = widget.value.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      decoration: InputDecoration(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        isDense: true,
+      ),
+      onSubmitted: _onSubmitted,
+      onEditingComplete: () => _onSubmitted(_controller.text),
+    );
+  }
+}
+
+// ============================================================================
+// 프리셋 목록 다이얼로그
+// ============================================================================
+
+class _PresetsDialog extends StatefulWidget {
+  final Live2DController controller;
+
+  const _PresetsDialog({required this.controller});
+
+  @override
+  State<_PresetsDialog> createState() => _PresetsDialogState();
+}
+
+class _PresetsDialogState extends State<_PresetsDialog> {
+  @override
+  Widget build(BuildContext context) {
+    final presets = widget.controller.presets;
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: const Text('디스플레이 프리셋'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: presets.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('저장된 프리셋이 없습니다.\n편집 모드에서 프리셋을 저장하세요.'),
+              )
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: presets.length,
+                itemBuilder: (ctx, index) {
+                  final preset = presets[index];
+                  return Card(
+                    child: ListTile(
+                      title: Text(preset.name),
+                      subtitle: Text(
+                        '크기: ${preset.relativeCharacterScale.toStringAsFixed(1)}x, '
+                        '회전: ${preset.characterRotation}°'
+                        '${preset.linkedModelFolder != null ? '\n링크: ${preset.linkedModelFolder}' : ''}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      isThreeLine: preset.linkedModelFolder != null,
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (action) => _handlePresetAction(action, preset),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'load', child: Text('불러오기')),
+                          const PopupMenuItem(value: 'link', child: Text('링크')),
+                          if (preset.linkedModelFolder != null)
+                            const PopupMenuItem(value: 'unlink', child: Text('링크 해제')),
+                          const PopupMenuItem(value: 'delete', child: Text('삭제')),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('닫기'),
+        ),
+      ],
+    );
+  }
+
+  void _handlePresetAction(String action, DisplayPreset preset) async {
+    switch (action) {
+      case 'load':
+        await widget.controller.loadPreset(preset);
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('프리셋 "${preset.name}" 적용됨')),
+          );
+        }
+        break;
+      case 'delete':
+        await widget.controller.deletePreset(preset.id);
+        if (mounted) setState(() {});
+        break;
+      case 'link':
+        if (mounted) _showModelLinkDialog(preset);
+        break;
+      case 'unlink':
+        await widget.controller.unlinkPreset(preset.id);
+        if (mounted) setState(() {});
+        break;
+    }
+  }
+
+  void _showModelLinkDialog(DisplayPreset preset) {
+    final models = widget.controller.models;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('모델 링크'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: models.isEmpty
+              ? const Text('검색 가능한 모델이 없습니다.')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: models.length,
+                  itemBuilder: (_, index) {
+                    final model = models[index];
+                    final folderName = model.relativePath.split('/').first;
+                    return ListTile(
+                      title: Text(model.name),
+                      subtitle: Text(folderName),
+                      onTap: () {
+                        widget.controller.linkPresetToModel(
+                          preset.id, folderName, model.id,
+                        );
+                        Navigator.pop(ctx);
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('"${preset.name}" → ${model.name} 링크됨')),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+        ],
       ),
     );
   }

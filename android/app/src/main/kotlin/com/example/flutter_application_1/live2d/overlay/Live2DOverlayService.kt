@@ -67,6 +67,18 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_TOUCH_THROUGH_ALPHA = "com.example.flutter_application_1.live2d.SET_TOUCH_THROUGH_ALPHA"
         const val ACTION_SET_CHARACTER_OPACITY = "com.example.flutter_application_1.live2d.SET_CHARACTER_OPACITY"
         const val ACTION_SET_EDIT_MODE = "com.example.flutter_application_1.live2d.SET_EDIT_MODE"
+        const val ACTION_SET_CHARACTER_PINNED = "com.example.flutter_application_1.live2d.SET_CHARACTER_PINNED"
+        const val ACTION_SET_RELATIVE_SCALE = "com.example.flutter_application_1.live2d.SET_RELATIVE_SCALE"
+        const val ACTION_SET_CHARACTER_OFFSET = "com.example.flutter_application_1.live2d.SET_CHARACTER_OFFSET"
+        const val ACTION_SET_CHARACTER_ROTATION = "com.example.flutter_application_1.live2d.SET_CHARACTER_ROTATION"
+
+        // ========== 편집 모드 리사이즈 상수 ==========
+        const val EDGE_LEFT = 1
+        const val EDGE_TOP = 2
+        const val EDGE_RIGHT = 4
+        const val EDGE_BOTTOM = 8
+        const val HANDLE_SIZE = 50f  // 리사이즈 핸들 터치 영역 (px)
+        const val MIN_BOX_SIZE = 100  // 최소 상자 크기 (px)
         
         // ========== Extra 키 상수 ==========
         const val EXTRA_MODEL_PATH = "model_path"
@@ -87,6 +99,11 @@ class Live2DOverlayService : Service() {
         const val EXTRA_TOUCH_THROUGH_ALPHA = "touch_through_alpha"
         const val EXTRA_CHARACTER_OPACITY = "character_opacity"
         const val EXTRA_EDIT_MODE = "edit_mode"
+        const val EXTRA_CHARACTER_PINNED = "character_pinned"
+        const val EXTRA_RELATIVE_SCALE = "relative_scale"
+        const val EXTRA_OFFSET_X = "offset_x"
+        const val EXTRA_OFFSET_Y = "offset_y"
+        const val EXTRA_ROTATION = "rotation"
         
         // ========== 알림 ==========
         private const val CHANNEL_ID = "live2d_overlay_channel"
@@ -161,6 +178,20 @@ class Live2DOverlayService : Service() {
     
     // ========== 편집 모드 ==========
     private var editModeEnabled = false
+    private var characterPinned = false
+    private var boxSelected = false
+    private var pinnedCharScreenX = 0  // 고정된 캐릭터 화면 중심 X
+    private var pinnedCharScreenY = 0  // 고정된 캐릭터 화면 중심 Y
+    private var relativeCharacterScale = 1.0f
+    private var characterOffsetPixelX = 0f  // 캐릭터-상자 상대 오프셋
+    private var characterOffsetPixelY = 0f
+    private var characterRotationDeg = 0
+    
+    // 터치 상태 추적
+    private enum class TouchState { IDLE, DRAGGING, BOX_DRAGGING, BOX_RESIZING }
+    private var touchState = TouchState.IDLE
+    private var resizeEdgeMask = 0  // bitmask: 1=LEFT, 2=TOP, 4=RIGHT, 8=BOTTOM
+
     
     // 앱 전경/배경 감지 콜백
     private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
@@ -299,6 +330,13 @@ class Live2DOverlayService : Service() {
             ACTION_SET_TOUCH_THROUGH_ALPHA -> setTouchThroughAlphaValue(intent.getIntExtra(EXTRA_TOUCH_THROUGH_ALPHA, 80))
             ACTION_SET_CHARACTER_OPACITY -> setCharacterOpacity(intent.getFloatExtra(EXTRA_CHARACTER_OPACITY, 1f))
             ACTION_SET_EDIT_MODE -> setEditModeEnabled(intent.getBooleanExtra(EXTRA_EDIT_MODE, false))
+            ACTION_SET_CHARACTER_PINNED -> setCharacterPinnedMode(intent.getBooleanExtra(EXTRA_CHARACTER_PINNED, false))
+            ACTION_SET_RELATIVE_SCALE -> setRelativeScaleValue(intent.getFloatExtra(EXTRA_RELATIVE_SCALE, 1f))
+            ACTION_SET_CHARACTER_OFFSET -> setCharacterOffsetValue(
+                intent.getFloatExtra(EXTRA_OFFSET_X, 0f),
+                intent.getFloatExtra(EXTRA_OFFSET_Y, 0f)
+            )
+            ACTION_SET_CHARACTER_ROTATION -> setCharacterRotationValue(intent.getIntExtra(EXTRA_ROTATION, 0))
         }
         
         return START_STICKY
@@ -381,9 +419,10 @@ class Live2DOverlayService : Service() {
             isFocusableInTouchMode = false
         }
         
-        // 터치스루 알파 적용 (윈도우 알파 = 터치스루 전용)
-        // 캐릭터 시각적 투명도는 GL 레벨에서 별도 제어
-        overlayParams.alpha = touchThroughAlpha.coerceIn(0f, MAX_OVERLAY_ALPHA)
+        // 윈도우 알파: 항상 1.0 유지
+        // FLAG_NOT_TOUCHABLE만으로 터치 패스스루 가능 (Android 12+ 포함)
+        // 시각적 투명도는 GL 레벨에서 완전히 제어
+        overlayParams.alpha = 1.0f
         
         // 동적 사이징 적용 (모델 바운딩 박스 기반)
         applyDynamicSizing(currentScale)
@@ -474,6 +513,8 @@ class Live2DOverlayService : Service() {
     
     /**
      * 제스처 감지 및 드래그 처리 설정
+     * 편집 모드 + 캐릭터 고정 시: 상자 이동/리사이즈
+     * 일반 모드: 전체 윈도우 드래그
      */
     private fun setupDragListener() {
         // 제스처 감지기 생성
@@ -484,10 +525,7 @@ class Live2DOverlayService : Service() {
                 enablePoke = true
             )
         ) { gestureResult ->
-            // 제스처 감지 시 Flutter로 전송
             Live2DEventStreamHandler.getInstance()?.sendGestureResult(gestureResult.toMap())
-            
-            // 드래그 관련이 아닌 제스처는 내부 처리도 수행
             handleGesture(gestureResult.type)
         }
         
@@ -495,7 +533,8 @@ class Live2DOverlayService : Service() {
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
-        var isDragging = false
+        var initialWidth = 0
+        var initialHeight = 0
         var hasMoved = false
         
         overlayView?.setOnTouchListener { _, event ->
@@ -508,27 +547,67 @@ class Live2DOverlayService : Service() {
                     initialY = overlayParams.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
-                    isDragging = false
+                    initialWidth = overlayParams.width
+                    initialHeight = overlayParams.height
                     hasMoved = false
+                    
+                    if (editModeEnabled && characterPinned) {
+                        if (boxSelected) {
+                            // 선택 상태: 코너/엣지 감지
+                            resizeEdgeMask = detectResizeEdge(event.x, event.y, initialWidth, initialHeight)
+                            touchState = if (resizeEdgeMask != 0) TouchState.BOX_RESIZING else TouchState.BOX_DRAGGING
+                        } else {
+                            touchState = TouchState.BOX_DRAGGING
+                        }
+                    } else {
+                        touchState = TouchState.DRAGGING
+                    }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - initialTouchX
                     val dy = event.rawY - initialTouchY
                     
-                    // 임계값 이상 이동시 드래그로 판정
                     if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                        isDragging = true
                         hasMoved = true
-                        overlayParams.x = (initialX + dx).toInt()
-                        overlayParams.y = (initialY + dy).toInt()
-                        windowManager.updateViewLayout(overlayView, overlayParams)
+                        
+                        when (touchState) {
+                            TouchState.DRAGGING -> {
+                                // 일반 드래그: 윈도우 이동
+                                overlayParams.x = (initialX + dx).toInt()
+                                overlayParams.y = (initialY + dy).toInt()
+                                windowManager.updateViewLayout(overlayView, overlayParams)
+                            }
+                            TouchState.BOX_DRAGGING -> {
+                                // 상자 드래그: 윈도우 이동 + 캐릭터 오프셋 업데이트
+                                overlayParams.x = (initialX + dx).toInt()
+                                overlayParams.y = (initialY + dy).toInt()
+                                windowManager.updateViewLayout(overlayView, overlayParams)
+                                updateCharacterOffsetFromPinned()
+                            }
+                            TouchState.BOX_RESIZING -> {
+                                handleResize(dx, dy, initialX, initialY, initialWidth, initialHeight)
+                            }
+                            TouchState.IDLE -> {}
+                        }
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    // 드래그 종료 처리 (제스처 감지는 GestureDetectorManager가 담당)
-                    isDragging = false
+                    if (!hasMoved && editModeEnabled && characterPinned) {
+                        // 이동 없는 탭: 선택 상태 토글
+                        boxSelected = !boxSelected
+                        updateEditModeBorder()
+                    }
+                    touchState = TouchState.IDLE
+                    true
+                }
+                MotionEvent.ACTION_OUTSIDE -> {
+                    // 외부 터치: 선택 해제
+                    if (boxSelected) {
+                        boxSelected = false
+                        updateEditModeBorder()
+                    }
                     true
                 }
                 else -> false
@@ -678,57 +757,205 @@ class Live2DOverlayService : Service() {
     }
     
     /**
-     * 터치스루 윈도우 알파 설정 (0~100 정수)
-     * Android 12+ MAX_OBSCURING_OPACITY(0.8) 이하로 자동 제한
+     * 터치스루 투명도 설정 (0~100 정수)
+     * 앱 배경 시 캐릭터 GL 투명도로 적용 (윈도우 알파와 무관)
      */
     private fun setTouchThroughAlphaValue(alpha: Int) {
-        val normalizedAlpha = (alpha / 100f).coerceIn(0f, MAX_OVERLAY_ALPHA)
-        Live2DLogger.Overlay.d("터치스루 알파", "input=$alpha, applied=$normalizedAlpha, max=$MAX_OVERLAY_ALPHA")
+        val normalizedAlpha = (alpha / 100f).coerceIn(0f, 1.0f)
+        Live2DLogger.Overlay.d("터치스루 알파", "input=$alpha, applied=$normalizedAlpha")
         touchThroughAlpha = normalizedAlpha
         
-        // 윈도우 알파 즉시 업데이트
-        overlayParams.alpha = touchThroughAlpha
-        overlayView?.let {
-            try {
-                windowManager.updateViewLayout(it, overlayParams)
-            } catch (e: Exception) {
-                Live2DLogger.Overlay.w("터치스루 알파 업데이트 실패", e.message)
-            }
+        // 터치스루 ON + 앱 배경일 때만 GL 투명도 즉시 업데이트
+        if (touchThroughEnabled && !isAppForeground) {
+            glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
         }
     }
     
     /**
-     * 캐릭터 시각적 투명도 (GL 레벨, 윈도우 알파와 독립)
+     * 캐릭터 시각적 투명도 (GL 레벨)
+     * 터치스루 ON + 앱 배경에서는 touchThroughAlpha가 우선되므로 즉시 적용하지 않음
      */
     private fun setCharacterOpacity(opacity: Float) {
         Live2DLogger.Overlay.d("캐릭터 투명도", "opacity=$opacity")
         characterOpacity = opacity.coerceIn(0f, 1f)
-        glSurfaceView?.setCharacterOpacity(characterOpacity)
+        // 터치스루 ON + 앱 배경이 아닐 때만 즉시 적용
+        if (!(touchThroughEnabled && !isAppForeground)) {
+            glSurfaceView?.setCharacterOpacity(characterOpacity)
+        }
     }
     
     /**
      * 편집 모드 활성화/비활성화
-     * 활성화 시 투명상자에 파란색 테두리 표시
      */
     private fun setEditModeEnabled(enabled: Boolean) {
         Live2DLogger.Overlay.d("편집 모드", "enabled=$enabled")
         editModeEnabled = enabled
+        if (!enabled) {
+            characterPinned = false
+            boxSelected = false
+        }
         updateEditModeBorder()
+        // 편집 모드 시 드래그 리스너 재설정
+        if (overlayView != null) setupDragListener()
     }
     
     /**
-     * 편집 모드 시 투명상자 파란색 테두리 표시/숨김
+     * 캐릭터 고정 모드 on/off
+     * ON: 현재 캐릭터 화면 위치 저장, 투명상자만 이동 가능
+     * OFF: 현재 상대적 오프셋 저장
+     */
+    private fun setCharacterPinnedMode(enabled: Boolean) {
+        Live2DLogger.Overlay.d("캐릭터 고정", "enabled=$enabled")
+        if (enabled && !characterPinned) {
+            // 고정: 현재 화면 위치 기록
+            pinnedCharScreenX = overlayParams.x + currentWidth / 2
+            pinnedCharScreenY = overlayParams.y + currentHeight / 2
+        }
+        characterPinned = enabled
+        boxSelected = false
+        updateEditModeBorder()
+        // 드래그 리스너 재설정
+        if (overlayView != null) setupDragListener()
+    }
+    
+    /**
+     * 캐릭터 상대적 크기 설정
+     */
+    private fun setRelativeScaleValue(scale: Float) {
+        Live2DLogger.Overlay.d("상대 스케일", "scale=$scale")
+        relativeCharacterScale = scale.coerceIn(0.1f, 3.0f)
+        glSurfaceView?.setRelativeScale(relativeCharacterScale)
+    }
+    
+    /**
+     * 캐릭터 오프셋 설정 (픽셀)
+     */
+    private fun setCharacterOffsetValue(x: Float, y: Float) {
+        Live2DLogger.Overlay.d("캐릭터 오프셋", "($x, $y)")
+        characterOffsetPixelX = x
+        characterOffsetPixelY = y
+        glSurfaceView?.setCharacterOffset(x, y)
+    }
+    
+    /**
+     * 캐릭터 회전 설정 (도)
+     */
+    private fun setCharacterRotationValue(degrees: Int) {
+        Live2DLogger.Overlay.d("캐릭터 회전", "$degrees°")
+        characterRotationDeg = degrees % 360
+        glSurfaceView?.setCharacterRotation(characterRotationDeg)
+    }
+    
+    /**
+     * 고정 모드에서 상자 이동 시 캐릭터 오프셋 업데이트
+     */
+    private fun updateCharacterOffsetFromPinned() {
+        val boxCenterX = overlayParams.x + currentWidth / 2
+        val boxCenterY = overlayParams.y + currentHeight / 2
+        characterOffsetPixelX = (pinnedCharScreenX - boxCenterX).toFloat()
+        characterOffsetPixelY = (pinnedCharScreenY - boxCenterY).toFloat()
+        glSurfaceView?.setCharacterOffset(characterOffsetPixelX, characterOffsetPixelY)
+    }
+    
+    /**
+     * 리사이즈 엣지 감지
+     * @return bitmask (EDGE_LEFT | EDGE_TOP | EDGE_RIGHT | EDGE_BOTTOM)
+     */
+    private fun detectResizeEdge(touchX: Float, touchY: Float, width: Int, height: Int): Int {
+        var mask = 0
+        if (touchX < HANDLE_SIZE) mask = mask or EDGE_LEFT
+        if (touchX > width - HANDLE_SIZE) mask = mask or EDGE_RIGHT
+        if (touchY < HANDLE_SIZE) mask = mask or EDGE_TOP
+        if (touchY > height - HANDLE_SIZE) mask = mask or EDGE_BOTTOM
+        return mask
+    }
+    
+    /**
+     * 리사이즈 처리
+     */
+    private fun handleResize(
+        dx: Float, dy: Float,
+        initialX: Int, initialY: Int,
+        initialWidth: Int, initialHeight: Int
+    ) {
+        var newX = initialX
+        var newY = initialY
+        var newWidth = initialWidth
+        var newHeight = initialHeight
+        
+        if (resizeEdgeMask and EDGE_LEFT != 0) {
+            newX = (initialX + dx).toInt()
+            newWidth = (initialWidth - dx).toInt()
+        }
+        if (resizeEdgeMask and EDGE_RIGHT != 0) {
+            newWidth = (initialWidth + dx).toInt()
+        }
+        if (resizeEdgeMask and EDGE_TOP != 0) {
+            newY = (initialY + dy).toInt()
+            newHeight = (initialHeight - dy).toInt()
+        }
+        if (resizeEdgeMask and EDGE_BOTTOM != 0) {
+            newHeight = (initialHeight + dy).toInt()
+        }
+        
+        // 최소 크기 제한
+        if (newWidth < MIN_BOX_SIZE) {
+            if (resizeEdgeMask and EDGE_LEFT != 0) newX = initialX + initialWidth - MIN_BOX_SIZE
+            newWidth = MIN_BOX_SIZE
+        }
+        if (newHeight < MIN_BOX_SIZE) {
+            if (resizeEdgeMask and EDGE_TOP != 0) newY = initialY + initialHeight - MIN_BOX_SIZE
+            newHeight = MIN_BOX_SIZE
+        }
+        
+        overlayParams.x = newX
+        overlayParams.y = newY
+        overlayParams.width = newWidth
+        overlayParams.height = newHeight
+        currentWidth = newWidth
+        currentHeight = newHeight
+        
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("리사이즈 레이아웃 실패", e.message)
+            }
+        }
+        
+        // 고정 모드면 오프셋 업데이트
+        if (characterPinned) {
+            updateCharacterOffsetFromPinned()
+        }
+    }
+    
+    /**
+     * 편집 모드 테두리 + 리사이즈 핸들 표시/숨김
      */
     private fun updateEditModeBorder() {
         overlayContainer?.let { container ->
             if (editModeEnabled) {
-                // 파란색 테두리가 있는 배경 드로어블 설정
+                val strokeWidth = if (boxSelected) 6 else 4
                 val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
                     setColor(android.graphics.Color.TRANSPARENT)
-                    setStroke(4, android.graphics.Color.parseColor("#2196F3"))  // Material Blue
+                    setStroke(strokeWidth, android.graphics.Color.parseColor("#2196F3"))
                     cornerRadius = 8f
                 }
                 container.foreground = borderDrawable
+                
+                // 선택 상태에서 FLAG_WATCH_OUTSIDE_TOUCH 추가 (외부 터치 감지)
+                if (boxSelected) {
+                    overlayParams.flags = overlayParams.flags or
+                            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                } else {
+                    overlayParams.flags = overlayParams.flags and
+                            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH.inv()
+                }
+                overlayView?.let {
+                    try {
+                        windowManager.updateViewLayout(it, overlayParams)
+                    } catch (_: Exception) {}
+                }
             } else {
                 container.foreground = null
             }
@@ -737,36 +964,40 @@ class Live2DOverlayService : Service() {
     
     /**
      * 앱 상태에 따라 터치 모드를 자동 전환
-     * - 터치스루 ON + 앱 배경: FLAG_NOT_TOUCHABLE (터치 패스스루)
-     * - 터치스루 ON + 앱 전경: FLAG_NOT_TOUCHABLE 제거 (드래그 가능)
-     * - 터치스루 OFF: 항상 터치 수신 (드래그/제스처 가능), 윈도우 알파 1.0
+     * - 터치스루 ON + 앱 배경: FLAG_NOT_TOUCHABLE, GL 투명도 = touchThroughAlpha
+     * - 터치스루 ON + 앱 전경: 드래그 가능, GL 투명도 = characterOpacity
+     * - 터치스루 OFF: 항상 터치 수신, GL 투명도 = characterOpacity
+     * 
+     * 윈도우 알파는 항상 1.0 유지 (투명도는 GL 레벨에서만 제어)
      */
     private fun updateTouchMode() {
         if (overlayView == null) return
         
+        // 윈도우 알파 항상 1.0 (FLAG_NOT_TOUCHABLE만으로 터치 패스스루 충분)
+        overlayParams.alpha = 1.0f
+        
         if (touchThroughEnabled) {
-            // 터치스루 ON: 윈도우 알파는 터치스루 알파값 사용
-            overlayParams.alpha = touchThroughAlpha.coerceIn(0f, MAX_OVERLAY_ALPHA)
-            
             if (isAppForeground) {
-                // 앱 전경: 드래그 가능 (FLAG_NOT_TOUCHABLE 제거)
+                // 앱 전경: 드래그 가능, 캐릭터 투명도 = 표시 설정값
                 applyTouchReceiving()
+                glSurfaceView?.setCharacterOpacity(characterOpacity)
             } else {
-                // 앱 배경: 터치 패스스루
+                // 앱 배경: 터치 패스스루, 캐릭터 투명도 = 터치스루 설정값
                 applyTouchPassthrough()
+                glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
             }
         } else {
-            // 터치스루 OFF: 항상 터치 수신 가능 (드래그/제스처), 윈도우 알파 1.0 (완전 불투명)
-            overlayParams.alpha = 1.0f
+            // 터치스루 OFF: 항상 터치 수신, 캐릭터 투명도 = 표시 설정값
             applyTouchReceiving()
+            glSurfaceView?.setCharacterOpacity(characterOpacity)
         }
         
-        // 윈도우 레이아웃 업데이트 (알파 변경 반영)
+        // 윈도우 레이아웃 업데이트
         overlayView?.let {
             try {
                 windowManager.updateViewLayout(it, overlayParams)
             } catch (e: Exception) {
-                Live2DLogger.Overlay.w("터치 모드 윈도우 알파 업데이트 실패", e.message)
+                Live2DLogger.Overlay.w("터치 모드 업데이트 실패", e.message)
             }
         }
     }
