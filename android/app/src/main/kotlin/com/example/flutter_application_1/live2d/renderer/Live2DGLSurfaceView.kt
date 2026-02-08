@@ -158,6 +158,15 @@ class Live2DGLSurfaceView : GLSurfaceView {
             queueEvent { r.setModelScale(scale) }
         }
     }
+
+    /**
+     * 모델 투명도 설정 (윈도우 알파와 분리)
+     */
+    fun setModelOpacity(opacity: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setModelOpacity(opacity) }
+        }
+    }
     
     /**
      * 위치 설정

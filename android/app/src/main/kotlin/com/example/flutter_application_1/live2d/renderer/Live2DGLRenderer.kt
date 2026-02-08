@@ -228,6 +228,14 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // 델타 타임 계산 (초 단위, 안전 범위 제한)
         val deltaTime = (elapsed.coerceIn(1L, 100L) / 1000f)
         
+        // ========== 매 프레임 투명 배경 강제 적용 ==========
+        // WHY: Cubism SDK DrawModel()이 GL 상태(blend func 등)를 변경합니다.
+        // 다음 프레임의 glClear가 올바른 transparent clear를 수행하도록
+        // 매 프레임 glClearColor를 재설정합니다.
+        GLES20.glClearColor(0f, 0f, 0f, 0f)
+        GLES20.glEnable(GLES20.GL_BLEND)
+        GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        
         // 화면 클리어
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         
@@ -249,6 +257,10 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 
                 // SDK가 실제로 렌더링하면 여기서 반환
                 if (model.isUsingSdk()) {
+                    // WHY: Cubism SDK DrawModel()이 blend state를 변경합니다.
+                    // 다음 프레임의 glClear가 올바르게 작동하도록 복원합니다.
+                    GLES20.glEnable(GLES20.GL_BLEND)
+                    GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                     return
                 }
             }
@@ -465,6 +477,14 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     fun setModelScale(scale: Float) {
         cubismModel?.setScale(scale)
         currentModel?.setScale(scale)
+    }
+
+    /**
+     * 모델 투명도 설정 (윈도우 알파와 분리)
+     */
+    fun setModelOpacity(opacity: Float) {
+        cubismModel?.setOpacity(opacity)
+        currentModel?.setOpacity(opacity)
     }
     
     /**

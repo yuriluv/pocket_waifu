@@ -299,8 +299,11 @@ class Live2DOverlayService : Service() {
         overlayView = glSurfaceView
         Live2DLogger.Overlay.d("GLSurfaceView 생성됨", "크기: ${currentWidth}x${currentHeight}")
         
-        // 배경 투명 설정
+        // 배경 투명 설정 (GL clear color)
         glSurfaceView?.setBackgroundColor(0f, 0f, 0f, 0f)
+        
+        // 윈도우 알파는 항상 1.0 유지 (투명도는 GL level에서 처리)
+        overlayParams.alpha = 1.0f
         
         // 동적 사이징 적용 (모델 바운딩 박스 기반)
         applyDynamicSizing(currentScale)
@@ -570,11 +573,12 @@ class Live2DOverlayService : Service() {
     private fun setOpacity(opacity: Float) {
         Live2DLogger.Overlay.d("투명도 설정", "$opacity")
         currentOpacity = opacity
-        overlayParams.alpha = opacity
         
-        overlayView?.let {
-            windowManager.updateViewLayout(it, overlayParams)
-        }
+        // WHY: overlayParams.alpha를 사용하면 캐릭터+배경 모두 투명해집니다.
+        // 캐릭터는 항상 불투명, 배경은 항상 투명(glClearColor)으로 유지합니다.
+        // 윈도우 알파는 절대 변경하지 않습니다.
+        // 모델 투명도만 별도 적용 (SDK 모드에서는 무시됨)
+        glSurfaceView?.setModelOpacity(opacity)
     }
     
     private fun setPosition(x: Int, y: Int) {
