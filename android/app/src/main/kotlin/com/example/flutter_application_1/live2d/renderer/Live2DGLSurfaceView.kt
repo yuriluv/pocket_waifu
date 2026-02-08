@@ -37,7 +37,8 @@ class Live2DGLSurfaceView : GLSurfaceView {
         setEGLContextClientVersion(2)
         
         // 배경 투명 설정 (오버레이용)
-        setEGLConfigChooser(8, 8, 8, 8, 16, 0) // RGBA8888 + Depth16
+        // WHY: depth buffer= 0 — 2D Live2D 렌더링에 depth test 불필요
+        setEGLConfigChooser(8, 8, 8, 8, 0, 0) // RGBA8888, no depth/stencil
         holder.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
         setZOrderOnTop(true)
         
@@ -165,6 +166,15 @@ class Live2DGLSurfaceView : GLSurfaceView {
     fun setModelOpacity(opacity: Float) {
         renderer?.let { r ->
             queueEvent { r.setModelOpacity(opacity) }
+        }
+    }
+    
+    /**
+     * 캐릭터 시각적 투명도 설정 (GL 레벨, 윈도우 알파와 독립)
+     */
+    fun setCharacterOpacity(opacity: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setCharacterOpacity(opacity) }
         }
     }
     

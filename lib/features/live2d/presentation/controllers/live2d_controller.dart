@@ -256,10 +256,26 @@ class Live2DController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 투명도 설정
+  /// 투명도 설정 (캐릭터 GL 시각적 투명도)
   Future<void> setOpacity(double opacity) async {
     _settings = _settings.copyWith(opacity: opacity);
-    await _nativeBridge.setOpacity(opacity);
+    await _nativeBridge.setCharacterOpacity(opacity);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  /// 터치스루 토글 설정
+  Future<void> setTouchThroughEnabled(bool enabled) async {
+    _settings = _settings.copyWith(touchThroughEnabled: enabled);
+    await _nativeBridge.setTouchThroughEnabled(enabled);
+    await _settings.save();
+    notifyListeners();
+  }
+
+  /// 터치스루 윈도우 알파 설정 (0~100 정수)
+  Future<void> setTouchThroughAlpha(int alpha) async {
+    _settings = _settings.copyWith(touchThroughAlpha: alpha);
+    await _nativeBridge.setTouchThroughAlpha(alpha);
     await _settings.save();
     notifyListeners();
   }
@@ -280,6 +296,14 @@ class Live2DController extends ChangeNotifier {
     );
     await _settings.save();
     await _nativeBridge.setPosition(0.5, 0.5);
+    notifyListeners();
+  }
+
+  /// 편집 모드 설정
+  Future<void> setEditMode(bool enabled) async {
+    _settings = _settings.copyWith(editModeEnabled: enabled);
+    await _nativeBridge.setEditMode(enabled);
+    await _settings.save();
     notifyListeners();
   }
 
@@ -308,9 +332,12 @@ class Live2DController extends ChangeNotifier {
         return false;
       }
 
-      // 크기, 투명도 설정
+      // 크기, 투명도, 터치스루, 편집 모드 설정
       await _nativeBridge.setScale(_settings.scale);
-      await _nativeBridge.setOpacity(_settings.opacity);
+      await _nativeBridge.setCharacterOpacity(_settings.opacity);
+      await _nativeBridge.setTouchThroughEnabled(_settings.touchThroughEnabled);
+      await _nativeBridge.setTouchThroughAlpha(_settings.touchThroughAlpha);
+      await _nativeBridge.setEditMode(_settings.editModeEnabled);
 
       // 모델 로드
       await _loadModelToOverlay(selectedModel!);
@@ -323,7 +350,7 @@ class Live2DController extends ChangeNotifier {
       // 비활성화
       await _nativeBridge.hideOverlay();
 
-      _settings = _settings.copyWith(isEnabled: false);
+      _settings = _settings.copyWith(isEnabled: false, editModeEnabled: false);
       await _settings.save();
       
       live2dLog.info(_tag, '플로팅 뷰어 비활성화됨');

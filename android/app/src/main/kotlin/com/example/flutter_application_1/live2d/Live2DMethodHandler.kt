@@ -51,6 +51,14 @@ class Live2DMethodHandler(
                 "setPosition" -> setPosition(call, result)
                 "setSize" -> setSize(call, result)
                 
+                // ========== 터치스루 / 투명도 ==========
+                "setTouchThroughEnabled" -> setTouchThroughEnabled(call, result)
+                "setTouchThroughAlpha" -> setTouchThroughAlpha(call, result)
+                "setCharacterOpacity" -> setCharacterOpacity(call, result)
+                
+                // ========== 편집 모드 ==========
+                "setEditMode" -> setEditMode(call, result)
+                
                 // ========== 자동 동작 설정 ==========
                 "setEyeBlink" -> setEyeBlink(call, result)
                 "setBreathing" -> setBreathing(call, result)
@@ -326,6 +334,70 @@ class Live2DMethodHandler(
         } catch (e: Exception) {
             Live2DLogger.e("투명도 설정 실패", e)
             result.error("DISPLAY_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setTouchThroughEnabled(call: MethodCall, result: MethodChannel.Result) {
+        val enabled = call.argument<Boolean>("enabled") ?: true
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_TOUCH_THROUGH
+                putExtra(Live2DOverlayService.EXTRA_TOUCH_THROUGH, enabled)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("터치스루 설정 실패", e)
+            result.error("TOUCH_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setTouchThroughAlpha(call: MethodCall, result: MethodChannel.Result) {
+        val alpha = call.argument<Int>("alpha") ?: 80
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_TOUCH_THROUGH_ALPHA
+                putExtra(Live2DOverlayService.EXTRA_TOUCH_THROUGH_ALPHA, alpha)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("터치스루 알파 설정 실패", e)
+            result.error("TOUCH_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setCharacterOpacity(call: MethodCall, result: MethodChannel.Result) {
+        val opacity = call.argument<Double>("opacity")?.toFloat() ?: 1f
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_CHARACTER_OPACITY
+                putExtra(Live2DOverlayService.EXTRA_CHARACTER_OPACITY, opacity)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("캐릭터 투명도 설정 실패", e)
+            result.error("DISPLAY_ERROR", e.message, null)
+        }
+    }
+    
+    private fun setEditMode(call: MethodCall, result: MethodChannel.Result) {
+        val enabled = call.argument<Boolean>("enabled") ?: false
+        
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_EDIT_MODE
+                putExtra(Live2DOverlayService.EXTRA_EDIT_MODE, enabled)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("편집 모드 설정 실패", e)
+            result.error("EDIT_MODE_ERROR", e.message, null)
         }
     }
     

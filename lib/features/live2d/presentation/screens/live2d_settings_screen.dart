@@ -236,6 +236,19 @@ class _Live2DSettingsScreenContentState
                   enabled: controller.hasFolderSelected,
                 ),
 
+                // === 4.5. 터치스루 설정 섹션 ===
+                _SectionHeader(
+                  title: '터치스루',
+                  icon: Icons.touch_app,
+                ),
+                _TouchThroughTile(
+                  enabled: controller.settings.touchThroughEnabled,
+                  alpha: controller.settings.touchThroughAlpha,
+                  onEnabledChanged: controller.setTouchThroughEnabled,
+                  onAlphaChanged: controller.setTouchThroughAlpha,
+                  isActive: controller.hasFolderSelected,
+                ),
+
                 // === 5. 플로팅 뷰어 토글 ===
                 _SectionHeader(
                   title: '플로팅 뷰어',
@@ -263,6 +276,17 @@ class _Live2DSettingsScreenContentState
                   icon: Icons.settings,
                 ),
                 _AdvancedSettingsMenu(),
+                
+                // === 6.5. 편집 모드 ===
+                _SectionHeader(
+                  title: '편집 모드',
+                  icon: Icons.edit,
+                ),
+                _EditModeTile(
+                  isEnabled: controller.settings.editModeEnabled,
+                  canEnable: controller.isEnabled,
+                  onChanged: controller.setEditMode,
+                ),
                 
                 // === 7. 상호작용 테스트 (개발용) ===
                 _SectionHeader(
@@ -683,6 +707,323 @@ class _AdvancedSettingsMenu extends StatelessWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+// ============================================================================
+// 터치스루 설정 타일
+// ============================================================================
+
+class _TouchThroughTile extends StatefulWidget {
+  final bool enabled;
+  final int alpha;
+  final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<int> onAlphaChanged;
+  final bool isActive;
+
+  const _TouchThroughTile({
+    required this.enabled,
+    required this.alpha,
+    required this.onEnabledChanged,
+    required this.onAlphaChanged,
+    required this.isActive,
+  });
+
+  @override
+  State<_TouchThroughTile> createState() => _TouchThroughTileState();
+}
+
+class _TouchThroughTileState extends State<_TouchThroughTile> {
+  late TextEditingController _alphaController;
+
+  @override
+  void initState() {
+    super.initState();
+    _alphaController = TextEditingController(text: widget.alpha.toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _TouchThroughTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.alpha != widget.alpha) {
+      _alphaController.text = widget.alpha.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _alphaController.dispose();
+    super.dispose();
+  }
+
+  void _onAlphaSubmitted(String value) {
+    final parsed = int.tryParse(value);
+    if (parsed != null) {
+      final clamped = parsed.clamp(0, 80);
+      widget.onAlphaChanged(clamped);
+      _alphaController.text = clamped.toString();
+    } else {
+      _alphaController.text = widget.alpha.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 터치스루 토글
+            Row(
+              children: [
+                Icon(
+                  Icons.touch_app,
+                  color: widget.isActive
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '터치스루 모드',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      Text(
+                        'ON: 앱 외부에서 터치 통과, 앱 내부에서 드래그 가능',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: widget.enabled,
+                  onChanged: widget.isActive ? widget.onEnabledChanged : null,
+                ),
+              ],
+            ),
+
+            if (widget.enabled) ...[
+              const SizedBox(height: 16),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+
+              // 현재 알파값 표시
+              Row(
+                children: [
+                  Icon(
+                    Icons.opacity,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '현재 윈도우 알파: ${widget.alpha}%',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // 터치스루 알파 입력
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '터치스루 투명도',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 80,
+                    height: 40,
+                    child: TextField(
+                      controller: _alphaController,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        suffixText: '%',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        isDense: true,
+                      ),
+                      onSubmitted: _onAlphaSubmitted,
+                      onEditingComplete: () {
+                        _onAlphaSubmitted(_alphaController.text);
+                      },
+                      enabled: widget.isActive,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // 안내 메시지
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Android 12+: 최대 80% (터치 패스스루 정책)',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 편집 모드 타일
+// ============================================================================
+
+class _EditModeTile extends StatelessWidget {
+  final bool isEnabled;
+  final bool canEnable;
+  final ValueChanged<bool> onChanged;
+
+  const _EditModeTile({
+    required this.isEnabled,
+    required this.canEnable,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 편집 모드 토글
+            Row(
+              children: [
+                Icon(
+                  Icons.edit,
+                  color: canEnable
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '디스플레이 편집 모드',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      Text(
+                        '활성화 시 투명상자 테두리가 표시됩니다',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: isEnabled,
+                  onChanged: canEnable ? onChanged : null,
+                ),
+              ],
+            ),
+            
+            if (!canEnable) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '플로팅 뷰어가 활성화된 상태에서만 사용 가능합니다',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            
+            if (isEnabled) ...[
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              
+              // 편집 모드 안내
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.border_style,
+                      color: theme.colorScheme.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '파란색 테두리가 투명상자 영역을 표시합니다.\n이후 투명상자에 대한 추가 설정이 여기에 추가됩니다.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

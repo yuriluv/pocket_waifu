@@ -86,7 +86,7 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     });
     
     if (_isOverlayActive) {
-      await _bridge.setOpacity(value);
+      await _bridge.setCharacterOpacity(value);
     }
   }
 
@@ -200,9 +200,9 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                 
                 const Divider(height: 32),
                 
-                // === 투명도 설정 ===
+                // === 캐릭터 투명도 설정 (GL 레벨, 터치스루와 독립) ===
                 _SectionHeader(
-                  title: '투명도',
+                  title: '캐릭터 투명도',
                   icon: Icons.opacity,
                 ),
                 
@@ -215,12 +215,12 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '투명도: ${(_opacity * 100).toInt()}%',
+                            '캐릭터 투명도: ${(_opacity * 100).toInt()}%',
                             style: theme.textTheme.bodyLarge,
                           ),
                           _PresetButtons(
-                            values: const [0.3, 0.5, 0.7, 1.0],
-                            labels: const ['30%', '50%', '70%', '100%'],
+                            values: const [0.0, 0.25, 0.5, 0.75, 1.0],
+                            labels: const ['0%', '25%', '50%', '75%', '100%'],
                             currentValue: _opacity,
                             onSelected: _applyOpacity,
                           ),
@@ -228,14 +228,14 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                       ),
                       Slider(
                         value: _opacity,
-                        min: 0.1,
+                        min: 0.0,
                         max: 1.0,
-                        divisions: 9,
+                        divisions: 20,
                         label: '${(_opacity * 100).toInt()}%',
                         onChanged: _applyOpacity,
                       ),
                       Text(
-                        '낮은 값: 반투명 / 높은 값: 불투명',
+                        '캐릭터 시각적 투명도 (터치스루 알파와 완전 독립)\n0%: 완전 투명 / 100%: 완전 불투명',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

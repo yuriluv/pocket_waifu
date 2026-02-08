@@ -38,14 +38,25 @@ class Live2DSettings {
   /// 화면 비율 기준 Y 위치 (0.0 ~ 1.0)
   final double positionY;
 
-  /// 투명도 (0.3 ~ 1.0, 기본값 1.0)
+  /// 투명도 (0.0 ~ 1.0, 기본값 1.0) — 캐릭터 시각적 투명도 (GL)
+  /// 터치스루 투명도와 완전히 독립적으로 동작
   final double opacity;
+
+  /// 터치스루 모드 활성화 여부 (기본값 true)
+  final bool touchThroughEnabled;
+
+  /// 터치스루 윈도우 알파 (0~100 정수, 기본값 80)
+  /// Android 12+에서 MAX_OBSCURING_OPACITY 0.8 이하로 자동 제한
+  final int touchThroughAlpha;
 
   /// 오버레이 너비 (픽셀)
   final int overlayWidth;
 
   /// 오버레이 높이 (픽셀)
   final int overlayHeight;
+
+  /// 편집 모드 활성화 여부 (기본값 false)
+  final bool editModeEnabled;
 
   const Live2DSettings({
     this.isEnabled = false,
@@ -57,8 +68,11 @@ class Live2DSettings {
     this.positionX = 0.5,
     this.positionY = 0.5,
     this.opacity = 1.0,
+    this.touchThroughEnabled = true,
+    this.touchThroughAlpha = 80,
     this.overlayWidth = 300,
     this.overlayHeight = 400,
+    this.editModeEnabled = false,
   });
 
   /// 기본 설정
@@ -108,8 +122,11 @@ class Live2DSettings {
     double? positionX,
     double? positionY,
     double? opacity,
+    bool? touchThroughEnabled,
+    int? touchThroughAlpha,
     int? overlayWidth,
     int? overlayHeight,
+    bool? editModeEnabled,
     bool clearDataFolder = false,
     bool clearSelectedModel = false,
   }) {
@@ -122,9 +139,12 @@ class Live2DSettings {
       scale: (scale ?? this.scale).clamp(0.5, 2.0),
       positionX: (positionX ?? this.positionX).clamp(0.0, 1.0),
       positionY: (positionY ?? this.positionY).clamp(0.0, 1.0),
-      opacity: (opacity ?? this.opacity).clamp(0.3, 1.0),
+      opacity: (opacity ?? this.opacity).clamp(0.0, 1.0),
+      touchThroughEnabled: touchThroughEnabled ?? this.touchThroughEnabled,
+      touchThroughAlpha: (touchThroughAlpha ?? this.touchThroughAlpha).clamp(0, 100),
       overlayWidth: overlayWidth ?? this.overlayWidth,
       overlayHeight: overlayHeight ?? this.overlayHeight,
+      editModeEnabled: editModeEnabled ?? this.editModeEnabled,
     );
   }
 
@@ -140,8 +160,11 @@ class Live2DSettings {
       'positionX': positionX,
       'positionY': positionY,
       'opacity': opacity,
+      'touchThroughEnabled': touchThroughEnabled,
+      'touchThroughAlpha': touchThroughAlpha,
       'overlayWidth': overlayWidth,
       'overlayHeight': overlayHeight,
+      'editModeEnabled': editModeEnabled,
     };
   }
 
@@ -157,8 +180,11 @@ class Live2DSettings {
       positionX: (json['positionX'] as num?)?.toDouble() ?? 0.5,
       positionY: (json['positionY'] as num?)?.toDouble() ?? 0.5,
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1.0,
+      touchThroughEnabled: json['touchThroughEnabled'] as bool? ?? true,
+      touchThroughAlpha: json['touchThroughAlpha'] as int? ?? 80,
       overlayWidth: json['overlayWidth'] as int? ?? 300,
       overlayHeight: json['overlayHeight'] as int? ?? 400,
+      editModeEnabled: json['editModeEnabled'] as bool? ?? false,
     );
   }
 

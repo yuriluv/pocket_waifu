@@ -379,7 +379,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 투명도 설정
+  /// 투명도 설정 (레거시: 캐릭터 GL 투명도로 전달)
   Future<bool> setOpacity(double opacity) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setOpacity', {
@@ -388,6 +388,66 @@ class Live2DNativeBridge {
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setOpacity 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 터치스루 토글 설정
+  Future<bool> setTouchThroughEnabled(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setTouchThroughEnabled', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setTouchThroughEnabled 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 터치스루 윈도우 알파 설정 (0~100 정수)
+  Future<bool> setTouchThroughAlpha(int alpha) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setTouchThroughAlpha', {
+        'alpha': alpha,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setTouchThroughAlpha 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 캐릭터 시각적 투명도 (GL 레벨, 윈도우 알파와 독립)
+  Future<bool> setCharacterOpacity(double opacity) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setCharacterOpacity', {
+        'opacity': opacity,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setCharacterOpacity 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 편집 모드 설정
+  Future<bool> setEditMode(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setEditMode', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setEditMode 실패', error: e);
       return false;
     } on MissingPluginException {
       return false;

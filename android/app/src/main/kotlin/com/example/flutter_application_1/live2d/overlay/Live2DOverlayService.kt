@@ -1,5 +1,7 @@
 package com.example.flutter_application_1.live2d.overlay
 
+import android.app.Activity
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -16,7 +19,9 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
 import com.example.flutter_application_1.MainActivity
 import com.example.flutter_application_1.R
@@ -58,6 +63,10 @@ class Live2DOverlayService : Service() {
         const val ACTION_SEND_SIGNAL = "com.example.flutter_application_1.live2d.SEND_SIGNAL"
         const val ACTION_SET_TARGET_FPS = "com.example.flutter_application_1.live2d.SET_TARGET_FPS"
         const val ACTION_SET_LOW_POWER_MODE = "com.example.flutter_application_1.live2d.SET_LOW_POWER_MODE"
+        const val ACTION_SET_TOUCH_THROUGH = "com.example.flutter_application_1.live2d.SET_TOUCH_THROUGH"
+        const val ACTION_SET_TOUCH_THROUGH_ALPHA = "com.example.flutter_application_1.live2d.SET_TOUCH_THROUGH_ALPHA"
+        const val ACTION_SET_CHARACTER_OPACITY = "com.example.flutter_application_1.live2d.SET_CHARACTER_OPACITY"
+        const val ACTION_SET_EDIT_MODE = "com.example.flutter_application_1.live2d.SET_EDIT_MODE"
         
         // ========== Extra 키 상수 ==========
         const val EXTRA_MODEL_PATH = "model_path"
@@ -74,10 +83,20 @@ class Live2DOverlayService : Service() {
         const val EXTRA_ENABLED = "enabled"
         const val EXTRA_SIGNAL_NAME = "signal_name"
         const val EXTRA_TARGET_FPS = "target_fps"
+        const val EXTRA_TOUCH_THROUGH = "touch_through"
+        const val EXTRA_TOUCH_THROUGH_ALPHA = "touch_through_alpha"
+        const val EXTRA_CHARACTER_OPACITY = "character_opacity"
+        const val EXTRA_EDIT_MODE = "edit_mode"
         
         // ========== 알림 ==========
         private const val CHANNEL_ID = "live2d_overlay_channel"
         private const val NOTIFICATION_ID = 1001
+        
+        // ========== 터치 패스스루 상수 ==========
+        // Android 12+ (API 31) Untrusted Touch Occlusion:
+        // TYPE_APPLICATION_OVERLAY에서 alpha > 0.8이면 아래 앱 터치가 차단됩니다.
+        // 0.8f = Android의 MAX_OBSCURING_OPACITY 임계값
+        private val MAX_OVERLAY_ALPHA = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.8f else 1.0f
         
         // ========== 기본 크기 ==========
         private const val DEFAULT_WIDTH = 300
@@ -119,6 +138,7 @@ class Live2DOverlayService : Service() {
     
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
+    private var overlayContainer: FrameLayout? = null  // 편집 모드 테두리용 컨테이너
     private var glSurfaceView: Live2DGLSurfaceView? = null
     
     // 제스처 감지 관리자
@@ -133,6 +153,36 @@ class Live2DOverlayService : Service() {
     private var currentWidth = DEFAULT_WIDTH
     private var currentHeight = DEFAULT_HEIGHT
     
+    // ========== 터치스루 토글 시스템 ==========
+    private var touchThroughEnabled = true
+    private var touchThroughAlpha = 0.8f    // 0.0~1.0 (MAX_OVERLAY_ALPHA로 제한)
+    private var characterOpacity = 1.0f     // GL 레벨 캐릭터 투명도
+    @Volatile private var isAppForeground = false
+    
+    // ========== 편집 모드 ==========
+    private var editModeEnabled = false
+    
+    // 앱 전경/배경 감지 콜백
+    private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+        override fun onActivityStarted(activity: Activity) {}
+        override fun onActivityResumed(activity: Activity) {
+            if (activity is MainActivity) {
+                isAppForeground = true
+                updateTouchMode()
+            }
+        }
+        override fun onActivityPaused(activity: Activity) {
+            if (activity is MainActivity) {
+                isAppForeground = false
+                updateTouchMode()
+            }
+        }
+        override fun onActivityStopped(activity: Activity) {}
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        override fun onActivityDestroyed(activity: Activity) {}
+    }
+
     // ========== 상태 체크 Handler ==========
     private val stateCheckHandler = Handler(Looper.getMainLooper())
     
@@ -163,11 +213,13 @@ class Live2DOverlayService : Service() {
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE
             }
+            // WHY: 터치 패스스루를 위해 3개 플래그 모두 필요.
+            // FLAG_LAYOUT_NO_LIMITS: LAYOUT_IN_SCREEN 대신 사용하여
+            // 시스템 바 영역에서의 의도치 않은 터치 간섭을 방지합니다.
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             format = PixelFormat.TRANSLUCENT
             gravity = Gravity.TOP or Gravity.START
             width = currentWidth
@@ -200,6 +252,9 @@ class Live2DOverlayService : Service() {
             
             startForeground(NOTIFICATION_ID, notification)
             android.util.Log.d("Live2D", ">>> startForeground called successfully")
+            
+            // 앱 전경/배경 감지 등록
+            application.registerActivityLifecycleCallbacks(lifecycleCallbacks)
         } catch (e: Exception) {
             android.util.Log.e("Live2D", ">>> SERVICE onCreate ERROR: ${e.message}", e)
             Live2DLogger.Overlay.e("서비스 생성 실패", e.message, e)
@@ -240,6 +295,10 @@ class Live2DOverlayService : Service() {
             ACTION_SEND_SIGNAL -> handleSignal(intent.getStringExtra(EXTRA_SIGNAL_NAME) ?: "")
             ACTION_SET_TARGET_FPS -> setTargetFps(intent.getIntExtra(EXTRA_TARGET_FPS, 60))
             ACTION_SET_LOW_POWER_MODE -> setLowPowerMode(intent.getBooleanExtra(EXTRA_ENABLED, false))
+            ACTION_SET_TOUCH_THROUGH -> setTouchThroughEnabled(intent.getBooleanExtra(EXTRA_TOUCH_THROUGH, true))
+            ACTION_SET_TOUCH_THROUGH_ALPHA -> setTouchThroughAlphaValue(intent.getIntExtra(EXTRA_TOUCH_THROUGH_ALPHA, 80))
+            ACTION_SET_CHARACTER_OPACITY -> setCharacterOpacity(intent.getFloatExtra(EXTRA_CHARACTER_OPACITY, 1f))
+            ACTION_SET_EDIT_MODE -> setEditModeEnabled(intent.getBooleanExtra(EXTRA_EDIT_MODE, false))
         }
         
         return START_STICKY
@@ -250,6 +309,9 @@ class Live2DOverlayService : Service() {
     override fun onDestroy() {
         android.util.Log.d("Live2D", ">>> SERVICE onDestroy")
         Live2DLogger.Overlay.i("서비스 종료", "Live2DOverlayService 정리")
+        try {
+            application.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
+        } catch (_: Exception) {}
         hideOverlay()
         super.onDestroy()
     }
@@ -296,26 +358,49 @@ class Live2DOverlayService : Service() {
         
         // GLSurfaceView 생성 (Live2D 렌더링용)
         glSurfaceView = Live2DGLSurfaceView(this)
-        overlayView = glSurfaceView
+        
+        // FrameLayout 컨테이너로 감싸기 (편집 모드 파란색 테두리용)
+        overlayContainer = FrameLayout(this).apply {
+            addView(glSurfaceView, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+        }
+        overlayView = overlayContainer
         Live2DLogger.Overlay.d("GLSurfaceView 생성됨", "크기: ${currentWidth}x${currentHeight}")
         
         // 배경 투명 설정 (GL clear color)
         glSurfaceView?.setBackgroundColor(0f, 0f, 0f, 0f)
         
-        // 윈도우 알파는 항상 1.0 유지 (투명도는 GL level에서 처리)
-        overlayParams.alpha = 1.0f
+        // GLSurfaceView 터치 패스스루 추가 보장
+        // WHY: WindowManager 플래그 외에도 View 자체의 터치/포커스 속성을
+        // 비활성화하여 Android InputDispatcher가 이 View를 완전히 무시하도록 합니다.
+        glSurfaceView?.apply {
+            isClickable = false
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
+        
+        // 터치스루 알파 적용 (윈도우 알파 = 터치스루 전용)
+        // 캐릭터 시각적 투명도는 GL 레벨에서 별도 제어
+        overlayParams.alpha = touchThroughAlpha.coerceIn(0f, MAX_OVERLAY_ALPHA)
         
         // 동적 사이징 적용 (모델 바운딩 박스 기반)
         applyDynamicSizing(currentScale)
         
-        // Part 1: 드래그/터치 비활성화 (터치 패스스루)
-        // setupDragListener() ← Part 2에서 Edit Mode 시 활성화 예정
-        Live2DLogger.Overlay.d("터치 패스스루 모드", "FLAG_NOT_TOUCHABLE 활성")
+        // 터치 모드: 앱 상태에 따라 터치스루/드래그 자동 전환
+        Live2DLogger.Overlay.d("터치스루 초기화", "enabled=$touchThroughEnabled, foreground=$isAppForeground")
         
         // 윈도우에 추가
         try {
             windowManager.addView(overlayView, overlayParams)
             isRunning = true
+            
+            // 터치스루 모드 적용 (앱 상태에 따라 자동 전환)
+            updateTouchMode()
+            
+            // 편집 모드 테두리 적용
+            updateEditModeBorder()
             
             // 상태 체크 시작
             startStateChecks()
@@ -358,6 +443,7 @@ class Live2DOverlayService : Service() {
         }
         
         overlayView = null
+        overlayContainer = null
         glSurfaceView = null
         isRunning = false
 
@@ -571,14 +657,162 @@ class Live2DOverlayService : Service() {
     }
     
     private fun setOpacity(opacity: Float) {
-        Live2DLogger.Overlay.d("투명도 설정", "$opacity")
-        currentOpacity = opacity
+        // 레거시 호환: setOpacity는 이제 캐릭터 GL 투명도를 제어합니다.
+        // 윈도우 알파(터치스루)는 setTouchThroughAlphaValue()로 별도 제어
+        setCharacterOpacity(opacity)
+    }
+    
+    // ============================================================================
+    // 터치스루 토글 시스템
+    // ============================================================================
+    
+    /**
+     * 터치스루 모드 활성화/비활성화
+     * ON: 앱 외부에서 터치 패스스루, 앱 내부에서 드래그 가능
+     * OFF: 향후 편집 모드용 예약
+     */
+    private fun setTouchThroughEnabled(enabled: Boolean) {
+        Live2DLogger.Overlay.d("터치스루 토글", "enabled=$enabled")
+        touchThroughEnabled = enabled
+        updateTouchMode()
+    }
+    
+    /**
+     * 터치스루 윈도우 알파 설정 (0~100 정수)
+     * Android 12+ MAX_OBSCURING_OPACITY(0.8) 이하로 자동 제한
+     */
+    private fun setTouchThroughAlphaValue(alpha: Int) {
+        val normalizedAlpha = (alpha / 100f).coerceIn(0f, MAX_OVERLAY_ALPHA)
+        Live2DLogger.Overlay.d("터치스루 알파", "input=$alpha, applied=$normalizedAlpha, max=$MAX_OVERLAY_ALPHA")
+        touchThroughAlpha = normalizedAlpha
         
-        // WHY: overlayParams.alpha를 사용하면 캐릭터+배경 모두 투명해집니다.
-        // 캐릭터는 항상 불투명, 배경은 항상 투명(glClearColor)으로 유지합니다.
-        // 윈도우 알파는 절대 변경하지 않습니다.
-        // 모델 투명도만 별도 적용 (SDK 모드에서는 무시됨)
-        glSurfaceView?.setModelOpacity(opacity)
+        // 윈도우 알파 즉시 업데이트
+        overlayParams.alpha = touchThroughAlpha
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("터치스루 알파 업데이트 실패", e.message)
+            }
+        }
+    }
+    
+    /**
+     * 캐릭터 시각적 투명도 (GL 레벨, 윈도우 알파와 독립)
+     */
+    private fun setCharacterOpacity(opacity: Float) {
+        Live2DLogger.Overlay.d("캐릭터 투명도", "opacity=$opacity")
+        characterOpacity = opacity.coerceIn(0f, 1f)
+        glSurfaceView?.setCharacterOpacity(characterOpacity)
+    }
+    
+    /**
+     * 편집 모드 활성화/비활성화
+     * 활성화 시 투명상자에 파란색 테두리 표시
+     */
+    private fun setEditModeEnabled(enabled: Boolean) {
+        Live2DLogger.Overlay.d("편집 모드", "enabled=$enabled")
+        editModeEnabled = enabled
+        updateEditModeBorder()
+    }
+    
+    /**
+     * 편집 모드 시 투명상자 파란색 테두리 표시/숨김
+     */
+    private fun updateEditModeBorder() {
+        overlayContainer?.let { container ->
+            if (editModeEnabled) {
+                // 파란색 테두리가 있는 배경 드로어블 설정
+                val borderDrawable = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.TRANSPARENT)
+                    setStroke(4, android.graphics.Color.parseColor("#2196F3"))  // Material Blue
+                    cornerRadius = 8f
+                }
+                container.foreground = borderDrawable
+            } else {
+                container.foreground = null
+            }
+        }
+    }
+    
+    /**
+     * 앱 상태에 따라 터치 모드를 자동 전환
+     * - 터치스루 ON + 앱 배경: FLAG_NOT_TOUCHABLE (터치 패스스루)
+     * - 터치스루 ON + 앱 전경: FLAG_NOT_TOUCHABLE 제거 (드래그 가능)
+     * - 터치스루 OFF: 항상 터치 수신 (드래그/제스처 가능), 윈도우 알파 1.0
+     */
+    private fun updateTouchMode() {
+        if (overlayView == null) return
+        
+        if (touchThroughEnabled) {
+            // 터치스루 ON: 윈도우 알파는 터치스루 알파값 사용
+            overlayParams.alpha = touchThroughAlpha.coerceIn(0f, MAX_OVERLAY_ALPHA)
+            
+            if (isAppForeground) {
+                // 앱 전경: 드래그 가능 (FLAG_NOT_TOUCHABLE 제거)
+                applyTouchReceiving()
+            } else {
+                // 앱 배경: 터치 패스스루
+                applyTouchPassthrough()
+            }
+        } else {
+            // 터치스루 OFF: 항상 터치 수신 가능 (드래그/제스처), 윈도우 알파 1.0 (완전 불투명)
+            overlayParams.alpha = 1.0f
+            applyTouchReceiving()
+        }
+        
+        // 윈도우 레이아웃 업데이트 (알파 변경 반영)
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("터치 모드 윈도우 알파 업데이트 실패", e.message)
+            }
+        }
+    }
+    
+    /**
+     * 터치 패스스루 적용 (앱 배경 시)
+     */
+    private fun applyTouchPassthrough() {
+        overlayParams.flags = overlayParams.flags or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        
+        overlayView?.let {
+            it.setOnTouchListener(null)
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("터치 패스스루 적용 실패", e.message)
+            }
+        }
+        Live2DLogger.Overlay.d("터치 모드", "패스스루 (앱 배경)")
+    }
+    
+    /**
+     * 터치 수신 적용 (앱 전경 시 — 드래그 가능)
+     * FLAG_NOT_TOUCHABLE만 제거, FLAG_NOT_FOCUSABLE 유지 (키보드 방지)
+     */
+    private fun applyTouchReceiving() {
+        overlayParams.flags = (overlayParams.flags and
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()) or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("터치 수신 적용 실패", e.message)
+            }
+        }
+        
+        // 드래그 리스너 설정
+        setupDragListener()
+        Live2DLogger.Overlay.d("터치 모드", "수신 (앱 전경, 드래그 가능)")
     }
     
     private fun setPosition(x: Int, y: Int) {

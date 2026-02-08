@@ -1,3 +1,3 @@
 git add .
-git commit -m "감격의 복원"
+git commit -m "투명도 해결 99%"
 git push origin main
