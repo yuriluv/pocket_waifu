@@ -58,15 +58,32 @@ class Live2DGLSurfaceView : GLSurfaceView {
         touchListener = callback
     }
     
+    /**
+     * 터치 이벤트 차단 — Part 1: 터치 패스스루
+     * 
+     * GLSurfaceView는 터치를 소비하지 않습니다.
+     * Part 2에서 커스텀 히트박스가 터치를 처리합니다.
+     * 
+     * 내부 시선 추적/제스처 메서드는 보존됩니다 (Part 2에서 히트박스를 통해 호출 예정).
+     */
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // 먼저 외부 콜백에 전달
-        val handled = touchListener?.onTouch(event) ?: false
+        return false // 터치를 아래 레이어로 패스스루
+    }
+    
+    /**
+     * 외부에서 터치 이벤트를 주입 (Part 2: 커스텀 히트박스에서 호출 예정)
+     * 
+     * GLSurfaceView 자체가 터치를 차단하지 않으므로,
+     * 히트박스에서 인식한 터치를 이 메서드로 렌더러에 전달합니다.
+     */
+    fun deliverTouchToRenderer(event: MotionEvent) {
+        // 외부 콜백 전달
+        touchListener?.onTouch(event)
         
-        // 렌더러에도 터치 이벤트 전달 (시선 추적용)
+        // 렌더러에 시선 추적용 터치 전달
         renderer?.let { r ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    // 화면 좌표를 -1~1 범위로 정규화
                     val normalizedX = (event.x / width) * 2f - 1f
                     val normalizedY = 1f - (event.y / height) * 2f
                     r.onTouch(normalizedX, normalizedY)
@@ -76,8 +93,6 @@ class Live2DGLSurfaceView : GLSurfaceView {
                 }
             }
         }
-        
-        return handled || super.onTouchEvent(event)
     }
     
     /**

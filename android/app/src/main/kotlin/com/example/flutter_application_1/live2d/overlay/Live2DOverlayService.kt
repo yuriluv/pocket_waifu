@@ -83,6 +83,15 @@ class Live2DOverlayService : Service() {
         private const val DEFAULT_WIDTH = 300
         private const val DEFAULT_HEIGHT = 400
         
+        // ========== 동적 사이징 상수 (Part 1) ==========
+        // 모델 크기 대비 GLSurfaceView 패딩 비율 (애니메이션 클리핑 방지)
+        const val PADDING_MULTIPLIER = 1.5f
+        // 화면 대비 최소/최대 비율
+        const val MIN_SIZE_RATIO = 0.3f
+        const val MAX_SIZE_RATIO = 2.0f
+        // 모델 바운딩 박스를 가져올 수 없을 때 화면 대비 기본 비율 (50%)
+        const val DEFAULT_MODEL_SIZE_RATIO = 0.5f
+        
         // ========== 상태 체크 간격 (ms) ==========
         private const val STATE_CHECK_INTERVAL_MS = 30_000L   // 30초 상태 브로드캐스트
         private const val PERMISSION_CHECK_INTERVAL_MS = 60_000L  // 60초 권한 체크
@@ -155,6 +164,7 @@ class Live2DOverlayService : Service() {
                 WindowManager.LayoutParams.TYPE_PHONE
             }
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
@@ -292,8 +302,12 @@ class Live2DOverlayService : Service() {
         // 배경 투명 설정
         glSurfaceView?.setBackgroundColor(0f, 0f, 0f, 0f)
         
-        // 드래그 처리 설정
-        setupDragListener()
+        // 동적 사이징 적용 (모델 바운딩 박스 기반)
+        applyDynamicSizing(currentScale)
+        
+        // Part 1: 드래그/터치 비활성화 (터치 패스스루)
+        // setupDragListener() ← Part 2에서 Edit Mode 시 활성화 예정
+        Live2DLogger.Overlay.d("터치 패스스루 모드", "FLAG_NOT_TOUCHABLE 활성")
         
         // 윈도우에 추가
         try {
@@ -549,13 +563,8 @@ class Live2DOverlayService : Service() {
         // GLSurfaceView 내 모델 스케일 설정
         glSurfaceView?.setModelScale(scale)
         
-        // 기본 크기에 스케일 적용 (윈도우 크기)
-        overlayParams.width = (DEFAULT_WIDTH * scale).toInt()
-        overlayParams.height = (DEFAULT_HEIGHT * scale).toInt()
-        
-        overlayView?.let {
-            windowManager.updateViewLayout(it, overlayParams)
-        }
+        // 동적 사이징으로 윈도우 크기 업데이트
+        updateSurfaceSizeForScale(scale)
     }
     
     private fun setOpacity(opacity: Float) {
@@ -591,8 +600,86 @@ class Live2DOverlayService : Service() {
     }
     
     // ============================================================================
-    // 자동 동작 설정
+    // 동적 사이징 (Part 1)
     // ============================================================================
+    
+    /**
+     * 모델 크기 × 스케일 × 패딩으로 GLSurfaceView 크기 계산
+     * 
+     * @param modelWidth 모델 캔버스/바운딩 박스 너비 (px). 0이면 화면 비율 기본값 사용.
+     * @param modelHeight 모델 캔버스/바운딩 박스 높이 (px). 0이면 화면 비율 기본값 사용.
+     * @param modelScale 현재 모델 스케일
+     * @param screenWidth 화면 너비
+     * @param screenHeight 화면 높이
+     * @return Pair(width, height)
+     */
+    private fun calculateSurfaceSize(
+        modelWidth: Float, modelHeight: Float, modelScale: Float,
+        screenWidth: Int, screenHeight: Int
+    ): Pair<Int, Int> {
+        // 모델 바운딩 박스를 가져올 수 없으면 화면의 50% 기본값 사용
+        val baseW = if (modelWidth > 0f) modelWidth else screenWidth * DEFAULT_MODEL_SIZE_RATIO
+        val baseH = if (modelHeight > 0f) modelHeight else screenHeight * DEFAULT_MODEL_SIZE_RATIO
+        
+        var width = (baseW * modelScale * PADDING_MULTIPLIER).toInt()
+        var height = (baseH * modelScale * PADDING_MULTIPLIER).toInt()
+        
+        // 화면 대비 최소/최대 제약
+        val minW = (screenWidth * MIN_SIZE_RATIO).toInt()
+        val maxW = (screenWidth * MAX_SIZE_RATIO).toInt()
+        val minH = (screenHeight * MIN_SIZE_RATIO).toInt()
+        val maxH = (screenHeight * MAX_SIZE_RATIO).toInt()
+        
+        width = width.coerceIn(minW, maxW)
+        height = height.coerceIn(minH, maxH)
+        
+        return Pair(width, height)
+    }
+    
+    /**
+     * 현재 스케일에 맞춰 GLSurfaceView 동적 사이징 적용
+     * 
+     * 모델 바운딩 박스 정보가 없으면 화면 크기 기반 기본값을 사용합니다.
+     * Part 3에서 바운딩 박스 추출이 구현되면 modelWidth/Height를 업데이트합니다.
+     */
+    private fun applyDynamicSizing(scale: Float) {
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+        
+        // TODO: Part 3에서 모델 캔버스/바운딩 박스 크기를 추출하여 사용
+        // 현재는 0을 전달하여 화면 50% 기본값 사용
+        val modelWidth = 0f
+        val modelHeight = 0f
+        
+        val (newWidth, newHeight) = calculateSurfaceSize(
+            modelWidth, modelHeight, scale, screenWidth, screenHeight
+        )
+        
+        currentWidth = newWidth
+        currentHeight = newHeight
+        overlayParams.width = newWidth
+        overlayParams.height = newHeight
+        
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("동적 사이징 레이아웃 업데이트 실패", e.message)
+            }
+        }
+        
+        Live2DLogger.Overlay.d("동적 사이징 적용", "${newWidth}x${newHeight} (scale=$scale, padding=$PADDING_MULTIPLIER)")
+    }
+    
+    /**
+     * 스케일 변경 시 GLSurfaceView 크기 업데이트 (Part 3에서 호출)
+     * 
+     * @param newScale 새로운 모델 스케일
+     */
+    fun updateSurfaceSizeForScale(newScale: Float) {
+        applyDynamicSizing(newScale)
+    }
     
     private var isEyeBlinkEnabled = true
     private var isBreathingEnabled = true
