@@ -597,6 +597,55 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
+  // 자동 모션 / 액세서리 설정
+  // ============================================================================
+
+  /// 자동 모션(아이들) 설정
+  Future<bool> setAutoMotion(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setAutoMotion', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setAutoMotion 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 액세서리 토글
+  Future<bool> setAccessory(String accessoryId, bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setAccessory', {
+        'id': accessoryId,
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setAccessory 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// 액세서리 목록 조회
+  Future<List<Map<String, dynamic>>> getAccessories() async {
+    try {
+      final result = await _methodChannel.invokeMethod<List<dynamic>>('getAccessories');
+      if (result == null) return [];
+      return result.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getAccessories 실패', error: e);
+      return [];
+    } on MissingPluginException {
+      return [];
+    }
+  }
+
+  // ============================================================================
   // 상호작용 신호 (추후 확장)
   // ============================================================================
 
@@ -652,6 +701,21 @@ class Live2DNativeBridge {
     }
   }
 
+  /// 특정 그룹의 모션 이름 목록 조회  
+  Future<List<String>> getMotionNames(String group) async {
+    try {
+      final result = await _methodChannel.invokeMethod<List<dynamic>>('getMotionNames', {
+        'group': group,
+      });
+      return result?.cast<String>() ?? [];
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getMotionNames 실패', error: e);
+      return [];
+    } on MissingPluginException {
+      return [];
+    }
+  }
+
   /// 표정 목록 조회
   Future<List<String>> getExpressions() async {
     try {
@@ -695,6 +759,23 @@ class Live2DNativeBridge {
       return {};
     } on MissingPluginException {
       return {};
+    }
+  }
+
+  /// 현재 오버레이 크기 조회
+  Future<Map<String, int>> getOverlaySize() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getOverlaySize');
+      if (result == null) return {'width': 300, 'height': 400};
+      return {
+        'width': (result['width'] as int?) ?? 300,
+        'height': (result['height'] as int?) ?? 400,
+      };
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getOverlaySize 실패', error: e);
+      return {'width': 300, 'height': 400};
+    } on MissingPluginException {
+      return {'width': 300, 'height': 400};
     }
   }
 

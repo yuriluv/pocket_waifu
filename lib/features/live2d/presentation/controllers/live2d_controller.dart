@@ -375,7 +375,21 @@ class Live2DController extends ChangeNotifier {
   }
 
   /// 현재 상태로 프리셋 저장
+  /// 
+  /// Native에서 실제 오버레이 크기를 조회하여 동기화 후 저장합니다.
   Future<void> savePreset(String name) async {
+    // Native에서 현재 오버레이 크기를 조회하여 동기화
+    final overlaySize = await _nativeBridge.getOverlaySize();
+    final currentWidth = overlaySize['width'] ?? _settings.overlayWidth;
+    final currentHeight = overlaySize['height'] ?? _settings.overlayHeight;
+    
+    // 설정에도 반영
+    _settings = _settings.copyWith(
+      overlayWidth: currentWidth,
+      overlayHeight: currentHeight,
+    );
+    await _settings.save();
+    
     final preset = DisplayPreset(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -383,36 +397,44 @@ class Live2DController extends ChangeNotifier {
       characterOffsetX: _settings.characterOffsetX,
       characterOffsetY: _settings.characterOffsetY,
       characterRotation: _settings.characterRotation,
-      overlayWidth: _settings.overlayWidth,
-      overlayHeight: _settings.overlayHeight,
+      overlayWidth: currentWidth,
+      overlayHeight: currentHeight,
       positionX: _settings.positionX,
       positionY: _settings.positionY,
       scale: _settings.scale,
     );
     await DisplayPresetManager.add(preset);
     _presets = await DisplayPresetManager.loadAll();
+    live2dLog.info(_tag, '프리셋 저장됨', details: 'name=$name, overlaySize=${currentWidth}x$currentHeight');
     notifyListeners();
   }
 
   /// 프리셋 불러오기
+  /// 
+  /// 오버레이 크기도 함께 반영하여 가로세로 비율/상대 크기 동기화를 보장합니다.
   Future<void> loadPreset(DisplayPreset preset) async {
     _settings = _settings.copyWith(
       relativeCharacterScale: preset.relativeCharacterScale,
       characterOffsetX: preset.characterOffsetX,
       characterOffsetY: preset.characterOffsetY,
       characterRotation: preset.characterRotation,
+      overlayWidth: preset.overlayWidth,
+      overlayHeight: preset.overlayHeight,
       scale: preset.scale,
       positionX: preset.positionX,
       positionY: preset.positionY,
     );
     await _settings.save();
     
-    // Native에 적용
+    // Native에 적용 (크기 먼저 설정 후 나머지 적용)
+    await _nativeBridge.setSize(preset.overlayWidth, preset.overlayHeight);
     await _nativeBridge.setRelativeScale(preset.relativeCharacterScale);
     await _nativeBridge.setCharacterOffset(preset.characterOffsetX, preset.characterOffsetY);
     await _nativeBridge.setCharacterRotation(preset.characterRotation);
     await _nativeBridge.setScale(preset.scale);
     await _nativeBridge.setPosition(preset.positionX, preset.positionY);
+    
+    live2dLog.info(_tag, '프리셋 불러옴', details: 'name=${preset.name}, overlaySize=${preset.overlayWidth}x${preset.overlayHeight}');
     notifyListeners();
   }
 

@@ -22,6 +22,7 @@ import '../../domain/entities/interaction_event.dart';
 import 'gesture_settings_screen.dart';
 import 'auto_behavior_settings_screen.dart';
 import 'display_settings_screen.dart';
+import 'interaction_settings_screen.dart';
 
 /// Live2D 설정 화면
 class Live2DSettingsScreen extends StatelessWidget {
@@ -664,6 +665,21 @@ class _AdvancedSettingsMenu extends StatelessWidget {
     return Column(
       children: [
         ListTile(
+          leading: const Icon(Icons.sports_esports),
+          title: const Text('상호작용 설정'),
+          subtitle: const Text('모션/표정 테스트, 제스처 매핑, 자동 동작'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const InteractionSettingsScreen(),
+              ),
+            );
+          },
+        ),
+        
+        ListTile(
           leading: const Icon(Icons.touch_app),
           title: const Text('제스처 설정'),
           subtitle: const Text('제스처별 모션/표정 매핑'),
@@ -681,7 +697,7 @@ class _AdvancedSettingsMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.auto_awesome),
           title: const Text('자동 동작 설정'),
-          subtitle: const Text('눈 깜빡임, 호흡, 시선 추적'),
+          subtitle: const Text('눈 깜박임, 호흡, 시선 추적'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
             Navigator.push(
