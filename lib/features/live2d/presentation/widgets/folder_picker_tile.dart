@@ -10,6 +10,7 @@ class FolderPickerTile extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onPickFolder;
   final VoidCallback? onClearFolder;
+  final VoidCallback? onValidateFolder;
 
   const FolderPickerTile({
     super.key,
@@ -18,6 +19,7 @@ class FolderPickerTile extends StatelessWidget {
     this.isLoading = false,
     required this.onPickFolder,
     this.onClearFolder,
+    this.onValidateFolder,
   });
 
   bool get hasFolder => currentPath != null;
@@ -120,19 +122,36 @@ class FolderPickerTile extends StatelessWidget {
                     label: Text(hasFolder ? '폴더 변경' : '폴더 선택'),
                   ),
                 ),
-                if (hasFolder && onClearFolder != null) ...[
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: isLoading ? null : onClearFolder,
-                    icon: const Icon(Icons.clear),
-                    label: const Text('초기화'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
               ],
             ),
+            if (hasFolder) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (onValidateFolder != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: isLoading ? null : onValidateFolder,
+                        icon: const Icon(Icons.check_circle_outline),
+                        label: const Text('폴더 검증'),
+                      ),
+                    ),
+                  if (onValidateFolder != null && onClearFolder != null)
+                    const SizedBox(width: 8),
+                  if (onClearFolder != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: isLoading ? null : onClearFolder,
+                        icon: const Icon(Icons.clear),
+                        label: const Text('초기화'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
             
             const SizedBox(height: 8),
             Row(
