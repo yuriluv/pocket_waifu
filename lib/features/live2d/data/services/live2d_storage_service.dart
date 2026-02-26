@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 import '../models/live2d_settings.dart';
 import 'live2d_log_service.dart';
+import '../../utils/folder_validator.dart';
 
 class Live2DStorageService {
   static final Live2DStorageService _instance = Live2DStorageService._internal();
@@ -24,8 +25,12 @@ class Live2DStorageService {
   bool get hasFolderSelected => _currentFolderPath != null;
 
   void restoreFromSettings(Live2DSettings settings) {
-    _currentFolderPath = settings.dataFolderPath;
-    _currentFolderUri = settings.dataFolderUri;
+    _currentFolderPath = FolderValidator.normalizePath(settings.dataFolderPath);
+    _currentFolderUri = FolderValidator.normalizePath(settings.dataFolderUri);
+
+    if (_currentFolderPath == null) {
+      _currentFolderUri = null;
+    }
     
     if (_currentFolderPath != null) {
       live2dLog.info(_tag, '폴더 정보 복원됨', details: _currentFolderPath);
@@ -47,18 +52,24 @@ class Live2DStorageService {
         return null;
       }
 
-      final dir = Directory(result);
-      if (!await dir.exists()) {
-        live2dLog.error(_tag, '선택한 폴더가 존재하지 않음', details: result);
+      final normalizedPath = FolderValidator.normalizePath(result);
+      if (normalizedPath == null) {
+        live2dLog.warning(_tag, '선택한 폴더 경로가 비어 있음');
         return null;
       }
 
-      _currentFolderPath = result;
-      _currentFolderUri = result;
+      final dir = Directory(normalizedPath);
+      if (!await dir.exists()) {
+        live2dLog.error(_tag, '선택한 폴더가 존재하지 않음', details: normalizedPath);
+        return null;
+      }
 
-      live2dLog.info(_tag, '폴더 선택 완료', details: result);
+      _currentFolderPath = normalizedPath;
+      _currentFolderUri = normalizedPath;
+
+      live2dLog.info(_tag, '폴더 선택 완료', details: normalizedPath);
       
-      final live2dFolder = Directory(path.join(result, 'Live2D'));
+      final live2dFolder = Directory(path.join(normalizedPath, 'Live2D'));
       if (await live2dFolder.exists()) {
         live2dLog.info(_tag, 'Live2D 하위 폴더 발견', details: live2dFolder.path);
       } else {
@@ -70,7 +81,7 @@ class Live2DStorageService {
         );
       }
 
-      return result;
+      return normalizedPath;
     } catch (e, stack) {
       live2dLog.error(
         _tag,
@@ -88,8 +99,7 @@ class Live2DStorageService {
     }
 
     try {
-      final dir = Directory(_currentFolderPath!);
-      final exists = await dir.exists();
+      final exists = await FolderValidator.isExistingDirectory(_currentFolderPath);
       
       if (!exists) {
         live2dLog.warning(
@@ -162,7 +172,6 @@ class Live2DStorageService {
   }
 
   String? get folderDisplayName {
-    if (_currentFolderPath == null) return null;
-    return path.basename(_currentFolderPath!);
+    return FolderValidator.displayName(_currentFolderPath);
   }
 }
