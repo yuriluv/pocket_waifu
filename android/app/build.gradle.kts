@@ -14,6 +14,22 @@ if (localPropertiesFile.exists()) {
 }
 val cubismSdkPath = localProperties.getProperty("cubism.sdk.path") ?: ""
 
+val keyProperties = Properties()
+val keyPropertiesFile = rootProject.file("key.properties")
+if (keyPropertiesFile.exists()) {
+    keyPropertiesFile.inputStream().use { keyProperties.load(it) }
+}
+
+val keystorePath =
+    keyProperties.getProperty("storeFile")
+        ?: System.getenv("ANDROID_KEYSTORE_PATH")
+        ?: ""
+val hasReleaseSigning =
+    keystorePath.isNotBlank() &&
+        (keyProperties.getProperty("storePassword") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: "").isNotBlank() &&
+        (keyProperties.getProperty("keyAlias") ?: System.getenv("ANDROID_KEY_ALIAS") ?: "").isNotBlank() &&
+        (keyProperties.getProperty("keyPassword") ?: System.getenv("ANDROID_KEY_PASSWORD") ?: "").isNotBlank()
+
 android {
     namespace = "com.example.flutter_application_1"
     compileSdk = flutter.compileSdkVersion
@@ -55,11 +71,30 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword =
+                    keyProperties.getProperty("storePassword")
+                        ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias =
+                    keyProperties.getProperty("keyAlias")
+                        ?: System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword =
+                    keyProperties.getProperty("keyPassword")
+                        ?: System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 
