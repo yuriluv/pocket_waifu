@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../models/api_config.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/empty_state_view.dart';
+import '../utils/ui_feedback.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -113,23 +115,10 @@ class _ApiPresetsTab extends StatelessWidget {
 
         Expanded(
           child: apiConfigs.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.api, size: 64, color: Colors.grey[300]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'API 프리셋이 없습니다',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '위 버튼을 눌러 프리셋을 추가하세요',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
+              ? const EmptyStateView(
+                  icon: Icons.api,
+                  title: 'API 프리셋이 없습니다',
+                  subtitle: '위 버튼을 눌러 프리셋을 추가하세요',
                 )
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -908,6 +897,13 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   void _saveConfig() {
     final settingsProvider = context.read<SettingsProvider>();
 
+    if (_nameController.text.trim().isEmpty ||
+        _baseUrlController.text.trim().isEmpty ||
+        _modelController.text.trim().isEmpty) {
+      context.showErrorSnackBar('이름, Base URL, 모델은 필수 입력 항목입니다.');
+      return;
+    }
+
     final newConfig =
         ApiConfig.custom(
           id: widget.existingConfig?.id,
@@ -943,12 +939,7 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
     Navigator.pop(context);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${newConfig.name} 프리셋이 저장되었습니다.'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    context.showInfoSnackBar('${newConfig.name} 프리셋이 저장되었습니다.');
   }
 }
 

@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../providers/chat_session_provider.dart';
 import '../models/chat_session.dart';
 import 'package:intl/intl.dart';
+import '../widgets/empty_state_view.dart';
+import '../utils/ui_feedback.dart';
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -132,12 +134,7 @@ class ChatListScreen extends StatelessWidget {
               provider.deleteSession(session.id);
               Navigator.pop(context);
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('"${session.name}" 채팅이 삭제되었습니다.'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+              context.showInfoSnackBar('"${session.name}" 채팅이 삭제되었습니다.');
             },
             child: const Text('삭제'),
           ),
@@ -340,10 +337,13 @@ class _ChatSessionCard extends StatelessWidget {
                   switch (value) {
                     case 'rename':
                       onRename();
+                      break;
                     case 'export':
                       onExport();
+                      break;
                     case 'delete':
                       onDelete();
+                      break;
                   }
                 },
                 itemBuilder: (context) => [
@@ -395,28 +395,14 @@ class _EmptySessionsPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            '채팅이 없습니다',
-            style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '새 채팅을 시작해보세요!',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: onCreate,
-            icon: const Icon(Icons.add),
-            label: const Text('새 채팅 시작'),
-          ),
-        ],
+    return EmptyStateView(
+      icon: Icons.chat_bubble_outline,
+      title: '채팅이 없습니다',
+      subtitle: '새 채팅을 시작해보세요!',
+      action: ElevatedButton.icon(
+        onPressed: onCreate,
+        icon: const Icon(Icons.add),
+        label: const Text('새 채팅 시작'),
       ),
     );
   }
