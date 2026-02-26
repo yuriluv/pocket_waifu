@@ -1,13 +1,9 @@
-// ============================================================================
-// ============================================================================
-// ============================================================================
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/prompt_block_provider.dart';
 import '../models/message.dart';
+import '../utils/ui_feedback.dart';
 
 class PromptPreviewDialog extends StatefulWidget {
   final String promptText;
@@ -33,24 +29,13 @@ class PromptPreviewDialog extends StatefulWidget {
 }
 
 class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
-  Future<void> _copyToClipboard(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: widget.promptText));
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('프롬프트가 클립보드에 복사되었습니다.'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final int charCount = widget.promptText.length;
-    final int wordCount = widget.promptText.split(RegExp(r'\s+')).length;
+    final normalizedText = widget.promptText.trim();
+    final int wordCount = normalizedText.isEmpty
+        ? 0
+        : normalizedText.split(RegExp(r'\s+')).length;
     final int lineCount = widget.promptText.split('\n').length;
     final int estimatedTokens = (charCount / 2.5).round();
 
@@ -132,7 +117,10 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => _copyToClipboard(context),
+                  onPressed: () => context.copyToClipboard(
+                    widget.promptText,
+                    successMessage: '프롬프트가 클립보드에 복사되었습니다.',
+                  ),
                   icon: const Icon(Icons.copy, size: 18),
                   label: const Text('복사'),
                 ),
@@ -200,19 +188,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
     }
 
     return buffer.toString().trim();
-  }
-
-  Future<void> _copyToClipboard(String text) async {
-    await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('프롬프트가 클립보드에 복사되었습니다.'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
   @override
@@ -341,7 +316,10 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
               runSpacing: 8,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => _copyToClipboard(promptText),
+                  onPressed: () => context.copyToClipboard(
+                    promptText,
+                    successMessage: '프롬프트가 클립보드에 복사되었습니다.',
+                  ),
                   icon: const Icon(Icons.copy, size: 18),
                   label: const Text('복사'),
                 ),
