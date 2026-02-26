@@ -1,0 +1,30 @@
+name: QA Quality Gates
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  qa-gates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Korean comment policy gate
+        run: dart run tool/qa/check_korean_policy.dart
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: QA regression contracts
+        run: flutter test test/qa
