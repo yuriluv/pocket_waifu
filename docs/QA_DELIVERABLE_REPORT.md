@@ -14,6 +14,14 @@
 - Prompt builder regression tests: `test/qa/prompt_builder_regression_test.dart`
 - Model contract tests: `test/qa/model_contract_test.dart`
 - QA plan: `docs/QA_EXECUTION_PLAN.md`
+- APK release/logging QA matrix: `docs/APK_RELEASE_QA_TEST_MATRIX_2026-02-26.md`
+- APK release/logging bug template: `docs/APK_RELEASE_LOGGING_QA_BUG_REPORT_TEMPLATE.md`
+
+## Added for APK Release/Logging Collaboration Recovery
+
+1. Defined release-gating QA matrix for artifact integrity, signing, traceability, and log reliability.
+2. Added failure-injection scenarios for pipeline interruption, signature mismatch, endpoint outage, and schema drift.
+3. Added standardized defect report template to speed triage and improve auditability.
 
 ## Required Evidence Checkpoints (for PR)
 
