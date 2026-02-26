@@ -3,8 +3,13 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../services/model_scanner_service.dart';
+import '../../../../utils/ui_feedback.dart';
+import '../../utils/folder_validator.dart';
+import '../../data/services/live2d_storage_service.dart';
 import '../controllers/live2d_controller.dart';
 import '../widgets/permission_status_tile.dart';
 import '../widgets/folder_picker_tile.dart';
@@ -181,6 +186,9 @@ class _Live2DSettingsScreenContentState
                   displayName: controller.folderDisplayName,
                   isLoading: controller.isLoading,
                   onPickFolder: () => controller.selectFolder(),
+                  onValidateFolder: controller.hasFolderSelected
+                      ? () => _validateCurrentFolder(context, controller)
+                      : null,
                   onClearFolder: controller.hasFolderSelected
                       ? () => _showClearFolderDialog(context, controller)
                       : null,
@@ -332,6 +340,40 @@ class _Live2DSettingsScreenContentState
         ],
       ),
     );
+  }
+
+  Future<void> _validateCurrentFolder(
+    BuildContext context,
+    Live2DController controller,
+  ) async {
+    final folderPath = controller.folderPath;
+    if (folderPath == null) return;
+    
+    final storageService = Live2DStorageService();
+    final rootPath = await storageService.getModelRootPath() ?? folderPath;
+    final scanner = ModelScannerService();
+
+    final (result, count) = await FolderValidator.validate(
+      rootPath,
+      (path) => scanner.scanModelsRecursive(path),
+    );
+
+    if (!context.mounted) return;
+
+    switch (result) {
+      case FolderValidationResult.pathMissing:
+        context.showErrorSnackBar('경로 오류: 선택한 폴더가 기기에 존재하지 않습니다.');
+        break;
+      case FolderValidationResult.permissionDenied:
+        context.showErrorSnackBar('권한 오류: 폴더에 접근할 수 없습니다. 권한을 확인해주세요.');
+        break;
+      case FolderValidationResult.noModel:
+        context.showErrorSnackBar('검증 실패: .model3.json 파일을 찾을 수 없습니다.');
+        break;
+      case FolderValidationResult.valid:
+        context.showInfoSnackBar('검증 완료: 정상적인 모델 폴더입니다. ($count개 모델 포함)');
+        break;
+    }
   }
 }
 
