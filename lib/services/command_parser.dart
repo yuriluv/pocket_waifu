@@ -2,8 +2,6 @@
 // ============================================================================
 // ============================================================================
 
-import 'package:flutter/services.dart';
-
 class CommandResult {
   final CommandType type;
   final bool success;
@@ -62,11 +60,12 @@ enum CommandType {
 class CommandParser {
   /// 
   static (bool, CommandResult?) parse(String input) {
-    if (!input.startsWith('/')) {
+    final normalizedInput = input.trim();
+    if (!normalizedInput.startsWith('/')) {
       return (false, null);
     }
 
-    final parts = input.split(' ');
+    final parts = normalizedInput.split(RegExp(r'\s+'));
     final command = parts[0].toLowerCase();
     final args = parts.length > 1 ? parts.sublist(1) : <String>[];
 
