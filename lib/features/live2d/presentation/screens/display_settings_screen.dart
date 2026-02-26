@@ -121,7 +121,21 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    '설정을 불러오는 중...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : ListView(
               children: [
                 if (!_isOverlayActive)
@@ -277,7 +291,9 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                                     width: 60,
                                     height: 80,
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary.withOpacity(0.3),
+                                      color: theme.colorScheme.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
                                       border: Border.all(
                                         color: theme.colorScheme.primary,
                                         width: 2,
