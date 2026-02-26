@@ -2,13 +2,15 @@
 // ============================================================================
 // ============================================================================
 
+import 'package:characters/characters.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/chat_session_provider.dart';
-import '../models/chat_session.dart';
 import 'package:intl/intl.dart';
-import '../widgets/empty_state_view.dart';
+import 'package:provider/provider.dart';
+
+import '../models/chat_session.dart';
+import '../providers/chat_session_provider.dart';
 import '../utils/ui_feedback.dart';
+import '../widgets/empty_state_view.dart';
 
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
@@ -182,6 +184,8 @@ class ChatListScreen extends StatelessWidget {
 }
 
 class _ChatSessionCard extends StatelessWidget {
+  static const int _messagePreviewLimit = 50;
+
   final ChatSession session;
   final bool isActive;
   final VoidCallback onTap;
@@ -198,6 +202,20 @@ class _ChatSessionCard extends StatelessWidget {
     required this.onExport,
   });
 
+  String _buildLastMessagePreview(String rawContent) {
+    final normalized = rawContent.trim();
+    if (normalized.isEmpty) {
+      return '내용 없음';
+    }
+
+    final chars = normalized.characters;
+    if (chars.length <= _messagePreviewLimit) {
+      return normalized;
+    }
+
+    return '${chars.take(_messagePreviewLimit)}...';
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -208,9 +226,7 @@ class _ChatSessionCard extends StatelessWidget {
     String lastMessagePreview = '새 채팅';
     if (session.messages.isNotEmpty) {
       final lastMsg = session.messages.last;
-      lastMessagePreview = lastMsg.content.length > 50
-          ? '${lastMsg.content.substring(0, 50)}...'
-          : lastMsg.content;
+      lastMessagePreview = _buildLastMessagePreview(lastMsg.content);
     }
 
     String dateStr;
