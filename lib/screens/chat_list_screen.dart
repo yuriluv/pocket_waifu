@@ -1,9 +1,5 @@
 // ============================================================================
-// 채팅 목록 화면 (Chat List Screen) - v2.0.4
 // ============================================================================
-// 모든 채팅 세션을 표시하고 관리하는 화면입니다.
-// 채팅 선택, 이름 변경, 삭제 기능을 제공합니다.
-// v2.0.4: ChatSessionProvider가 단일 데이터 소스 - 세션 전환만으로 자동 연동
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -12,7 +8,6 @@ import '../providers/chat_session_provider.dart';
 import '../models/chat_session.dart';
 import 'package:intl/intl.dart';
 
-/// 채팅 목록 화면
 class ChatListScreen extends StatelessWidget {
   const ChatListScreen({super.key});
 
@@ -22,12 +17,10 @@ class ChatListScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('채팅 목록'),
         actions: [
-          // 새 채팅 버튼
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '새 채팅',
             onPressed: () {
-              // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
               final provider = Provider.of<ChatSessionProvider>(
                 context,
                 listen: false,
@@ -43,7 +36,6 @@ class ChatListScreen extends StatelessWidget {
           if (provider.sessions.isEmpty) {
             return _EmptySessionsPlaceholder(
               onCreate: () {
-                // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
                 provider.createNewSession();
                 Navigator.pop(context);
               },
@@ -61,7 +53,6 @@ class ChatListScreen extends StatelessWidget {
                 session: session,
                 isActive: isActive,
                 onTap: () {
-                  // v2.0.4: 세션 전환만 하면 ChatProvider가 자동 연동
                   provider.switchSession(session.id);
                   Navigator.pop(context);
                 },
@@ -76,7 +67,6 @@ class ChatListScreen extends StatelessWidget {
     );
   }
 
-  /// 이름 변경 다이얼로그
   void _showRenameDialog(
     BuildContext context,
     ChatSessionProvider provider,
@@ -115,7 +105,6 @@ class ChatListScreen extends StatelessWidget {
     );
   }
 
-  /// 삭제 확인 다이얼로그
   void _confirmDelete(
     BuildContext context,
     ChatSessionProvider provider,
@@ -157,7 +146,6 @@ class ChatListScreen extends StatelessWidget {
     );
   }
 
-  /// 세션 내보내기
   void _exportSession(
     BuildContext context,
     ChatSessionProvider provider,
@@ -196,7 +184,6 @@ class ChatListScreen extends StatelessWidget {
   }
 }
 
-/// 채팅 세션 카드 위젯
 class _ChatSessionCard extends StatelessWidget {
   final ChatSession session;
   final bool isActive;
@@ -216,7 +203,6 @@ class _ChatSessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 마지막 메시지 미리보기
     String lastMessagePreview = '새 채팅';
     if (session.messages.isNotEmpty) {
       final lastMsg = session.messages.last;
@@ -225,13 +211,11 @@ class _ChatSessionCard extends StatelessWidget {
           : lastMsg.content;
     }
 
-    // 날짜 포맷
     String dateStr;
     try {
       final dateFormat = DateFormat('MM/dd HH:mm');
       dateStr = dateFormat.format(session.updatedAt);
     } catch (e) {
-      // intl 패키지 없을 때 fallback
       dateStr =
           '${session.updatedAt.month}/${session.updatedAt.day} '
           '${session.updatedAt.hour}:${session.updatedAt.minute.toString().padLeft(2, '0')}';
@@ -253,7 +237,6 @@ class _ChatSessionCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 채팅 아이콘
               Container(
                 width: 48,
                 height: 48,
@@ -272,7 +255,6 @@ class _ChatSessionCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // 채팅 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,7 +334,6 @@ class _ChatSessionCard extends StatelessWidget {
                 ),
               ),
 
-              // 액션 메뉴
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
@@ -407,7 +388,6 @@ class _ChatSessionCard extends StatelessWidget {
   }
 }
 
-/// 빈 세션 플레이스홀더
 class _EmptySessionsPlaceholder extends StatelessWidget {
   final VoidCallback onCreate;
 

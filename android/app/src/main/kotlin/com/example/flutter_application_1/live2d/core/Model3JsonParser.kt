@@ -5,17 +5,13 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * model3.json 파서
  * 
- * Live2D 모델의 model3.json 파일을 파싱하여
- * 모션, 표정, 텍스처 등의 정보를 추출합니다.
  */
 class Model3JsonParser(private val modelJsonPath: String) {
     
     private var jsonObject: JSONObject? = null
     private val modelDir: File = File(modelJsonPath).parentFile ?: File("")
     
-    // 파싱된 데이터
     var version: Int = 0
         private set
     var mocFile: String? = null
@@ -35,7 +31,6 @@ class Model3JsonParser(private val modelJsonPath: String) {
     var hitAreas: List<HitAreaInfo> = emptyList()
         private set
     
-    // === 데이터 클래스 ===
     
     data class DisplayInfo(
         val width: Int,
@@ -64,7 +59,6 @@ class Model3JsonParser(private val modelJsonPath: String) {
     )
     
     /**
-     * model3.json 파싱
      */
     fun parse(): Boolean {
         try {
@@ -103,10 +97,8 @@ class Model3JsonParser(private val modelJsonPath: String) {
     private fun parseFileReferences() {
         val fileRefs = jsonObject?.optJSONObject("FileReferences") ?: return
         
-        // Moc 파일
         mocFile = fileRefs.optString("Moc", null)?.let { resolveRelativePath(it) }
         
-        // 텍스처 목록
         val texturesArray = fileRefs.optJSONArray("Textures")
         textures = parseStringArray(texturesArray).map { resolveRelativePath(it) }
         
@@ -221,35 +213,30 @@ class Model3JsonParser(private val modelJsonPath: String) {
     }
     
     /**
-     * 모든 모션 그룹 이름 반환
      */
     fun getMotionGroupNames(): List<String> {
         return motionGroups.keys.toList()
     }
     
     /**
-     * 특정 모션 그룹의 모션 수 반환
      */
     fun getMotionCount(groupName: String): Int {
         return motionGroups[groupName]?.size ?: 0
     }
     
     /**
-     * 전체 모션 수 반환
      */
     fun getTotalMotionCount(): Int {
         return motionGroups.values.sumOf { it.size }
     }
     
     /**
-     * 모든 표정 이름 반환
      */
     fun getExpressionNames(): List<String> {
         return expressions.map { it.name }
     }
     
     /**
-     * 요약 정보 반환
      */
     fun getSummary(): Map<String, Any> {
         return mapOf(

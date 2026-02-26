@@ -11,21 +11,14 @@ import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
- * Live2D 모델 파일을 서빙하는 로컬 HTTP 서버 (Kotlin 네이티브)
  * 
- * 특징:
- * - 순수 Kotlin 구현 (외부 라이브러리 없음)
- * - URL 디코딩 완벽 지원 (한글, 공백, 특수문자)
- * - 대용량 파일 스트리밍
- * - Range 요청 지원
- * - CORS 헤더 완벽 지원
  */
 class Live2DLocalServer private constructor() {
     
     companion object {
         private const val TAG = "Live2DLocalServer"
         private const val DEFAULT_PORT = 8080
-        private const val BUFFER_SIZE = 8192 // 8KB 버퍼
+        private const val BUFFER_SIZE = 8192
         
         @Volatile
         private var instance: Live2DLocalServer? = null
@@ -47,10 +40,7 @@ class Live2DLocalServer private constructor() {
     val serverUrl: String get() = "http://localhost:$port"
     
     /**
-     * 서버 시작
      * 
-     * @param modelRoot 모델 파일들이 있는 루트 디렉토리 경로
-     * @param assetsProvider 앱 내장 assets를 제공하는 함수
      */
     fun start(modelRoot: String, assetsProvider: ((String) -> InputStream?)?): Boolean {
         if (isRunning) {
@@ -64,19 +54,15 @@ class Live2DLocalServer private constructor() {
             modelRootPath = modelRoot
             this.assetsProvider = assetsProvider
             
-            // 기존 소켓 정리
             serverSocket?.close()
             
-            // 서버 소켓 생성
             serverSocket = ServerSocket(port)
-            serverSocket?.soTimeout = 0 // 무한 대기
+            serverSocket?.soTimeout = 0
             
-            // 스레드 풀 생성 (최대 4개 동시 연결)
             executor = Executors.newFixedThreadPool(4)
             
             isRunning = true
             
-            // 연결 수락 스레드 시작
             thread(name = "Live2DServer") {
                 acceptConnections()
             }
@@ -92,7 +78,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 서버 중지
      */
     fun stop() {
         isRunning = false
@@ -101,14 +86,12 @@ class Live2DLocalServer private constructor() {
         try {
             serverSocket?.close()
         } catch (e: Exception) {
-            // 무시
         }
         serverSocket = null
         Log.i(TAG, "서버 중지됨")
     }
     
     /**
-     * 클라이언트 연결 수락 루프
      */
     private fun acceptConnections() {
         while (isRunning) {
@@ -126,20 +109,17 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 클라이언트 요청 처리
      */
     private fun handleClient(socket: Socket) {
         try {
-            socket.soTimeout = 30000 // 30초 타임아웃
+            socket.soTimeout = 30000
             
             val input = BufferedReader(InputStreamReader(socket.getInputStream()))
             val output = BufferedOutputStream(socket.getOutputStream())
             
-            // HTTP 요청 라인 읽기
             val requestLine = input.readLine() ?: return
             Log.d(TAG, "요청: $requestLine")
             
-            // 헤더 읽기
             val headers = mutableMapOf<String, String>()
             var line: String?
             while (input.readLine().also { line = it } != null && line!!.isNotEmpty()) {
@@ -151,7 +131,6 @@ class Live2DLocalServer private constructor() {
                 }
             }
             
-            // 요청 파싱
             val parts = requestLine.split(" ")
             if (parts.size < 2) {
                 sendError(output, 400, "Bad Request")
@@ -161,28 +140,23 @@ class Live2DLocalServer private constructor() {
             val method = parts[0]
             val rawPath = parts[1]
             
-            // OPTIONS 요청 (Preflight)
             if (method == "OPTIONS") {
                 sendOptions(output)
                 return
             }
             
-            // GET/HEAD 요청만 처리
             if (method != "GET" && method != "HEAD") {
                 sendError(output, 405, "Method Not Allowed")
                 return
             }
             
-            // URL 경로 파싱 (쿼리 스트링 분리)
             val pathWithQuery = rawPath.split("?", limit = 2)
             val path = decodeUrlPath(pathWithQuery[0])
             
             Log.d(TAG, "디코딩된 경로: $path")
             
-            // Range 헤더 확인
             val rangeHeader = headers["range"]
             
-            // 라우팅
             when {
                 path == "/" || path == "/index.html" || path.isEmpty() -> {
                     serveAsset(output, "web/index.html", rangeHeader)
@@ -206,13 +180,11 @@ class Live2DLocalServer private constructor() {
             try {
                 socket.close()
             } catch (e: Exception) {
-                // 무시
             }
         }
     }
     
     /**
-     * URL 경로 디코딩 (다중 인코딩 처리)
      */
     private fun decodeUrlPath(encodedPath: String): String {
         var decoded = encodedPath
@@ -229,7 +201,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 모델 파일 서빙
      */
     private fun serveModelFile(
         output: BufferedOutputStream,
@@ -242,7 +213,6 @@ class Live2DLocalServer private constructor() {
             return
         }
         
-        // 경로 탐색 공격 방지
         if (relativePath.contains("..")) {
             sendError(output, 403, "Forbidden")
             return
@@ -253,7 +223,6 @@ class Live2DLocalServer private constructor() {
         if (!filePath.exists()) {
             Log.w(TAG, "파일 없음: ${filePath.absolutePath}")
             
-            // 디버깅: 부모 디렉토리 내용 출력
             val parent = filePath.parentFile
             if (parent?.exists() == true) {
                 val contents = parent.listFiles()?.take(10)?.joinToString { it.name } ?: "(empty)"
@@ -274,7 +243,6 @@ class Live2DLocalServer private constructor() {
         
         Log.d(TAG, "파일 서빙: ${filePath.name} ($fileSize bytes, $mimeType)")
         
-        // Range 요청 처리
         if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
             servePartialContent(output, filePath, fileSize, mimeType, rangeHeader, headOnly)
         } else {
@@ -283,7 +251,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 앱 내장 asset 서빙
      */
     private fun serveAsset(output: BufferedOutputStream, assetPath: String, rangeHeader: String?) {
         val provider = assetsProvider ?: run {
@@ -304,7 +271,6 @@ class Live2DLocalServer private constructor() {
             
             Log.d(TAG, "Asset 서빙: $assetPath (${bytes.size} bytes, $mimeType)")
             
-            // 전체 응답
             val headers = buildString {
                 appendLine("HTTP/1.1 200 OK")
                 appendLine("Content-Type: $mimeType")
@@ -326,7 +292,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 전체 파일 응답
      */
     private fun serveFullContent(
         output: BufferedOutputStream,
@@ -361,7 +326,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 부분 콘텐츠 응답 (Range 요청)
      */
     private fun servePartialContent(
         output: BufferedOutputStream,
@@ -371,7 +335,6 @@ class Live2DLocalServer private constructor() {
         rangeHeader: String,
         headOnly: Boolean
     ) {
-        // Range: bytes=0-1023 형식 파싱
         val rangeSpec = rangeHeader.removePrefix("bytes=")
         val rangeParts = rangeSpec.split("-")
         
@@ -379,7 +342,6 @@ class Live2DLocalServer private constructor() {
         val end = if (rangeParts.size > 1 && rangeParts[1].isNotEmpty()) 
             rangeParts[1].toLong() else fileSize - 1
         
-        // 범위 유효성 검사
         if (start >= fileSize || end >= fileSize || start > end) {
             val headers = buildString {
                 appendLine("HTTP/1.1 416 Range Not Satisfiable")
@@ -425,7 +387,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * OPTIONS 응답 (CORS Preflight)
      */
     private fun sendOptions(output: BufferedOutputStream) {
         val headers = buildString {
@@ -438,7 +399,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * 에러 응답
      */
     private fun sendError(output: BufferedOutputStream, code: Int, message: String) {
         val body = """
@@ -463,7 +423,6 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * CORS 헤더 추가
      */
     private fun StringBuilder.appendCorsHeaders() {
         appendLine("Access-Control-Allow-Origin: *")
@@ -474,18 +433,15 @@ class Live2DLocalServer private constructor() {
     }
     
     /**
-     * MIME 타입 결정
      */
     private fun getMimeType(fileName: String): String {
         val ext = fileName.substringAfterLast('.', "").lowercase()
         return when (ext) {
-            // 웹 콘텐츠
             "html", "htm" -> "text/html; charset=utf-8"
             "js", "mjs" -> "application/javascript; charset=utf-8"
             "css" -> "text/css; charset=utf-8"
             "json" -> "application/json; charset=utf-8"
             
-            // 이미지
             "png" -> "image/png"
             "jpg", "jpeg" -> "image/jpeg"
             "gif" -> "image/gif"
@@ -493,12 +449,10 @@ class Live2DLocalServer private constructor() {
             "svg" -> "image/svg+xml"
             "ico" -> "image/x-icon"
             
-            // Live2D 전용
             "moc3", "moc" -> "application/octet-stream"
             "wasm" -> "application/wasm"
             "bin" -> "application/octet-stream"
             
-            // 기본
             else -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
                 ?: "application/octet-stream"
         }

@@ -1,12 +1,9 @@
 // ============================================================================
-// 권한 상태 타일 위젯 (Permission Status Tile Widget)
 // ============================================================================
-// 오버레이 및 저장소 권한 상태를 표시하고 요청하는 위젯입니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
-/// 권한 상태 타일 위젯
 class PermissionStatusTile extends StatelessWidget {
   final bool hasOverlayPermission;
   final bool hasStoragePermission;
@@ -40,7 +37,6 @@ class PermissionStatusTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더
             Row(
               children: [
                 Icon(
@@ -79,7 +75,6 @@ class PermissionStatusTile extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // 오버레이 권한
             _PermissionRow(
               icon: Icons.picture_in_picture,
               title: '오버레이 권한',
@@ -91,7 +86,6 @@ class PermissionStatusTile extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // 저장소 권한
             _PermissionRow(
               icon: Icons.folder,
               title: '저장소 권한',
@@ -101,7 +95,6 @@ class PermissionStatusTile extends StatelessWidget {
               isLoading: isLoading,
             ),
 
-            // 안내 메시지
             if (!allPermissionsGranted) ...[
               const SizedBox(height: 12),
               Container(
@@ -139,7 +132,6 @@ class PermissionStatusTile extends StatelessWidget {
   }
 }
 
-/// 권한 행 위젯
 class _PermissionRow extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -174,7 +166,6 @@ class _PermissionRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 상태 아이콘
           Container(
             width: 40,
             height: 40,
@@ -192,7 +183,6 @@ class _PermissionRow extends StatelessWidget {
 
           const SizedBox(width: 12),
 
-          // 텍스트
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -253,7 +243,6 @@ class _PermissionRow extends StatelessWidget {
             ),
           ),
 
-          // 요청 버튼
           if (!isGranted)
             FilledButton.tonal(
               onPressed: isLoading ? null : onRequest,

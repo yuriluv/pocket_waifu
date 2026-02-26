@@ -35,35 +35,35 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   
-  # 상태 관리 패키지 - 앱 전체에서 데이터를 공유하고 관리합니다
+
   provider: ^6.1.2
   
-  # HTTP 요청 패키지 - OpenAI/Anthropic API와 통신합니다
+
   http: ^1.2.2
   
-  # UUID 생성 패키지 - 메시지 고유 ID를 만듭니다
+
   uuid: ^4.5.1
   
-  # 로컬 저장소 패키지 - 설정값과 대화 내역을 저장합니다
+
   shared_preferences: ^2.3.3
   
-  # 날짜/시간 포맷 패키지 - 채팅 목록에서 날짜 표시용
+
   intl: ^0.19.0
 
   # ============================================================================
-  # Phase 2: Live2D 오버레이 시스템용 패키지 (Native OpenGL 방식)
+
   # ============================================================================
   
-  # 권한 처리 - 저장소 접근, 오버레이 권한 요청
+
   permission_handler: ^11.3.1
   
-  # 파일 경로 유틸리티 - 앱 디렉토리 경로 조회
+
   path_provider: ^2.1.5
   
-  # 파일 시스템 유틸리티 - 경로 조합
+
   path: ^1.9.1
   
-  # 파일/폴더 선택기 - Live2D 모델 폴더 선택
+
   file_picker: ^8.0.0
 
 dev_dependencies:

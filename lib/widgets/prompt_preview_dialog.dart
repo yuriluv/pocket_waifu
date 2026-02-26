@@ -1,8 +1,5 @@
 // ============================================================================
-// 프롬프트 미리보기 다이얼로그 (Prompt Preview Dialog) - v2.0.3
 // ============================================================================
-// 현재 프롬프트 블록들이 조합된 최종 프롬프트를 미리보는 다이얼로그입니다.
-// v2.0.3: 실제 API 전송 프롬프트 표시, 과거 기억 토글 지원
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -12,13 +9,11 @@ import '../providers/chat_provider.dart';
 import '../providers/prompt_block_provider.dart';
 import '../models/message.dart';
 
-/// 프롬프트 미리보기 다이얼로그 (v2.0.3 - 완전 개편)
 class PromptPreviewDialog extends StatefulWidget {
-  final String promptText; // 레거시 호환용
+  final String promptText;
 
   const PromptPreviewDialog({super.key, required this.promptText});
 
-  /// 다이얼로그를 표시합니다 (레거시 호환)
   static Future<void> show(BuildContext context, String promptText) {
     return showDialog(
       context: context,
@@ -26,7 +21,6 @@ class PromptPreviewDialog extends StatefulWidget {
     );
   }
 
-  /// ⭐ v2.0.3: 새로운 방식 - 실제 API 전송 프롬프트 표시
   static Future<void> showWithRealPrompt(BuildContext context) {
     return showDialog(
       context: context,
@@ -39,7 +33,6 @@ class PromptPreviewDialog extends StatefulWidget {
 }
 
 class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
-  /// 프롬프트를 클립보드에 복사합니다
   Future<void> _copyToClipboard(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: widget.promptText));
 
@@ -56,11 +49,9 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // 프롬프트 통계 계산
     final int charCount = widget.promptText.length;
     final int wordCount = widget.promptText.split(RegExp(r'\s+')).length;
     final int lineCount = widget.promptText.split('\n').length;
-    // 대략적인 토큰 수 추정 (영어 기준 4자 = 1토큰, 한글 기준 2자 = 1토큰)
     final int estimatedTokens = (charCount / 2.5).round();
 
     return Dialog(
@@ -71,7 +62,6 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // === 헤더 ===
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -89,7 +79,6 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
               ],
             ),
 
-            // === 통계 정보 ===
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               decoration: BoxDecoration(
@@ -109,7 +98,6 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
 
             const SizedBox(height: 12),
 
-            // === 프롬프트 내용 ===
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(12),
@@ -138,7 +126,6 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
 
             const SizedBox(height: 12),
 
-            // === 하단 버튼 ===
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,
@@ -162,7 +149,6 @@ class _PromptPreviewDialogState extends State<PromptPreviewDialog> {
   }
 }
 
-/// ⭐ v2.0.3: 실제 API 전송 프롬프트를 보여주는 다이얼로그
 class _RealPromptPreviewDialog extends StatefulWidget {
   const _RealPromptPreviewDialog();
 
@@ -191,7 +177,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
       if (block.type == 'past_memory') {
         if (_includePastMemory && pastMessages.isNotEmpty) {
           buffer.writeln('[과거 대화]');
-          // 최근 메시지만 표시
           final recentMessages = pastMessages.length > pastCount
               ? pastMessages.sublist(pastMessages.length - pastCount)
               : pastMessages;
@@ -207,7 +192,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
         buffer.writeln('[사용자 입력]');
         buffer.writeln('(현재 입력 위치)');
       } else {
-        // 일반 블록: 내용만 표시 (헤더 없음)
         if (block.content.isNotEmpty) {
           buffer.writeln(block.content);
         }
@@ -237,7 +221,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
     final chatProvider = context.watch<ChatProvider>();
     final promptText = _buildPreviewText(blockProvider, chatProvider);
 
-    // 통계 계산
     final int charCount = promptText.length;
     final int estimatedTokens = (charCount / 2.5).round();
     final int messageCount = chatProvider.messages.length;
@@ -250,7 +233,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // === 헤더 ===
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -268,7 +250,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
               ],
             ),
 
-            // === 과거 기억 토글 ===
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               margin: const EdgeInsets.only(bottom: 8),
@@ -312,7 +293,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
               ),
             ),
 
-            // === 통계 정보 ===
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               decoration: BoxDecoration(
@@ -331,7 +311,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
 
             const SizedBox(height: 12),
 
-            // === 프롬프트 내용 ===
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(12),
@@ -356,7 +335,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
 
             const SizedBox(height: 12),
 
-            // === 하단 버튼 ===
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,
@@ -380,7 +358,6 @@ class _RealPromptPreviewDialogState extends State<_RealPromptPreviewDialog> {
   }
 }
 
-/// 통계 아이템 위젯
 class _StatItem extends StatelessWidget {
   final String label;
   final String value;
@@ -402,7 +379,6 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-/// 도움말 다이얼로그 (명령어 목록)
 class CommandHelpDialog extends StatelessWidget {
   const CommandHelpDialog({super.key});
 
@@ -490,7 +466,6 @@ class CommandHelpDialog extends StatelessWidget {
   }
 }
 
-/// 명령어 아이템 위젯
 class _CommandItem extends StatelessWidget {
   final String command;
   final String description;

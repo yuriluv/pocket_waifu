@@ -8,13 +8,10 @@ import io.flutter.plugin.common.EventChannel
 /**
  * Live2D Event Stream Handler
  * 
- * Native에서 Flutter로 이벤트를 전송하기 위한 핸들러입니다.
- * 상호작용 이벤트, 시스템 이벤트 등을 Flutter로 전달합니다.
  */
 class Live2DEventStreamHandler : EventChannel.StreamHandler {
     
     companion object {
-        // 싱글톤 인스턴스 (어디서든 이벤트 전송 가능하도록)
         @Volatile
         private var instance: Live2DEventStreamHandler? = null
         
@@ -39,7 +36,6 @@ class Live2DEventStreamHandler : EventChannel.StreamHandler {
     }
     
     /**
-     * Flutter로 이벤트 전송 (Map 형태)
      */
     fun sendEvent(event: Map<String, Any?>) {
         mainHandler.post {
@@ -52,12 +48,7 @@ class Live2DEventStreamHandler : EventChannel.StreamHandler {
     }
     
     /**
-     * 상호작용 이벤트 전송
      * 
-     * @param type 이벤트 유형 (tap, doubleTap, longPress, swipeUp 등)
-     * @param x 터치 X 좌표 (nullable)
-     * @param y 터치 Y 좌표 (nullable)
-     * @param extras 추가 데이터 (nullable)
      */
     fun sendInteractionEvent(
         type: String,
@@ -79,56 +70,48 @@ class Live2DEventStreamHandler : EventChannel.StreamHandler {
     }
     
     /**
-     * 시스템 이벤트 전송
      */
     fun sendSystemEvent(type: String, extras: Map<String, Any?>? = null) {
         sendInteractionEvent(type, extras = extras)
     }
     
     /**
-     * 오버레이 표시됨 이벤트
      */
     fun sendOverlayShown() {
         sendSystemEvent("overlayShown")
     }
     
     /**
-     * 오버레이 숨겨짐 이벤트
      */
     fun sendOverlayHidden() {
         sendSystemEvent("overlayHidden")
     }
     
     /**
-     * 모델 로드됨 이벤트
      */
     fun sendModelLoaded(modelPath: String) {
         sendSystemEvent("modelLoaded", mapOf("path" to modelPath))
     }
     
     /**
-     * 모델 언로드됨 이벤트
      */
     fun sendModelUnloaded() {
         sendSystemEvent("modelUnloaded")
     }
     
     /**
-     * 모션 시작됨 이벤트
      */
     fun sendMotionStarted(group: String, index: Int) {
         sendSystemEvent("motionStarted", mapOf("group" to group, "index" to index))
     }
     
     /**
-     * 모션 완료됨 이벤트
      */
     fun sendMotionFinished(group: String, index: Int) {
         sendSystemEvent("motionFinished", mapOf("group" to group, "index" to index))
     }
     
     /**
-     * 제스처 결과 전송
      */
     fun sendGestureResult(gestureResult: Map<String, Any>) {
         sendEvent(gestureResult)
@@ -136,7 +119,6 @@ class Live2DEventStreamHandler : EventChannel.StreamHandler {
     }
     
     /**
-     * 외부 신호 수신 확인 이벤트
      */
     fun sendSignalReceived(signalName: String, data: Map<String, Any?>?) {
         sendSystemEvent("signalReceived", mapOf(
@@ -146,7 +128,6 @@ class Live2DEventStreamHandler : EventChannel.StreamHandler {
     }
     
     /**
-     * 에러 이벤트 전송
      */
     fun sendError(code: String, message: String, details: Any? = null) {
         mainHandler.post {

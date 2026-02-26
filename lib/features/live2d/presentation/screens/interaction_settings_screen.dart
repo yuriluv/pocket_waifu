@@ -1,8 +1,5 @@
 // ============================================================================
-// 상호작용 설정 화면 (Interaction Settings Screen)
 // ============================================================================
-// 모션/표정 테스트, 상호작용 매핑, 자동 동작을 통합 관리하는 화면입니다.
-// Phase 9: 상호작용 설정 통합
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -13,7 +10,6 @@ import '../../domain/entities/gesture_config.dart';
 import '../../domain/entities/interaction_event.dart';
 import 'auto_behavior_settings_screen.dart';
 
-/// 상호작용 설정 화면 (탭 기반)
 class InteractionSettingsScreen extends StatefulWidget {
   const InteractionSettingsScreen({super.key});
 
@@ -70,7 +66,6 @@ class _InteractionSettingsScreenState extends State<InteractionSettingsScreen>
 }
 
 // ============================================================================
-// 탭 1: 모션/표정 테스트
 // ============================================================================
 
 class _MotionTestTab extends StatefulWidget {
@@ -104,16 +99,13 @@ class _MotionTestTabState extends State<_MotionTestTab>
   Future<void> _loadModelInfo() async {
     setState(() => _isLoading = true);
     try {
-      // 모션 그룹 목록 가져오기
       _motionGroups = await _bridge.getMotionGroups();
       
-      // 각 그룹별 모션 수 조회
       for (final group in _motionGroups) {
         _motionCounts[group] = await _bridge.getMotionCount(group);
         _motionNames[group] = await _bridge.getMotionNames(group);
       }
       
-      // 표정 목록 가져오기
       _expressions = await _bridge.getExpressions();
       
       live2dLog.info('MotionTest', '모델 정보 로드 완료',
@@ -136,7 +128,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
       live2dLog.error('MotionTest', '모션 재생 실패', error: e);
     }
     
-    // 2초 후 재생 표시 해제
     await Future.delayed(const Duration(seconds: 2));
     if (mounted) {
       setState(() => _playingMotion = null);
@@ -209,7 +200,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
       child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
-          // === 모션 그룹 섹션 ===
           if (_motionGroups.isNotEmpty) ...[
             _buildSectionHeader(theme, Icons.animation, '모션 그룹',
                 trailing: Text('${_motionGroups.length}개',
@@ -217,7 +207,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
             ..._motionGroups.map((group) => _buildMotionGroupTile(theme, group)),
           ],
 
-          // === 표정 섹션 ===
           if (_expressions.isNotEmpty) ...[
             const SizedBox(height: 8),
             _buildSectionHeader(theme, Icons.face, '표정',
@@ -228,7 +217,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
           
           const SizedBox(height: 16),
           
-          // 새로고침 안내
           Card(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: Padding(
@@ -346,7 +334,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
           spacing: 8,
           runSpacing: 8,
           children: [
-            // 기본 표정 (초기화)
             Padding(
               padding: const EdgeInsets.only(left: 16),
               child: ActionChip(
@@ -362,7 +349,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
                     : null,
               ),
             ),
-            // 표정 목록
             ..._expressions.map((expr) => Padding(
                   padding: const EdgeInsets.only(left: 8),
                   child: ActionChip(
@@ -385,7 +371,6 @@ class _MotionTestTabState extends State<_MotionTestTab>
 }
 
 // ============================================================================
-// 탭 2: 상호작용 매핑
 // ============================================================================
 
 class _InteractionMappingTab extends StatefulWidget {
@@ -459,7 +444,6 @@ class _InteractionMappingTabState extends State<_InteractionMappingTab>
 
     return Column(
       children: [
-        // 저장 버튼 바
         if (_hasChanges)
           Container(
             width: double.infinity,
@@ -490,7 +474,6 @@ class _InteractionMappingTabState extends State<_InteractionMappingTab>
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
-              // === 제스처 활성화 ===
               _buildSectionHeader(theme, '제스처 활성화', '인식할 제스처를 선택하세요'),
 
               _buildGestureToggle(
@@ -523,7 +506,6 @@ class _InteractionMappingTabState extends State<_InteractionMappingTab>
 
               const Divider(indent: 16, endIndent: 16),
 
-              // === 제스처 매핑 ===
               _buildSectionHeader(theme, '제스처 동작 매핑',
                   '각 제스처에 수행할 동작을 설정하세요'),
               
@@ -689,7 +671,6 @@ class _InteractionMappingTabState extends State<_InteractionMappingTab>
 }
 
 // ============================================================================
-// 상호작용 매핑 바텀시트 (모션/표정 직접 선택)
 // ============================================================================
 
 class _InteractionMappingSheet extends StatefulWidget {
@@ -752,7 +733,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
           ),
           child: Column(
             children: [
-              // 핸들
               Container(
                 margin: const EdgeInsets.only(top: 8),
                 width: 40,
@@ -764,7 +744,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                 ),
               ),
 
-              // 헤더
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -791,7 +770,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                 child: ListView(
                   controller: scrollController,
                   children: [
-                    // === 동작 유형 선택 ===
                     _buildSectionTitle(theme, '동작 유형'),
 
                     RadioListTile<GestureActionType>(
@@ -826,7 +804,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                           setState(() => _selectedActionType = v!),
                     ),
 
-                    // === 모션 선택 (그룹 드롭다운 + 인덱스) ===
                     if (_selectedActionType == GestureActionType.playMotion) ...[
                       const Divider(),
                       _buildSectionTitle(theme, '모션 선택'),
@@ -836,7 +813,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                           child: Text('사용 가능한 모션 그룹이 없습니다.\n모델을 먼저 로드해주세요.'),
                         )
                       else ...[
-                        // 모션 그룹 드롭다운
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           child: DropdownButtonFormField<String>(
@@ -861,7 +837,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                             },
                           ),
                         ),
-                        // 모션 인덱스
                         if (_selectedMotionGroup != null) ...[
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -893,7 +868,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
                       ],
                     ],
 
-                    // === 표정 선택 ===
                     if (_selectedActionType ==
                         GestureActionType.setExpression) ...[
                       const Divider(),
@@ -976,7 +950,6 @@ class _InteractionMappingSheetState extends State<_InteractionMappingSheet> {
 }
 
 // ============================================================================
-// 탭 3: 자동 동작
 // ============================================================================
 
 class _AutoBehaviorTab extends StatefulWidget {
@@ -996,7 +969,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
   bool _hasChanges = false;
   bool _autoMotionEnabled = true;
   
-  // 액세서리 관련
   List<Map<String, dynamic>> _accessories = [];
 
   @override
@@ -1020,7 +992,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
   Future<void> _saveSettings() async {
     await _configService.saveAutoBehaviorSettings(_settings);
 
-    // Native에 설정 적용
     await _bridge.setEyeBlink(_settings.eyeBlinkEnabled);
     await _bridge.setBreathing(_settings.breathingEnabled);
     await _bridge.setLookAt(_settings.lookAtEnabled);
@@ -1052,7 +1023,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
     return Column(
       children: [
-        // 저장 버튼 바
         if (_hasChanges)
           Container(
             width: double.infinity,
@@ -1083,7 +1053,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
           child: ListView(
             padding: const EdgeInsets.only(bottom: 32),
             children: [
-              // === 눈 깜빡임 ===
               _buildSectionHeader(theme, Icons.visibility, '눈 깜빡임'),
               SwitchListTile(
                 secondary: const Icon(Icons.remove_red_eye),
@@ -1108,7 +1077,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
               const Divider(indent: 16, endIndent: 16),
 
-              // === 호흡 ===
               _buildSectionHeader(theme, Icons.air, '호흡'),
               SwitchListTile(
                 secondary: const Icon(Icons.air),
@@ -1134,7 +1102,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
               const Divider(indent: 16, endIndent: 16),
 
-              // === 시선 추적 ===
               _buildSectionHeader(theme, Icons.track_changes, '시선 추적'),
               SwitchListTile(
                 secondary: const Icon(Icons.remove_red_eye_outlined),
@@ -1160,7 +1127,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
               const Divider(indent: 16, endIndent: 16),
 
-              // === 자동 모션 ===
               _buildSectionHeader(theme, Icons.animation, '자동 모션'),
               SwitchListTile(
                 secondary: const Icon(Icons.play_circle_outline),
@@ -1173,7 +1139,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
                 },
               ),
 
-              // === 액세서리 ===
               if (_accessories.isNotEmpty) ...[
                 const Divider(indent: 16, endIndent: 16),
                 _buildSectionHeader(theme, Icons.checkroom, '액세서리'),
@@ -1187,7 +1152,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
                     value: enabled,
                     onChanged: (v) async {
                       await _bridge.setAccessory(id, v);
-                      // 목록 새로고침
                       _accessories = await _bridge.getAccessories();
                       if (mounted) setState(() {});
                     },
@@ -1197,7 +1161,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
               const SizedBox(height: 16),
 
-              // === 초기화 버튼 ===
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: OutlinedButton.icon(
@@ -1211,7 +1174,6 @@ class _AutoBehaviorTabState extends State<_AutoBehaviorTab>
 
               const SizedBox(height: 16),
 
-              // === 안내 카드 ===
               Card(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 child: Padding(

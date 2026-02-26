@@ -1,41 +1,30 @@
 // ============================================================================
-// 설정 모델 (Settings Model) - v2
 // ============================================================================
-// 이 파일은 앱의 설정값들을 정의합니다.
-// API 키, 모델 선택, 생성 파라미터 등을 관리합니다.
-// GitHub Copilot API 지원이 추가되었습니다.
 // ============================================================================
 
-/// 사용할 AI API 제공자를 정의하는 열거형
 enum ApiProvider {
-  openai, // OpenAI (GPT 모델)
-  anthropic, // Anthropic (Claude 모델)
+  openai,
+  anthropic,
   copilot, // GitHub Copilot
 }
 
-/// 앱 설정을 담는 클래스
 class AppSettings {
-  // === API 설정 ===
-  final ApiProvider apiProvider; // 현재 선택된 API 제공자
-  final String openaiApiKey; // OpenAI API 키
-  final String anthropicApiKey; // Anthropic API 키
-  final String copilotApiKey; // GitHub Copilot API 키 (gho_xxxxx)
-  final String openaiModel; // OpenAI 모델명 (예: gpt-4, gpt-3.5-turbo)
-  final String anthropicModel; // Anthropic 모델명 (예: claude-3-opus)
-  final String copilotModel; // Copilot 모델명 (예: gpt-4o)
+  final ApiProvider apiProvider;
+  final String openaiApiKey;
+  final String anthropicApiKey;
+  final String copilotApiKey;
+  final String openaiModel;
+  final String anthropicModel;
+  final String copilotModel;
 
-  // === 생성 파라미터 ===
-  // 이 값들은 AI가 텍스트를 생성할 때 영향을 줍니다
-  final double temperature; // 온도: 높을수록 창의적, 낮을수록 일관적 (0.0~2.0)
-  final double topP; // Top-P: 확률 분포 자르기 (0.0~1.0)
-  final int maxTokens; // 최대 토큰 수: AI 응답의 최대 길이
-  final double frequencyPenalty; // 빈도 패널티: 반복 단어 억제 (-2.0~2.0)
-  final double presencePenalty; // 존재 패널티: 새로운 주제 유도 (-2.0~2.0)
+  final double temperature;
+  final double topP;
+  final int maxTokens;
+  final double frequencyPenalty;
+  final double presencePenalty;
 
-  // === 프롬프트 설정 (deprecated - use Prompt Blocks instead) ===
-  final String systemPrompt; // 시스템 프롬프트 (AI에게 주는 기본 지시사항)
+  final String systemPrompt;
 
-  /// AppSettings 생성자
   AppSettings({
     this.apiProvider = ApiProvider.openai,
     this.openaiApiKey = '',
@@ -52,7 +41,6 @@ class AppSettings {
     this.systemPrompt = '',
   });
 
-  /// 현재 선택된 API 제공자의 API 키를 반환합니다
   String get currentApiKey {
     switch (apiProvider) {
       case ApiProvider.openai:
@@ -64,7 +52,6 @@ class AppSettings {
     }
   }
 
-  /// 현재 선택된 모델명을 반환합니다
   String get currentModel {
     switch (apiProvider) {
       case ApiProvider.openai:
@@ -76,7 +63,6 @@ class AppSettings {
     }
   }
 
-  /// API 제공자 이름을 문자열로 반환합니다
   String get apiProviderString {
     switch (apiProvider) {
       case ApiProvider.openai:
@@ -88,7 +74,6 @@ class AppSettings {
     }
   }
 
-  /// AppSettings 객체를 Map으로 변환합니다 (저장용)
   Map<String, dynamic> toMap() {
     return {
       'apiProvider': apiProviderString,
@@ -107,9 +92,7 @@ class AppSettings {
     };
   }
 
-  /// Map에서 AppSettings 객체를 생성합니다 (불러오기용)
   factory AppSettings.fromMap(Map<String, dynamic> map) {
-    // 문자열을 ApiProvider로 변환
     ApiProvider provider;
     switch (map['apiProvider']) {
       case 'anthropic':
@@ -139,7 +122,6 @@ class AppSettings {
     );
   }
 
-  /// 설정 복사본을 만듭니다 (일부 속성만 변경할 때 사용)
   AppSettings copyWith({
     ApiProvider? apiProvider,
     String? openaiApiKey,

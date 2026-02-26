@@ -24,13 +24,8 @@ import java.net.URLEncoder
 import com.example.flutter_application_1.live2d.Live2DPlugin
 
 /**
- * MainActivity - Live2D 모델 로딩 지원 (v3.0)
  * 
- * 두 가지 방식 지원:
- * 1. Kotlin 네이티브 HTTP 서버 (기본값, 더 안정적)
- * 2. WebViewAssetLoader (실험적)
  * 
- * MethodChannel을 통해 Flutter와 통신
  */
 class MainActivity : FlutterActivity() {
     
@@ -39,11 +34,9 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
         
-        // 서버 설정
         private const val SERVER_PORT = 8080
         private const val SERVER_HOST = "localhost"
         
-        // 경로 프리픽스
         const val MODELS_PATH = "/models/"
         const val ASSETS_PATH = "/assets/"
     }
@@ -56,8 +49,6 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Android 13+ (TIRAMISU): 알림 권한 요청
-        // 포그라운드 서비스 알림 표시에 필수
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -69,7 +60,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        // 배터리 최적화 제외 요청 (삼성 등 OEM 공격적 프로세스 관리 대응)
         requestBatteryOptimizationExemption()
     }
     
@@ -89,10 +79,7 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
-     * 배터리 최적화 제외 요청
      * 
-     * 삼성의 FreecessController 등 OEM 공격적 프로세스 관리로 인해
-     * 포그라운드 서비스가 강제 종료되는 것을 방지합니다.
      */
     private fun requestBatteryOptimizationExemption() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -117,15 +104,12 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        // Live2D Native Plugin 등록
         flutterEngine.plugins.add(Live2DPlugin())
         
-        // MethodChannel 설정 (기존 WebView용 - 추후 제거 예정)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME).setMethodCallHandler { call, result ->
             Log.d(TAG, "MethodChannel 호출: ${call.method}")
             
             when (call.method) {
-                // 모델 루트 경로 설정 및 서버 시작
                 "setModelRootPath" -> {
                     val path = call.argument<String>("path")
                     if (path != null) {
@@ -136,13 +120,11 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 
-                // 서버 중지
                 "stopServer" -> {
                     stopServer()
                     result.success(true)
                 }
                 
-                // 모델 URL 생성
                 "getModelUrl" -> {
                     val relativePath = call.argument<String>("relativePath")
                     if (relativePath != null) {
@@ -153,7 +135,6 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 
-                // WebView 전체 URL 생성
                 "getWebViewUrl" -> {
                     val relativePath = call.argument<String>("relativePath")
                     if (relativePath != null) {
@@ -164,7 +145,6 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 
-                // 현재 설정 정보 반환
                 "getConfig" -> {
                     result.success(mapOf(
                         "serverUrl" to serverUrl,
@@ -183,7 +163,6 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
-     * 모델 루트 경로 설정 및 서버 시작
      */
     private fun setModelRootPath(path: String): Boolean {
         Log.d(TAG, "========================================")
@@ -191,7 +170,6 @@ class MainActivity : FlutterActivity() {
         Log.d(TAG, "========================================")
         Log.d(TAG, "경로: $path")
         
-        // 디렉토리 존재 확인
         val dir = File(path)
         if (!dir.exists() || !dir.isDirectory) {
             Log.e(TAG, "❌ 디렉토리가 존재하지 않습니다: $path")
@@ -200,17 +178,13 @@ class MainActivity : FlutterActivity() {
         
         modelRootPath = path
         
-        // assets 제공자 (Flutter assets 파일 접근)
-        // Flutter assets는 빌드 후 flutter_assets/ 폴더에 위치
         val assetsProvider: (String) -> InputStream? = { assetPath ->
             try {
-                // Flutter assets 경로로 변환
                 val flutterAssetPath = "flutter_assets/assets/$assetPath"
                 Log.d(TAG, "Asset 요청: $assetPath -> $flutterAssetPath")
                 assets.open(flutterAssetPath)
             } catch (e: Exception) {
                 Log.w(TAG, "Asset 열기 실패: $assetPath (${e.message})")
-                // fallback: 원래 경로로 시도
                 try {
                     assets.open(assetPath)
                 } catch (e2: Exception) {
@@ -220,7 +194,6 @@ class MainActivity : FlutterActivity() {
             }
         }
         
-        // 네이티브 서버 시작
         val success = localServer.start(path, assetsProvider)
         
         if (success) {
@@ -236,7 +209,6 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
-     * 서버 중지
      */
     private fun stopServer() {
         localServer.stop()
@@ -244,19 +216,14 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
-     * 모델 파일의 URL 생성
      * 
-     * 입력: "IceGirl_Live2d/IceGIrl Live2D/IceGirl.model3.json"
-     * 출력: "http://localhost:8080/models/IceGirl_Live2d/IceGIrl%20Live2D/IceGirl.model3.json"
      */
     private fun getModelUrl(relativePath: String): String {
-        // 경로 구분자 정규화
         val normalizedPath = relativePath.replace("\\", "/")
         
-        // 각 세그먼트별 URL 인코딩
         val encodedPath = normalizedPath.split("/").joinToString("/") { segment ->
             URLEncoder.encode(segment, "UTF-8")
-                .replace("+", "%20")  // 공백 처리
+                .replace("+", "%20")
         }
         
         val url = "$serverUrl$MODELS_PATH$encodedPath"
@@ -265,24 +232,18 @@ class MainActivity : FlutterActivity() {
     }
     
     /**
-     * WebView에서 로드할 전체 URL 생성
      * 
-     * 출력: "http://localhost:8080/?model=/models/..."
      */
     private fun getWebViewUrl(relativePath: String): String {
-        // 경로 구분자 정규화
         val normalizedPath = relativePath.replace("\\", "/")
         
-        // 각 세그먼트별 URL 인코딩
         val encodedPath = normalizedPath.split("/").joinToString("/") { segment ->
             URLEncoder.encode(segment, "UTF-8")
                 .replace("+", "%20")
         }
         
-        // 모델 경로
         val modelUrl = "$MODELS_PATH$encodedPath"
         
-        // 쿼리 파라미터로 인코딩
         val encodedModelParam = URLEncoder.encode(modelUrl, "UTF-8")
         
         val url = "$serverUrl/?model=$encodedModelParam"

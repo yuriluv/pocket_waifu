@@ -6,7 +6,6 @@ import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
- * 제스처 유형
  */
 enum class GestureType {
     TAP,
@@ -22,7 +21,6 @@ enum class GestureType {
 }
 
 /**
- * 제스처 감지 결과
  */
 data class GestureResult(
     val type: GestureType,
@@ -42,42 +40,33 @@ data class GestureResult(
 }
 
 /**
- * 제스처 설정
  */
 data class GestureConfig(
-    // 탭 인식 설정
-    val tapTimeout: Long = 300L,                    // 탭으로 인식할 최대 시간 (ms)
-    val tapMoveThreshold: Float = 20f,              // 탭으로 인식할 최대 이동 거리 (px)
+    val tapTimeout: Long = 300L,
+    val tapMoveThreshold: Float = 20f,
     
-    // 더블탭 인식 설정
-    val doubleTapTimeout: Long = 300L,              // 더블탭 간격 최대 시간 (ms)
-    val doubleTapDistanceThreshold: Float = 50f,    // 더블탭 위치 허용 오차 (px)
+    val doubleTapTimeout: Long = 300L,
+    val doubleTapDistanceThreshold: Float = 50f,
     
-    // 롱프레스 인식 설정
-    val longPressTimeout: Long = 500L,              // 롱프레스 인식 시간 (ms)
-    val longPressMoveThreshold: Float = 20f,        // 롱프레스 중 허용 이동 거리 (px)
+    val longPressTimeout: Long = 500L,
+    val longPressMoveThreshold: Float = 20f,
     
-    // 스와이프 인식 설정
-    val swipeMinDistance: Float = 100f,             // 스와이프 최소 거리 (px)
-    val swipeMinVelocity: Float = 500f,             // 스와이프 최소 속도 (px/s)
-    val swipeAngleTolerance: Float = 30f,           // 방향 인식 각도 허용 오차 (도)
+    val swipeMinDistance: Float = 100f,
+    val swipeMinVelocity: Float = 500f,
+    val swipeAngleTolerance: Float = 30f,
     
-    // 머리 쓰다듬기 인식 설정
-    val headPatMinDirectionChanges: Int = 3,        // 방향 전환 최소 횟수
-    val headPatMinDistance: Float = 50f,            // 최소 이동 거리 (px)
+    val headPatMinDirectionChanges: Int = 3,
+    val headPatMinDistance: Float = 50f,
     
-    // 찌르기 (연타) 인식 설정
-    val pokeMinTaps: Int = 3,                       // 연타로 인식할 최소 탭 수
-    val pokeMaxInterval: Long = 150L,               // 연타 간격 최대 시간 (ms)
+    val pokeMinTaps: Int = 3,
+    val pokeMaxInterval: Long = 150L,
     
-    // 기능 활성화
     val enableSwipe: Boolean = true,
     val enableHeadPat: Boolean = true,
     val enablePoke: Boolean = true
 )
 
 /**
- * 터치 포인트 기록
  */
 data class TouchPoint(
     val x: Float,
@@ -94,12 +83,10 @@ data class TouchPoint(
 }
 
 /**
- * 제스처 분석을 위한 유틸리티
  */
 object GestureUtils {
     
     /**
-     * 두 점 사이의 거리
      */
     fun distance(p1: PointF, p2: PointF): Float {
         val dx = p2.x - p1.x
@@ -108,8 +95,6 @@ object GestureUtils {
     }
     
     /**
-     * 두 점 사이의 각도 (도)
-     * 0도 = 오른쪽, 90도 = 아래쪽
      */
     fun angle(from: PointF, to: PointF): Float {
         val dx = to.x - from.x
@@ -118,23 +103,17 @@ object GestureUtils {
     }
     
     /**
-     * 각도를 스와이프 방향으로 변환
      */
     fun angleToSwipeDirection(angle: Float, tolerance: Float): GestureType? {
-        // 각도 정규화 (-180 ~ 180)
         val normalizedAngle = ((angle % 360) + 360) % 360
         
         return when {
-            // 오른쪽: -tolerance ~ +tolerance (0도 기준)
             normalizedAngle <= tolerance || normalizedAngle >= 360 - tolerance -> GestureType.SWIPE_RIGHT
             
-            // 아래쪽: 90 - tolerance ~ 90 + tolerance
             normalizedAngle in (90 - tolerance)..(90 + tolerance) -> GestureType.SWIPE_DOWN
             
-            // 왼쪽: 180 - tolerance ~ 180 + tolerance
             normalizedAngle in (180 - tolerance)..(180 + tolerance) -> GestureType.SWIPE_LEFT
             
-            // 위쪽: 270 - tolerance ~ 270 + tolerance
             normalizedAngle in (270 - tolerance)..(270 + tolerance) -> GestureType.SWIPE_UP
             
             else -> null
@@ -142,7 +121,6 @@ object GestureUtils {
     }
     
     /**
-     * 속도 계산 (px/s)
      */
     fun velocity(p1: TouchPoint, p2: TouchPoint): Float {
         val dist = p1.distanceTo(p2)
@@ -151,7 +129,6 @@ object GestureUtils {
     }
     
     /**
-     * 방향 전환 횟수 계산 (머리 쓰다듬기 감지용)
      */
     fun countDirectionChanges(points: List<TouchPoint>, axis: Axis = Axis.X): Int {
         if (points.size < 3) return 0

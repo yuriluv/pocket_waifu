@@ -1,21 +1,17 @@
 // ============================================================================
-// 자동 동작 설정 화면 (Auto Behavior Settings Screen)
 // ============================================================================
-// 눈 깜빡임, 호흡, 시선 추적 등 자동 동작을 설정하는 화면입니다.
-// Phase 5: UI/UX 개선
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/interaction_config_service.dart';
 
-/// 자동 동작 설정
 class AutoBehaviorSettings {
   final bool eyeBlinkEnabled;
   final bool breathingEnabled;
   final bool lookAtEnabled;
-  final double eyeBlinkInterval;  // 초 단위
-  final double breathingSpeed;    // 1.0 = 기본
+  final double eyeBlinkInterval;
+  final double breathingSpeed;
   final double lookAtSensitivity; // 0.0 ~ 1.0
 
   const AutoBehaviorSettings({
@@ -66,7 +62,6 @@ class AutoBehaviorSettings {
   }
 }
 
-/// 자동 동작 설정 화면
 class AutoBehaviorSettingsScreen extends StatefulWidget {
   const AutoBehaviorSettingsScreen({super.key});
 
@@ -99,7 +94,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
   Future<void> _saveSettings() async {
     await _configService.saveAutoBehaviorSettings(_settings);
     
-    // Native에 설정 적용
     await _bridge.setEyeBlink(_settings.eyeBlinkEnabled);
     await _bridge.setBreathing(_settings.breathingEnabled);
     await _bridge.setLookAt(_settings.lookAtEnabled);
@@ -140,7 +134,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                // === 눈 깜빡임 섹션 ===
                 _SectionHeader(
                   title: '눈 깜빡임',
                   icon: Icons.visibility,
@@ -183,7 +176,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
                 
                 const Divider(),
                 
-                // === 호흡 섹션 ===
                 _SectionHeader(
                   title: '호흡',
                   icon: Icons.air,
@@ -226,7 +218,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
                 
                 const Divider(),
                 
-                // === 시선 추적 섹션 ===
                 _SectionHeader(
                   title: '시선 추적',
                   icon: Icons.track_changes,
@@ -269,7 +260,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
                 
                 const SizedBox(height: 16),
                 
-                // === 안내 카드 ===
                 Card(
                   margin: const EdgeInsets.all(16),
                   child: Padding(
@@ -297,7 +287,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
                   ),
                 ),
                 
-                // === 초기화 버튼 ===
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: OutlinedButton.icon(
@@ -317,7 +306,6 @@ class _AutoBehaviorSettingsScreenState extends State<AutoBehaviorSettingsScreen>
 }
 
 // ============================================================================
-// 섹션 헤더
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {

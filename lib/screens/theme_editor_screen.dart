@@ -1,8 +1,5 @@
 // ============================================================================
-// 테마 편집 화면 (Theme Editor Screen)
 // ============================================================================
-// 앱의 테마 프리셋을 관리하고 편집하는 화면입니다.
-// 기본 제공 테마 및 커스텀 테마를 선택/편집할 수 있습니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -10,7 +7,6 @@ import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/theme_preset.dart';
 
-/// 테마 편집 화면
 class ThemeEditorScreen extends StatelessWidget {
   const ThemeEditorScreen({super.key});
 
@@ -20,7 +16,6 @@ class ThemeEditorScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('테마 설정'),
         actions: [
-          // 새 테마 추가 버튼
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '새 테마',
@@ -33,7 +28,6 @@ class ThemeEditorScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // === 테마 모드 선택 ===
               _SectionCard(
                 title: '테마 모드',
                 icon: Icons.brightness_6,
@@ -68,7 +62,6 @@ class ThemeEditorScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // === 테마 프리셋 목록 ===
               _SectionCard(
                 title: '테마 프리셋',
                 icon: Icons.palette,
@@ -106,7 +99,6 @@ class ThemeEditorScreen extends StatelessWidget {
 
               const SizedBox(height: 16),
 
-              // === 미리보기 ===
               _SectionCard(
                 title: '미리보기',
                 icon: Icons.preview,
@@ -119,7 +111,6 @@ class ThemeEditorScreen extends StatelessWidget {
     );
   }
 
-  /// 새 테마 생성 다이얼로그
   void _showCreateThemeDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -127,7 +118,6 @@ class ThemeEditorScreen extends StatelessWidget {
     );
   }
 
-  /// 테마 편집 다이얼로그
   void _showEditThemeDialog(BuildContext context, ThemePreset preset) {
     showDialog(
       context: context,
@@ -135,7 +125,6 @@ class ThemeEditorScreen extends StatelessWidget {
     );
   }
 
-  /// 테마 삭제 확인
   void _confirmDeleteTheme(
     BuildContext context,
     ThemeProvider provider,
@@ -168,7 +157,6 @@ class ThemeEditorScreen extends StatelessWidget {
   }
 }
 
-/// 섹션 카드 위젯
 class _SectionCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -210,7 +198,6 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-/// 테마 모드 옵션 위젯
 class _ThemeModeOption extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -252,7 +239,6 @@ class _ThemeModeOption extends StatelessWidget {
   }
 }
 
-/// 테마 프리셋 타일 위젯
 class _ThemePresetTile extends StatelessWidget {
   final ThemePreset preset;
   final bool isActive;
@@ -270,7 +256,6 @@ class _ThemePresetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 프리셋 색상 표시
     final primaryColor = Color(
       preset.colorOverrides['primary'] ?? Colors.blue.value,
     );
@@ -379,7 +364,6 @@ class _ThemePresetTile extends StatelessWidget {
   }
 }
 
-/// 테마 미리보기 위젯
 class _ThemePreview extends StatelessWidget {
   final ThemeProvider provider;
 
@@ -397,7 +381,6 @@ class _ThemePreview extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 미리보기 채팅 메시지
           _PreviewMessage(
             isUser: false,
             message: '안녕하세요! 무엇을 도와드릴까요?',
@@ -411,7 +394,6 @@ class _ThemePreview extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 컬러 팔레트 표시
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -440,7 +422,6 @@ class _ThemePreview extends StatelessWidget {
   }
 }
 
-/// 미리보기 메시지 위젯
 class _PreviewMessage extends StatelessWidget {
   final bool isUser;
   final String message;
@@ -473,7 +454,6 @@ class _PreviewMessage extends StatelessWidget {
   }
 }
 
-/// 컬러 칩 위젯
 class _ColorChip extends StatelessWidget {
   final String label;
   final Color color;
@@ -499,7 +479,6 @@ class _ColorChip extends StatelessWidget {
   }
 }
 
-/// 새 테마 생성 다이얼로그
 class _CreateThemeDialog extends StatefulWidget {
   const _CreateThemeDialog();
 
@@ -597,7 +576,6 @@ class _CreateThemeDialogState extends State<_CreateThemeDialog> {
   }
 }
 
-/// 테마 편집 다이얼로그
 class _EditThemeDialog extends StatefulWidget {
   final ThemePreset preset;
 
@@ -712,7 +690,6 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
   }
 }
 
-/// 색상 선택기 위젯
 class _ColorPicker extends StatelessWidget {
   final String label;
   final Color color;

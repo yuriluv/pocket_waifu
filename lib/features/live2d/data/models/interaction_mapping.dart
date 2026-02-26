@@ -1,33 +1,22 @@
 // ============================================================================
-// 상호작용 매핑 설정 (Interaction Mapping)
 // ============================================================================
-// 상호작용 이벤트와 응답 액션 간의 매핑을 정의합니다.
-// 사용자 설정에 따라 제스처별 반응을 커스터마이징할 수 있습니다.
 // ============================================================================
 
 import '../../domain/entities/interaction_event.dart';
 import '../../domain/entities/interaction_response.dart';
 
-/// 상호작용 매핑
 /// 
-/// 특정 상호작용 이벤트가 발생했을 때 어떤 응답을 수행할지 정의합니다.
 class InteractionMapping {
-  /// 트리거가 되는 상호작용 유형
   final InteractionType trigger;
   
-  /// 수행할 응답 액션
   final InteractionResponse response;
   
-  /// 매핑 활성화 여부
   final bool enabled;
   
-  /// 쿨다운 시간 (ms) - 같은 트리거가 연속 발생 시 무시
   final int cooldownMs;
   
-  /// 조건 (특정 모델, 상태에서만 동작)
   final InteractionCondition? condition;
   
-  /// 우선순위 (높을수록 먼저 처리)
   final int priority;
 
   const InteractionMapping({
@@ -39,7 +28,6 @@ class InteractionMapping {
     this.priority = 0,
   });
 
-  /// 간단한 매핑 생성
   factory InteractionMapping.simple({
     required InteractionType trigger,
     required InteractionResponse response,
@@ -52,7 +40,6 @@ class InteractionMapping {
     );
   }
 
-  /// 탭 → 모션 매핑
   factory InteractionMapping.tapToMotion({
     required String motionGroup,
     int motionIndex = 0,
@@ -68,7 +55,6 @@ class InteractionMapping {
     );
   }
 
-  /// 더블탭 → 표정 매핑
   factory InteractionMapping.doubleTapToExpression({
     required String expressionId,
     bool enabled = true,
@@ -80,7 +66,6 @@ class InteractionMapping {
     );
   }
 
-  /// 롱프레스 → 신호 매핑
   factory InteractionMapping.longPressToSignal({
     required String signalName,
     Map<String, dynamic>? data,
@@ -93,7 +78,6 @@ class InteractionMapping {
     );
   }
 
-  /// JSON 직렬화
   Map<String, dynamic> toJson() {
     return {
       'trigger': trigger.name,
@@ -105,7 +89,6 @@ class InteractionMapping {
     };
   }
 
-  /// JSON 역직렬화
   factory InteractionMapping.fromJson(Map<String, dynamic> json) {
     return InteractionMapping(
       trigger: InteractionType.values.firstWhere(
@@ -150,17 +133,12 @@ class InteractionMapping {
   }
 }
 
-/// 상호작용 조건
 /// 
-/// 매핑이 적용되기 위한 조건을 정의합니다.
 class InteractionCondition {
-  /// 특정 모델에서만 동작 (null이면 모든 모델)
   final String? modelPath;
   
-  /// 특정 상태에서만 동작
   final String? requiredState;
   
-  /// 시간 조건 (예: 특정 시간대에만)
   final TimeCondition? timeCondition;
 
   const InteractionCondition({
@@ -169,19 +147,15 @@ class InteractionCondition {
     this.timeCondition,
   });
 
-  /// 조건 평가
   bool evaluate({String? currentModel, String? currentState}) {
-    // 모델 조건 체크
     if (modelPath != null && currentModel != modelPath) {
       return false;
     }
     
-    // 상태 조건 체크
     if (requiredState != null && currentState != requiredState) {
       return false;
     }
     
-    // 시간 조건 체크
     if (timeCondition != null && !timeCondition!.isInRange(DateTime.now())) {
       return false;
     }
@@ -208,12 +182,9 @@ class InteractionCondition {
   }
 }
 
-/// 시간 조건
 class TimeCondition {
-  /// 시작 시간 (0-23)
   final int startHour;
   
-  /// 종료 시간 (0-23)
   final int endHour;
 
   const TimeCondition({
@@ -226,7 +197,6 @@ class TimeCondition {
     if (startHour <= endHour) {
       return hour >= startHour && hour < endHour;
     } else {
-      // 자정을 넘기는 경우 (예: 22시 ~ 6시)
       return hour >= startHour || hour < endHour;
     }
   }

@@ -1,12 +1,9 @@
 // ============================================================================
-// 오버레이 토글 타일 위젯 (Overlay Toggle Tile Widget)
 // ============================================================================
-// Live2D 플로팅 뷰어의 ON/OFF를 전환하는 토글 위젯입니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
-/// 오버레이 토글 타일 위젯
 class OverlayToggleTile extends StatelessWidget {
   final bool isEnabled;
   final bool canEnable;
@@ -42,10 +39,8 @@ class OverlayToggleTile extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // 메인 토글 영역
               Row(
                 children: [
-                  // 아이콘
                   Container(
                     width: 56,
                     height: 56,
@@ -79,7 +74,6 @@ class OverlayToggleTile extends StatelessWidget {
                   
                   const SizedBox(width: 16),
                   
-                  // 텍스트
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,7 +103,6 @@ class OverlayToggleTile extends StatelessWidget {
                     ),
                   ),
                   
-                  // 스위치
                   Transform.scale(
                     scale: 1.2,
                     child: Switch(
@@ -122,7 +115,6 @@ class OverlayToggleTile extends StatelessWidget {
                 ],
               ),
               
-              // 비활성화 이유 (해당하는 경우)
               if (isDisabled && disabledReason != null) ...[
                 const SizedBox(height: 12),
                 Container(

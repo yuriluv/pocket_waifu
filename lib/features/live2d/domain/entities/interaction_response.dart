@@ -1,81 +1,53 @@
 // ============================================================================
-// 상호작용 응답 (Interaction Response)
 // ============================================================================
-// 상호작용 이벤트에 대한 응답 액션을 정의합니다.
-// 제스처 감지 후 어떤 동작을 수행할지 결정합니다.
 // ============================================================================
 
-/// 응답 액션 유형
 enum ResponseAction {
-  /// 모션 재생
   playMotion,
   
-  /// 표정 설정
   setExpression,
   
-  /// 랜덤 표정
   randomExpression,
   
-  /// 랜덤 모션
   randomMotion,
   
-  /// 소리 재생 (미래 확장용)
   playSound,
   
-  /// 말풍선 표시 (미래 확장용)
   showBubble,
   
-  /// 진동 피드백
   vibrate,
   
-  /// Flutter 쪽으로 신호 전송
   sendSignalToFlutter,
   
-  /// 복합 액션 (여러 액션 조합)
   composite,
   
-  /// 아무 동작 없음
   none,
 }
 
-/// 상호작용 응답
 /// 
-/// 특정 상호작용 이벤트에 대해 어떤 동작을 수행할지 정의합니다.
 class InteractionResponse {
-  /// 응답 액션 유형
   final ResponseAction action;
   
-  /// 모션 그룹 (playMotion일 때)
   final String? motionGroup;
   
-  /// 모션 인덱스 (playMotion일 때)
   final int? motionIndex;
   
-  /// 모션 우선순위 (playMotion일 때)
   final int? motionPriority;
   
-  /// 표정 ID (setExpression일 때)
   final String? expressionId;
   
-  /// 사운드 파일 경로 (playSound일 때)
   final String? soundPath;
   
-  /// 말풍선 텍스트 (showBubble일 때)
   final String? bubbleText;
   
-  /// 진동 지속시간 ms (vibrate일 때)
   final int? vibrateDuration;
   
-  /// 신호 이름 (sendSignalToFlutter일 때)
   final String? signalName;
   
-  /// 신호 데이터 (sendSignalToFlutter일 때)
   final Map<String, dynamic>? signalData;
   
-  /// 복합 액션 목록 (composite일 때)
   final List<InteractionResponse>? compositeActions;
   
-  /// 지연 시간 (ms)
   final int delayMs;
 
   const InteractionResponse({
@@ -93,7 +65,6 @@ class InteractionResponse {
     this.delayMs = 0,
   });
 
-  /// 모션 재생 응답 생성
   factory InteractionResponse.motion({
     required String group,
     int index = 0,
@@ -109,7 +80,6 @@ class InteractionResponse {
     );
   }
 
-  /// 표정 설정 응답 생성
   factory InteractionResponse.expression({
     required String expressionId,
     int delayMs = 0,
@@ -121,7 +91,6 @@ class InteractionResponse {
     );
   }
 
-  /// 랜덤 표정 응답 생성
   factory InteractionResponse.randomExpression({int delayMs = 0}) {
     return InteractionResponse(
       action: ResponseAction.randomExpression,
@@ -129,7 +98,6 @@ class InteractionResponse {
     );
   }
 
-  /// 랜덤 모션 응답 생성
   factory InteractionResponse.randomMotion({
     String? fromGroup,
     int delayMs = 0,
@@ -141,7 +109,6 @@ class InteractionResponse {
     );
   }
 
-  /// 진동 피드백 응답 생성
   factory InteractionResponse.vibrate({int durationMs = 50}) {
     return InteractionResponse(
       action: ResponseAction.vibrate,
@@ -149,7 +116,6 @@ class InteractionResponse {
     );
   }
 
-  /// 신호 전송 응답 생성
   factory InteractionResponse.signal({
     required String signalName,
     Map<String, dynamic>? data,
@@ -161,7 +127,6 @@ class InteractionResponse {
     );
   }
 
-  /// 복합 액션 응답 생성
   factory InteractionResponse.composite(List<InteractionResponse> actions) {
     return InteractionResponse(
       action: ResponseAction.composite,
@@ -169,12 +134,10 @@ class InteractionResponse {
     );
   }
 
-  /// 아무 동작 없음 응답
   static const InteractionResponse none = InteractionResponse(
     action: ResponseAction.none,
   );
 
-  /// JSON 직렬화
   Map<String, dynamic> toJson() {
     return {
       'action': action.name,
@@ -193,7 +156,6 @@ class InteractionResponse {
     };
   }
 
-  /// JSON 역직렬화
   factory InteractionResponse.fromJson(Map<String, dynamic> json) {
     final actionStr = json['action'] as String?;
     final action = ResponseAction.values.firstWhere(

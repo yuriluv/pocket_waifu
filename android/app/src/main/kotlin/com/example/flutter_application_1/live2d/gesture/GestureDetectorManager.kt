@@ -7,13 +7,7 @@ import android.view.MotionEvent
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 
 /**
- * 제스처 감지 관리자
  * 
- * 터치 이벤트를 분석하여 다양한 제스처를 감지합니다.
- * - 탭, 더블탭, 롱프레스
- * - 스와이프 (상/하/좌/우)
- * - 머리 쓰다듬기 (좌우 반복)
- * - 연타 (poke)
  */
 class GestureDetectorManager(
     private val config: GestureConfig = GestureConfig(),
@@ -23,28 +17,22 @@ class GestureDetectorManager(
         private const val TAG = "GestureDetector"
     }
     
-    // 핸들러 (타임아웃 처리용)
     private val handler = Handler(Looper.getMainLooper())
     
-    // 터치 추적
     private val touchPoints = mutableListOf<TouchPoint>()
     private var touchDownTime: Long = 0
     private var touchDownPoint: PointF? = null
     
-    // 탭 감지
     private var lastTapTime: Long = 0
     private var lastTapPoint: PointF? = null
     private var tapCount = 0
     
-    // 롱프레스 감지
     private var longPressRunnable: Runnable? = null
     private var isLongPressTriggered = false
     
-    // 드래그 상태
     private var isDragging = false
     
     /**
-     * 터치 이벤트 처리
      * 
      * @return true if the event was consumed
      */
@@ -71,7 +59,6 @@ class GestureDetectorManager(
     }
     
     /**
-     * 터치 시작 처리
      */
     private fun handleTouchDown(point: PointF, time: Long) {
         Live2DLogger.Interaction.d("터치 시작", "(${point.x}, ${point.y})")
@@ -83,7 +70,6 @@ class GestureDetectorManager(
         isDragging = false
         isLongPressTriggered = false
         
-        // 롱프레스 타이머 시작
         cancelLongPressTimer()
         longPressRunnable = Runnable {
             if (!isDragging) {
@@ -99,18 +85,15 @@ class GestureDetectorManager(
     }
     
     /**
-     * 터치 이동 처리
      */
     private fun handleTouchMove(point: PointF, time: Long) {
         val downPoint = touchDownPoint ?: return
         
-        // 터치 포인트 기록 (간격 두고)
         val lastPoint = touchPoints.lastOrNull()
         if (lastPoint == null || time - lastPoint.timestamp > 16) {  // ~60fps
             touchPoints.add(TouchPoint(point.x, point.y, time))
         }
         
-        // 이동 거리 체크
         val moveDistance = GestureUtils.distance(downPoint, point)
         
         if (moveDistance > config.tapMoveThreshold && !isDragging) {
@@ -121,7 +104,6 @@ class GestureDetectorManager(
     }
     
     /**
-     * 터치 종료 처리
      */
     private fun handleTouchUp(point: PointF, time: Long) {
         cancelLongPressTimer()
@@ -132,19 +114,16 @@ class GestureDetectorManager(
         
         Live2DLogger.Interaction.d("터치 종료", "duration: ${duration}ms, distance: $moveDistance")
         
-        // 롱프레스가 이미 감지되었으면 무시
         if (isLongPressTriggered) {
             resetState()
             return
         }
         
         when {
-            // 드래그 제스처 분석
             isDragging && touchPoints.size > 2 -> {
                 analyzeSwipeGesture(point, time)
             }
             
-            // 탭 제스처
             duration < config.tapTimeout && moveDistance < config.tapMoveThreshold -> {
                 handleTap(point, time)
             }
@@ -154,19 +133,16 @@ class GestureDetectorManager(
     }
     
     /**
-     * 탭 처리 (싱글탭, 더블탭, 연타)
      */
     private fun handleTap(point: PointF, time: Long) {
         val timeSinceLastTap = time - lastTapTime
         val distanceFromLastTap = lastTapPoint?.let { GestureUtils.distance(it, point) } ?: Float.MAX_VALUE
         
-        // 연속 탭 체크
         if (timeSinceLastTap < config.doubleTapTimeout && 
             distanceFromLastTap < config.doubleTapDistanceThreshold) {
             
             tapCount++
             
-            // 연타 (poke) 체크
             if (config.enablePoke && tapCount >= config.pokeMinTaps) {
                 onGestureDetected(GestureResult(
                     type = GestureType.POKE,
@@ -178,7 +154,6 @@ class GestureDetectorManager(
                 return
             }
             
-            // 더블탭
             if (tapCount == 2) {
                 onGestureDetected(GestureResult(
                     type = GestureType.DOUBLE_TAP,
@@ -189,14 +164,12 @@ class GestureDetectorManager(
                 return
             }
         } else {
-            // 새로운 탭 시퀀스
             tapCount = 1
         }
         
         lastTapTime = time
         lastTapPoint = point
         
-        // 약간의 딜레이 후 싱글탭 전송 (더블탭 대기)
         handler.postDelayed({
             if (tapCount == 1) {
                 onGestureDetected(GestureResult(
@@ -210,7 +183,6 @@ class GestureDetectorManager(
     }
     
     /**
-     * 스와이프/머리쓰다듬기 분석
      */
     private fun analyzeSwipeGesture(endPoint: PointF, endTime: Long) {
         if (touchPoints.size < 2) return
@@ -218,13 +190,10 @@ class GestureDetectorManager(
         val startPoint = touchPoints.first()
         val endTouchPoint = TouchPoint(endPoint.x, endPoint.y, endTime)
         
-        // 전체 이동 거리
         val totalDistance = startPoint.distanceTo(endTouchPoint)
         
-        // 속도 계산
         val velocity = GestureUtils.velocity(startPoint, endTouchPoint)
         
-        // 머리 쓰다듬기 체크 (좌우 방향 전환 횟수)
         if (config.enableHeadPat) {
             val directionChanges = GestureUtils.countDirectionChanges(touchPoints, GestureUtils.Axis.X)
             
@@ -240,7 +209,6 @@ class GestureDetectorManager(
             }
         }
         
-        // 스와이프 체크
         if (config.enableSwipe && 
             totalDistance > config.swipeMinDistance && 
             velocity > config.swipeMinVelocity) {
@@ -261,7 +229,6 @@ class GestureDetectorManager(
     }
     
     /**
-     * 롱프레스 타이머 취소
      */
     private fun cancelLongPressTimer() {
         longPressRunnable?.let {
@@ -271,7 +238,6 @@ class GestureDetectorManager(
     }
     
     /**
-     * 상태 초기화
      */
     private fun resetState() {
         touchPoints.clear()
@@ -282,14 +248,12 @@ class GestureDetectorManager(
     }
     
     /**
-     * 설정 업데이트
      */
     fun updateConfig(newConfig: GestureConfig): GestureDetectorManager {
         return GestureDetectorManager(newConfig, onGestureDetected)
     }
     
     /**
-     * 리소스 정리
      */
     fun dispose() {
         resetState()

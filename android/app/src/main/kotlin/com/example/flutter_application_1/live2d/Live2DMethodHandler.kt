@@ -15,7 +15,6 @@ import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
 /**
  * Live2D Method Handler
  * 
- * Flutter에서 호출하는 메서드들을 처리합니다.
  */
 class Live2DMethodHandler(
     private val context: Context,
@@ -27,62 +26,51 @@ class Live2DMethodHandler(
         
         try {
             when (call.method) {
-                // ========== 권한 관리 ==========
                 "hasOverlayPermission" -> hasOverlayPermission(result)
                 "requestOverlayPermission" -> requestOverlayPermission(result)
                 "hasStoragePermission" -> hasStoragePermission(result)
                 "requestStoragePermission" -> requestStoragePermission(result)
                 
-                // ========== 오버레이 제어 ==========
                 "showOverlay" -> showOverlay(result)
                 "hideOverlay" -> hideOverlay(result)
                 "isOverlayVisible" -> isOverlayVisible(result)
                 
-                // ========== 모델 제어 ==========
                 "loadModel" -> loadModel(call, result)
                 "unloadModel" -> unloadModel(result)
                 "playMotion" -> playMotion(call, result)
                 "setExpression" -> setExpression(call, result)
                 "setRandomExpression" -> setRandomExpression(result)
                 
-                // ========== 디스플레이 설정 ==========
                 "setScale" -> setScale(call, result)
                 "setOpacity" -> setOpacity(call, result)
                 "setPosition" -> setPosition(call, result)
                 "setSize" -> setSize(call, result)
                 
-                // ========== 터치스루 / 투명도 ==========
                 "setTouchThroughEnabled" -> setTouchThroughEnabled(call, result)
                 "setTouchThroughAlpha" -> setTouchThroughAlpha(call, result)
                 "setCharacterOpacity" -> setCharacterOpacity(call, result)
                 
-                // ========== 편집 모드 ==========
                 "setEditMode" -> setEditMode(call, result)
                 "setCharacterPinned" -> setCharacterPinned(call, result)
                 "setRelativeScale" -> setRelativeScale(call, result)
                 "setCharacterOffset" -> setCharacterOffset(call, result)
                 "setCharacterRotation" -> setCharacterRotation(call, result)
                 
-                // ========== 자동 동작 설정 ==========
                 "setEyeBlink" -> setEyeBlink(call, result)
                 "setBreathing" -> setBreathing(call, result)
                 "setLookAt" -> setLookAt(call, result)
                 
-                // ========== 상호작용 신호 ==========
                 "sendSignal" -> sendSignal(call, result)
                 
-                // ========== 모델 정보 조회 ==========
                 "getMotionGroups" -> getMotionGroups(result)
                 "getMotionCount" -> getMotionCount(call, result)
                 "getExpressions" -> getExpressions(result)
                 "getModelInfo" -> getModelInfo(result)
                 "analyzeModel" -> analyzeModel(call, result)
                 
-                // ========== 렌더링 설정 ==========
                 "setTargetFps" -> setTargetFps(call, result)
                 "setLowPowerMode" -> setLowPowerMode(call, result)
                 
-                // ========== 디버그 / 유지보수 ==========
                 "getHealthStatus" -> getHealthStatus(result)
                 "forceReset" -> forceReset(result)
                 
@@ -98,7 +86,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 권한 관리
     // ============================================================================
     
     private fun hasOverlayPermission(result: MethodChannel.Result) {
@@ -162,7 +149,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 오버레이 제어
     // ============================================================================
     
     private fun showOverlay(result: MethodChannel.Result) {
@@ -207,7 +193,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 모델 제어
     // ============================================================================
     
     private fun loadModel(call: MethodCall, result: MethodChannel.Result) {
@@ -304,7 +289,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 디스플레이 설정
     // ============================================================================
     
     private fun setScale(call: MethodCall, result: MethodChannel.Result) {
@@ -510,7 +494,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 자동 동작 설정
     // ============================================================================
     
     private fun setEyeBlink(call: MethodCall, result: MethodChannel.Result) {
@@ -565,7 +548,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 상호작용 신호
     // ============================================================================
     
     private fun sendSignal(call: MethodCall, result: MethodChannel.Result) {
@@ -578,7 +560,6 @@ class Live2DMethodHandler(
             val intent = Intent(context, Live2DOverlayService::class.java).apply {
                 action = Live2DOverlayService.ACTION_SEND_SIGNAL
                 putExtra(Live2DOverlayService.EXTRA_SIGNAL_NAME, signal)
-                // data는 필요시 Bundle로 변환하여 전달
             }
             context.startService(intent)
             
@@ -590,7 +571,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 모델 정보 조회
     // ============================================================================
     
     private fun getMotionGroups(result: MethodChannel.Result) {
@@ -655,7 +635,6 @@ class Live2DMethodHandler(
     }
     
     /**
-     * 모델 파일 분석 (로드하지 않고 정보만 추출)
      */
     private fun analyzeModel(call: MethodCall, result: MethodChannel.Result) {
         val path = call.argument<String>("path")
@@ -680,7 +659,6 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 렌더링 설정
     // ============================================================================
     
     private fun setTargetFps(call: MethodCall, result: MethodChannel.Result) {
@@ -718,14 +696,10 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 디버그 / 유지보수
     // ============================================================================
     
     /**
-     * 시스템 상태 조회
      * 
-     * WHY: 디버깅 및 모니터링을 위해 전체 시스템 상태를 Flutter에서 조회할 수 있게 합니다.
-     * 서비스 실행 여부, SDK 상태, 메모리 사용량 등을 포함합니다.
      */
     private fun getHealthStatus(result: MethodChannel.Result) {
         try {
@@ -764,16 +738,12 @@ class Live2DMethodHandler(
     }
     
     /**
-     * 강제 재설정
      * 
-     * WHY: 비정상 상태에서 복구하기 위한 긴급 조치입니다.
-     * SDK를 재초기화하고 서비스를 재시작합니다.
      */
     private fun forceReset(result: MethodChannel.Result) {
         try {
             Live2DLogger.w("강제 재설정 요청", "SDK 및 서비스 재초기화")
             
-            // 1. 오버레이 숨기기
             if (Live2DOverlayService.isRunning) {
                 val hideIntent = Intent(context, Live2DOverlayService::class.java).apply {
                     action = Live2DOverlayService.ACTION_HIDE
@@ -781,7 +751,6 @@ class Live2DMethodHandler(
                 context.startService(hideIntent)
             }
             
-            // 2. SDK 재초기화
             CubismFrameworkManager.reinitialize()
             
             Live2DLogger.i("강제 재설정 완료", null)
@@ -794,11 +763,9 @@ class Live2DMethodHandler(
     }
     
     // ============================================================================
-    // 정리
     // ============================================================================
     
     fun dispose() {
         Live2DLogger.d("Method Handler 정리", null)
-        // 필요한 정리 작업
     }
 }

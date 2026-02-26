@@ -1,8 +1,5 @@
 // ============================================================================
-// 제스처 설정 화면 (Gesture Settings Screen)
 // ============================================================================
-// 제스처별 모션/표정 매핑을 설정하는 화면입니다.
-// Phase 5: UI/UX 개선
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -10,7 +7,6 @@ import '../../domain/entities/gesture_config.dart';
 import '../../domain/entities/interaction_event.dart';
 import '../../data/services/interaction_config_service.dart';
 
-/// 제스처 설정 화면
 class GestureSettingsScreen extends StatefulWidget {
   const GestureSettingsScreen({super.key});
 
@@ -75,7 +71,6 @@ class _GestureSettingsScreenState extends State<GestureSettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                // === 제스처 활성화 섹션 ===
                 _SectionHeader(
                   title: '제스처 활성화',
                   subtitle: '인식할 제스처를 선택하세요',
@@ -113,7 +108,6 @@ class _GestureSettingsScreenState extends State<GestureSettingsScreen> {
                 
                 const Divider(),
                 
-                // === 제스처 매핑 섹션 ===
                 _SectionHeader(
                   title: '제스처 동작 매핑',
                   subtitle: '각 제스처에 동작을 연결하세요',
@@ -175,7 +169,6 @@ class _GestureSettingsScreenState extends State<GestureSettingsScreen> {
                 
                 const SizedBox(height: 16),
                 
-                // === 미리보기 안내 ===
                 Card(
                   margin: const EdgeInsets.all(16),
                   child: Padding(
@@ -212,10 +205,8 @@ class _GestureSettingsScreenState extends State<GestureSettingsScreen> {
   void _updateMapping(InteractionType gesture, GestureActionMapping? mapping) {
     final List<GestureActionMapping> newMappings = List.from(_config.actionMappings);
     
-    // 기존 매핑 제거
     newMappings.removeWhere((m) => m.gesture == gesture);
     
-    // 새 매핑 추가 (none이 아닌 경우)
     if (mapping != null && mapping.actionType != GestureActionType.none) {
       newMappings.add(mapping);
     }
@@ -225,7 +216,6 @@ class _GestureSettingsScreenState extends State<GestureSettingsScreen> {
 }
 
 // ============================================================================
-// 섹션 헤더
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -269,7 +259,6 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ============================================================================
-// 제스처 매핑 타일
 // ============================================================================
 
 class _GestureMappingTile extends StatelessWidget {
@@ -341,7 +330,6 @@ class _GestureMappingTile extends StatelessWidget {
 }
 
 // ============================================================================
-// 제스처 매핑 바텀시트
 // ============================================================================
 
 class _GestureMappingBottomSheet extends StatefulWidget {
@@ -393,7 +381,6 @@ class _GestureMappingBottomSheetState extends State<_GestureMappingBottomSheet> 
           ),
           child: Column(
             children: [
-              // 핸들
               Container(
                 margin: const EdgeInsets.only(top: 8),
                 width: 40,
@@ -404,7 +391,6 @@ class _GestureMappingBottomSheetState extends State<_GestureMappingBottomSheet> 
                 ),
               ),
               
-              // 헤더
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -427,12 +413,10 @@ class _GestureMappingBottomSheetState extends State<_GestureMappingBottomSheet> 
               
               const Divider(),
               
-              // 콘텐츠
               Expanded(
                 child: ListView(
                   controller: scrollController,
                   children: [
-                    // 동작 유형 선택
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text('동작 유형', style: theme.textTheme.titleSmall),
@@ -469,7 +453,6 @@ class _GestureMappingBottomSheetState extends State<_GestureMappingBottomSheet> 
                       onChanged: (v) => setState(() => _selectedActionType = v!),
                     ),
                     
-                    // 모션 설정
                     if (_selectedActionType == GestureActionType.playMotion) ...[
                       const Divider(),
                       Padding(
@@ -504,7 +487,6 @@ class _GestureMappingBottomSheetState extends State<_GestureMappingBottomSheet> 
                       ),
                     ],
                     
-                    // 표정 설정
                     if (_selectedActionType == GestureActionType.setExpression) ...[
                       const Divider(),
                       Padding(

@@ -1,15 +1,10 @@
 // ============================================================================
-// Live2D 로그 서비스 (Live2D Log Service)
 // ============================================================================
-// Live2D 관련 로그를 수집하고 표시하는 서비스입니다.
-// 모델 로드 오류, 서버 오류 등을 추적할 수 있습니다.
-// Native 측 로그도 수신하여 통합 관리합니다.
 // ============================================================================
 
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
-/// 로그 레벨
 enum Live2DLogLevel {
   debug,
   info,
@@ -17,13 +12,11 @@ enum Live2DLogLevel {
   error,
 }
 
-/// 로그 소스 (Flutter 또는 Native)
 enum Live2DLogSource {
   flutter,
   native,
 }
 
-/// 로그 항목
 class Live2DLogEntry {
   final DateTime timestamp;
   final Live2DLogLevel level;
@@ -88,7 +81,6 @@ class Live2DLogEntry {
     return buffer.toString();
   }
   
-  /// Native 로그 Map에서 생성
   factory Live2DLogEntry.fromNativeLog(Map<String, dynamic> map) {
     final levelStr = (map['level'] as String?) ?? 'debug';
     final level = Live2DLogLevel.values.firstWhere(
@@ -113,18 +105,14 @@ class Live2DLogEntry {
   }
 }
 
-/// Live2D 로그 서비스 (싱글톤)
 class Live2DLogService extends ChangeNotifier {
-  // === 싱글톤 패턴 ===
   static final Live2DLogService _instance = Live2DLogService._internal();
   factory Live2DLogService() => _instance;
   Live2DLogService._internal();
 
-  // === 설정 ===
   static const int maxLogEntries = 500;
   Live2DLogLevel _minLevel = Live2DLogLevel.debug;
 
-  // === 상태 ===
   final Queue<Live2DLogEntry> _logs = Queue<Live2DLogEntry>();
   bool _isEnabled = true;
 
@@ -138,35 +126,29 @@ class Live2DLogService extends ChangeNotifier {
   bool get isEnabled => _isEnabled;
   int get logCount => _logs.length;
 
-  /// 로깅 활성화/비활성화
   void setEnabled(bool enabled) {
     _isEnabled = enabled;
   }
 
-  /// 최소 로그 레벨 설정
   void setMinLevel(Live2DLogLevel level) {
     _minLevel = level;
   }
 
-  /// 로그 추가
   void _addLog(Live2DLogEntry entry) {
     if (!_isEnabled) return;
     if (entry.level.index < _minLevel.index) return;
 
     _logs.addLast(entry);
 
-    // 최대 개수 초과 시 오래된 로그 삭제
     while (_logs.length > maxLogEntries) {
       _logs.removeFirst();
     }
 
-    // 콘솔에도 출력
     debugPrint(entry.toString());
 
     notifyListeners();
   }
 
-  /// 디버그 로그
   void debug(String tag, String message, {String? details}) {
     _addLog(Live2DLogEntry(
       timestamp: DateTime.now(),
@@ -177,7 +159,6 @@ class Live2DLogService extends ChangeNotifier {
     ));
   }
 
-  /// 정보 로그
   void info(String tag, String message, {String? details}) {
     _addLog(Live2DLogEntry(
       timestamp: DateTime.now(),
@@ -188,7 +169,6 @@ class Live2DLogService extends ChangeNotifier {
     ));
   }
 
-  /// 경고 로그
   void warning(String tag, String message, {String? details, Object? error}) {
     _addLog(Live2DLogEntry(
       timestamp: DateTime.now(),
@@ -200,7 +180,6 @@ class Live2DLogService extends ChangeNotifier {
     ));
   }
 
-  /// 에러 로그
   void error(
     String tag,
     String message, {
@@ -219,23 +198,19 @@ class Live2DLogService extends ChangeNotifier {
     ));
   }
 
-  /// 로그 클리어
   void clear() {
     _logs.clear();
     notifyListeners();
   }
 
-  /// 특정 레벨 이상의 로그만 가져오기
   List<Live2DLogEntry> getLogsAboveLevel(Live2DLogLevel level) {
     return _logs.where((e) => e.level.index >= level.index).toList();
   }
 
-  /// 특정 태그의 로그만 가져오기
   List<Live2DLogEntry> getLogsByTag(String tag) {
     return _logs.where((e) => e.tag == tag).toList();
   }
 
-  /// 전체 로그를 문자열로 내보내기
   String exportLogs() {
     final buffer = StringBuffer();
     buffer.writeln('=== Live2D 로그 내보내기 ===');
@@ -254,27 +229,21 @@ class Live2DLogService extends ChangeNotifier {
   }
   
   // ============================================================================
-  // Native 로그 수신
   // ============================================================================
   
-  /// Native에서 수신한 로그 추가
   void addNativeLog(Map<String, dynamic> logData) {
     final entry = Live2DLogEntry.fromNativeLog(logData);
     _addLog(entry);
   }
   
-  /// 특정 소스의 로그만 가져오기
   List<Live2DLogEntry> getLogsBySource(Live2DLogSource source) {
     return _logs.where((e) => e.source == source).toList();
   }
   
-  /// Flutter 로그만 가져오기
   List<Live2DLogEntry> get flutterLogs => getLogsBySource(Live2DLogSource.flutter);
   
-  /// Native 로그만 가져오기
   List<Live2DLogEntry> get nativeLogs => getLogsBySource(Live2DLogSource.native);
   
-  /// 로그 통계
   Map<String, int> getStatistics() {
     return {
       'total': _logs.length,
@@ -288,5 +257,4 @@ class Live2DLogService extends ChangeNotifier {
   }
 }
 
-/// 로그 서비스 글로벌 접근자
 Live2DLogService get live2dLog => Live2DLogService();

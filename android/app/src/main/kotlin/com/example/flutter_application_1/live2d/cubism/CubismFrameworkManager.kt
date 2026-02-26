@@ -5,14 +5,9 @@ import com.example.flutter_application_1.live2d.core.Live2DLogger
 /**
  * Cubism SDK Framework Manager (Singleton)
  * 
- * Live2D Cubism SDK의 초기화 및 생명주기를 관리합니다.
  * 
  * CRITICAL RULES:
- * - initialize()는 GL 스레드에서만 호출
- * - initialize()는 프로세스 생명주기 동안 한 번만 호출
- * - dispose()는 앱 종료 시 호출 (선택적)
  * 
- * SDK가 설치되지 않은 경우 폴백 모드로 동작합니다.
  * 
  * State Diagram:
  * ```
@@ -29,9 +24,6 @@ import com.example.flutter_application_1.live2d.core.Live2DLogger
  * 2. Run flutter run
  * 3. Look for log: "[Phase7-1] Live2D Cubism SDK native library loaded successfully."
  * 
- * Phase 7 완성 상태:
- * - SDK .so 파일 설치 필요: jniLibs/{abi}/libLive2DCubismCore.so
- * - SDK 설치 후 TODO 주석 해제하여 활성화
  */
 object CubismFrameworkManager {
     
@@ -41,10 +33,6 @@ object CubismFrameworkManager {
     // ========================================================================
     // State Flags - WHY these exist:
     // 
-    // SDK 초기화는 여러 단계로 이루어지며, 각 단계가 독립적으로 실패할 수 있습니다.
-    // 이 플래그들은 정확히 어느 단계까지 성공했는지 추적하여:
-    // 1. 부분 초기화 상태에서도 적절한 폴백이 가능하고
-    // 2. 재초기화 시 어느 단계부터 다시 시작할지 결정할 수 있게 합니다.
     // ========================================================================
     
     // 1. Native library loaded via System.loadLibrary() 
@@ -56,8 +44,6 @@ object CubismFrameworkManager {
     private var isFrameworkInitialized = false
     
     // 3. Running in fallback mode (texture-only rendering)
-    // WHY default to true: 방어적 설계 원칙. SDK가 없어도 앱이 작동해야 합니다.
-    // SDK 로드가 성공한 후에만 false로 변경됩니다. 실패 시 텍스처 프리뷰로 폴백합니다.
     @Volatile
     private var isFallbackMode = true
     
@@ -69,19 +55,14 @@ object CubismFrameworkManager {
     @Volatile
     private var lastError: String? = null
     
-    // 메모리 할당자 (SDK용)
     private val allocator = CubismAllocator()
     
-    // SDK 버전 (로드 후 설정)
     private var sdkVersion: String = "Not initialized"
     
     /**
-     * 네이티브 라이브러리 로드
      * 
-     * 어떤 스레드에서든 호출 가능하지만, 한 번만 실행됨
      * Thread-safe via @Synchronized
      * 
-     * @return SDK 로드 성공 여부
      */
     @Synchronized
     fun loadSdk(): Boolean {
@@ -124,15 +105,9 @@ object CubismFrameworkManager {
     }
     
     /**
-     * Cubism Framework 초기화
      * 
-     * MUST: GL 스레드에서만 호출할 것
-     * MUST: 프로세스 생명주기 동안 한 번만 호출할 것
      * 
-     * SDK가 없어도 초기화는 "성공"으로 처리됩니다 (폴백 모드).
-     * 이는 앱이 SDK 없이도 작동하도록 보장합니다.
      * 
-     * @return 초기화 완료 여부 (폴백 모드 포함, 항상 true)
      */
     // Context used for AssetManager access
     @Volatile
@@ -150,14 +125,12 @@ object CubismFrameworkManager {
         
         Live2DLogger.d("$TAG: Starting initialization", null)
         
-        // 1. SDK 로드 시도
         val sdkLoadResult = if (!isSdkLoaded) {
             loadSdk()
         } else {
             true
         }
         
-        // 2. SDK가 로드되었으면 Framework 초기화 시도
         if (sdkLoadResult && isSdkLoaded) {
             try {
                 val frameworkResult = initializeSdkFramework()
@@ -166,7 +139,6 @@ object CubismFrameworkManager {
                     isFallbackMode = false
                     Live2DLogger.i("$TAG: ✓ SDK mode activated", sdkVersion)
                 } else {
-                    // Framework 초기화 실패 → 폴백
                     isFallbackMode = true
                     Live2DLogger.w("$TAG: Framework init failed", "switching to fallback")
                 }
@@ -176,11 +148,9 @@ object CubismFrameworkManager {
                 Live2DLogger.e("$TAG: Framework init exception", e)
             }
         } else {
-            // SDK 로드 실패 → 폴백 확정
             isFallbackMode = true
         }
         
-        // 3. 상태 확정
         isInitialized = true
         
         if (isFallbackMode) {
@@ -188,16 +158,13 @@ object CubismFrameworkManager {
             Live2DLogger.i("$TAG: ✓ Initialized in FALLBACK mode", lastError ?: "SDK not installed")
         }
         
-        // 상태 요약 로그
         Live2DLogger.i("$TAG: Init complete", getStatusSummary())
         
         return true  // Always succeed - fallback is a valid state
     }
     
     /**
-     * SDK Framework 실제 초기화
      * 
-     * Phase 7-2: JNI 브릿지를 통해 Native Framework 초기화
      */
     private fun initializeSdkFramework(): Boolean {
         return try {
@@ -209,7 +176,6 @@ object CubismFrameworkManager {
             }
 
             // Pass AssetManager to native before framework init (for shader file loading)
-            // CRITICAL: AssetManager가 없으면 셰이더 로딩이 실패합니다.
             val ctx = appContext
             if (ctx == null) {
                 lastError = "AppContext not set — cannot load shaders"
@@ -235,7 +201,6 @@ object CubismFrameworkManager {
             Live2DLogger.i("$TAG: [Phase7-2] Cubism framework initialized", sdkVersion)
             Live2DLogger.i("$TAG: SDK Version", sdkVersion)
 
-            // 셰이더 로딩 검증
             Live2DLogger.i("$TAG: [Phase7-2] Shader loading verification:", 
                 "AssetManager set=true, Framework init=true")
 
@@ -249,12 +214,10 @@ object CubismFrameworkManager {
     }
     
     /**
-     * 전체 초기화 상태 확인
      */
     fun isReady(): Boolean = isInitialized
     
     /**
-     * SDK 가용성 확인 (Phase 7-1 Definition)
      * 
      * Returns true ONLY if:
      * 1. Native .so is present and loadable
@@ -264,7 +227,6 @@ object CubismFrameworkManager {
      * This method is the primary Phase 7-1 verification point.
      * If this returns true, the SDK is correctly installed.
      * 
-     * @return SDK native library가 로드 가능하면 true
      */
     fun isSdkAvailable(): Boolean {
         // If already loaded, we know it's available
@@ -278,7 +240,6 @@ object CubismFrameworkManager {
     }
     
     /**
-     * SDK Rendering 가능 여부 (Framework 초기화 완료 필요)
      * 
      * True only when:
      * 1. Native .so loaded
@@ -287,19 +248,16 @@ object CubismFrameworkManager {
      * 
      * Use this to check if actual moc3 rendering is possible.
      * 
-     * @return SDK가 로드되고 Framework가 초기화되었으면 true
      */
     fun isSdkRenderingReady(): Boolean = isSdkLoaded && isFrameworkInitialized && !isFallbackMode
     
     /**
-     * 폴백 모드 여부
      * 
      * True when SDK rendering is NOT available (use texture preview instead)
      */
     fun isFallbackModeActive(): Boolean = isFallbackMode
     
     /**
-     * SDK .so 로드 여부 (Framework 초기화와 별개)
      */
     fun isSdkLibraryLoaded(): Boolean = isSdkLoaded
     
@@ -360,15 +318,11 @@ object CubismFrameworkManager {
     }
     
     /**
-     * 마지막 오류 메시지
      */
     fun getLastError(): String? = lastError
     
     /**
-     * Framework 정리
      * 
-     * MUST: GL 스레드에서만 호출할 것
-     * 앱 종료 시 호출 (Android는 보통 자동 정리)
      */
     @Synchronized
     fun dispose() {
@@ -386,7 +340,6 @@ object CubismFrameworkManager {
             
             isFrameworkInitialized = false
             isInitialized = false
-            // isSdkLoaded는 유지 (라이브러리는 프로세스 종료까지 로드 상태)
             
             Live2DLogger.i("$TAG: ✓ Framework disposed", null)
             
@@ -396,12 +349,10 @@ object CubismFrameworkManager {
     }
     
     /**
-     * SDK 버전 문자열 반환
      */
     fun getVersionString(): String = sdkVersion
     
     /**
-     * 상태 정보 반환 (디버깅용)
      */
     fun getStatusInfo(): Map<String, Any?> {
         return mapOf(
@@ -422,7 +373,6 @@ object CubismFrameworkManager {
     }
     
     /**
-     * 상태 요약 문자열 (로깅용)
      */
     fun getStatusSummary(): String {
         return buildString {
@@ -441,10 +391,7 @@ object CubismFrameworkManager {
     }
     
     /**
-     * 재초기화 (Surface 재생성 시 사용)
      * 
-     * Note: GL context가 새로 생성된 경우에만 호출
-     * Native library는 다시 로드할 필요 없음
      */
     @Synchronized
     fun reinitialize(): Boolean {
@@ -453,7 +400,6 @@ object CubismFrameworkManager {
             return false
         }
         
-        // Framework 초기화만 다시 수행
         isFrameworkInitialized = false
         isInitialized = false
         isFallbackMode = true  // Reset until proven otherwise

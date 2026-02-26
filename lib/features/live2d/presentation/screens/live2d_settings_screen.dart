@@ -1,7 +1,5 @@
 // ============================================================================
-// Live2D 설정 화면 (Live2D Settings Screen)
 // ============================================================================
-// Live2D 플로팅 뷰어의 설정을 관리하는 화면입니다.
 // ============================================================================
 
 import 'dart:async';
@@ -24,7 +22,6 @@ import 'auto_behavior_settings_screen.dart';
 import 'display_settings_screen.dart';
 import 'interaction_settings_screen.dart';
 
-/// Live2D 설정 화면
 class Live2DSettingsScreen extends StatelessWidget {
   const Live2DSettingsScreen({super.key});
 
@@ -90,7 +87,6 @@ class _Live2DSettingsScreenContentState
       appBar: AppBar(
         title: const Text('Live2D 설정'),
         actions: [
-          // 새로고침 버튼
           Consumer<Live2DController>(
             builder: (context, controller, _) {
               return IconButton(
@@ -113,7 +109,6 @@ class _Live2DSettingsScreenContentState
               );
             },
           ),
-          // 로그 버튼
           IconButton(
             icon: const Icon(Icons.bug_report),
             tooltip: '로그 보기',
@@ -123,7 +118,6 @@ class _Live2DSettingsScreenContentState
       ),
       body: Consumer<Live2DController>(
         builder: (context, controller, _) {
-          // 로딩 중
           if (controller.state == Live2DControllerState.initial ||
               (controller.isLoading && !controller.hasFolderSelected)) {
             return const Center(
@@ -138,7 +132,6 @@ class _Live2DSettingsScreenContentState
             );
           }
 
-          // 에러 표시
           if (controller.hasError) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -167,7 +160,6 @@ class _Live2DSettingsScreenContentState
               children: [
                 const SizedBox(height: 8),
 
-                // === 1. 권한 섹션 ===
                 _SectionHeader(
                   title: '권한',
                   icon: Icons.security,
@@ -180,7 +172,6 @@ class _Live2DSettingsScreenContentState
                   isLoading: _isCheckingPermissions,
                 ),
 
-                // === 2. 데이터 폴더 섹션 ===
                 _SectionHeader(
                   title: '데이터 폴더',
                   icon: Icons.folder,
@@ -195,7 +186,6 @@ class _Live2DSettingsScreenContentState
                       : null,
                 ),
 
-                // === 3. 모델 목록 섹션 ===
                 if (controller.hasFolderSelected) ...[
                   _SectionHeader(
                     title: '모델 목록',
@@ -224,7 +214,6 @@ class _Live2DSettingsScreenContentState
                     }),
                 ],
 
-                // === 4. 표시 설정 섹션 ===
                 _SectionHeader(
                   title: '표시 설정',
                   icon: Icons.tune,
@@ -238,7 +227,6 @@ class _Live2DSettingsScreenContentState
                   enabled: controller.hasFolderSelected,
                 ),
 
-                // === 4.5. 터치스루 설정 섹션 ===
                 _SectionHeader(
                   title: '터치스루',
                   icon: Icons.touch_app,
@@ -251,7 +239,6 @@ class _Live2DSettingsScreenContentState
                   isActive: controller.hasFolderSelected,
                 ),
 
-                // === 5. 플로팅 뷰어 토글 ===
                 _SectionHeader(
                   title: '플로팅 뷰어',
                   icon: Icons.visibility,
@@ -272,14 +259,12 @@ class _Live2DSettingsScreenContentState
                   },
                 ),
                 
-                // === 6. 고급 설정 메뉴 ===
                 _SectionHeader(
                   title: '고급 설정',
                   icon: Icons.settings,
                 ),
                 _AdvancedSettingsMenu(),
                 
-                // === 6.5. 편집 모드 ===
                 _SectionHeader(
                   title: '편집 모드',
                   icon: Icons.edit,
@@ -290,7 +275,6 @@ class _Live2DSettingsScreenContentState
                   onChanged: controller.setEditMode,
                 ),
                 
-                // === 7. 상호작용 테스트 (개발용) ===
                 _SectionHeader(
                   title: '🎮 상호작용 테스트',
                   icon: Icons.touch_app,
@@ -351,7 +335,6 @@ class _Live2DSettingsScreenContentState
   }
 }
 
-/// 섹션 헤더 위젯
 class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -395,7 +378,6 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// 빈 모델 목록 위젯
 class _EmptyModelList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -435,7 +417,6 @@ class _EmptyModelList extends StatelessWidget {
     );
   }
 }
-/// 상호작용 테스트 타일
 class _InteractionTestTile extends StatefulWidget {
   final bool hasOverlayPermission;
 
@@ -471,7 +452,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
   void _startListening() async {
     if (_isListening) return;
     
-    // InteractionManager 사용
     final manager = InteractionManager();
     await manager.initialize();
     
@@ -482,7 +462,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
             '${DateTime.now().toString().substring(11, 19)} - ${event.type.name}'
             '${event.position != null ? " (${event.position!.dx.toInt()}, ${event.position!.dy.toInt()})" : ""}'
           );
-          // 최대 20개만 유지
           if (_receivedEvents.length > 20) {
             _receivedEvents.removeLast();
           }
@@ -531,7 +510,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 제목
             Row(
               children: [
                 Icon(
@@ -556,7 +534,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
             ),
             const SizedBox(height: 16),
             
-            // 이벤트 리스닝 토글
             Row(
               children: [
                 Expanded(
@@ -579,7 +556,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
             
             const SizedBox(height: 12),
             
-            // 외부 트리거 테스트
             Text(
               '외부 트리거 테스트',
               style: theme.textTheme.labelMedium?.copyWith(
@@ -609,7 +585,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
             
             const SizedBox(height: 12),
             
-            // 수신된 이벤트 목록
             Text(
               '수신된 이벤트 (${_receivedEvents.length})',
               style: theme.textTheme.labelMedium?.copyWith(
@@ -656,7 +631,6 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
 }
 
 // ============================================================================
-// 고급 설정 메뉴
 // ============================================================================
 
 class _AdvancedSettingsMenu extends StatelessWidget {
@@ -729,7 +703,6 @@ class _AdvancedSettingsMenu extends StatelessWidget {
 }
 
 // ============================================================================
-// 터치스루 설정 타일
 // ============================================================================
 
 class _TouchThroughTile extends StatefulWidget {
@@ -796,7 +769,6 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 터치스루 토글
             Row(
               children: [
                 Icon(
@@ -835,7 +807,6 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
               const Divider(height: 1),
               const SizedBox(height: 12),
 
-              // 현재 알파값 표시
               Row(
                 children: [
                   Icon(
@@ -855,7 +826,6 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
 
               const SizedBox(height: 12),
 
-              // 터치스루 알파 입력
               Row(
                 children: [
                   Expanded(
@@ -894,7 +864,6 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
 
               const SizedBox(height: 8),
 
-              // 안내 메시지
               Row(
                 children: [
                   Icon(
@@ -922,7 +891,6 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
 }
 
 // ============================================================================
-// 편집 모드 타일 — 전체 편집 패널
 // ============================================================================
 
 class _EditModeTile extends StatelessWidget {
@@ -947,7 +915,6 @@ class _EditModeTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 편집 모드 토글
             Row(
               children: [
                 Icon(
@@ -1001,7 +968,6 @@ class _EditModeTile extends StatelessWidget {
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 12),
-              // 편집 모드 컨트롤 패널
               const _EditModeControlPanel(),
             ],
           ],
@@ -1012,7 +978,6 @@ class _EditModeTile extends StatelessWidget {
 }
 
 // ============================================================================
-// 편집 모드 컨트롤 패널
 // ============================================================================
 
 class _EditModeControlPanel extends StatelessWidget {
@@ -1027,7 +992,6 @@ class _EditModeControlPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. 캐릭터 고정 버튼
         _buildToggleTile(
           theme: theme,
           icon: Icons.push_pin,
@@ -1041,7 +1005,6 @@ class _EditModeControlPanel extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // 2. 캐릭터 크기 변경 바
         Text('캐릭터 상대 크기', style: theme.textTheme.bodyMedium?.copyWith(
           fontWeight: FontWeight.w500,
         )),
@@ -1071,7 +1034,6 @@ class _EditModeControlPanel extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // 3. 캐릭터 회전 입력
         Row(
           children: [
             Icon(Icons.rotate_right, size: 20, color: theme.colorScheme.primary),
@@ -1097,7 +1059,6 @@ class _EditModeControlPanel extends StatelessWidget {
         const Divider(height: 1),
         const SizedBox(height: 12),
 
-        // 4. 프리셋 저장 & 보기
         Row(
           children: [
             Icon(Icons.bookmark, size: 20, color: theme.colorScheme.primary),
@@ -1202,7 +1163,6 @@ class _EditModeControlPanel extends StatelessWidget {
 }
 
 // ============================================================================
-// 회전 입력 위젯
 // ============================================================================
 
 class _RotationInput extends StatefulWidget {
@@ -1265,7 +1225,6 @@ class _RotationInputState extends State<_RotationInput> {
 }
 
 // ============================================================================
-// 프리셋 목록 다이얼로그
 // ============================================================================
 
 class _PresetsDialog extends StatefulWidget {

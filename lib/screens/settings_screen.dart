@@ -1,10 +1,5 @@
 // ============================================================================
-// 설정 화면 (Settings Screen) - v2.0.1
 // ============================================================================
-// 이 파일은 앱의 설정 화면 UI를 담당합니다.
-// API 프리셋 관리, 생성 파라미터 등을 변경할 수 있습니다.
-// SillyTavern 스타일의 범용 API 설정 시스템을 사용합니다.
-// v2.0.1: 연결 테스트, 고급 옵션 추가
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -15,7 +10,6 @@ import '../models/api_config.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 
-/// 설정 화면 위젯
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -25,7 +19,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
-  // 탭 컨트롤러 - API 프리셋 / 파라미터 설정 탭
   late TabController _tabController;
 
   @override
@@ -63,7 +56,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 }
 
 // ============================================================================
-// API 프리셋 탭 (새로운 범용 시스템)
 // ============================================================================
 
 class _ApiPresetsTab extends StatelessWidget {
@@ -77,7 +69,6 @@ class _ApiPresetsTab extends StatelessWidget {
 
     return Column(
       children: [
-        // 상단 안내문
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
@@ -97,7 +88,6 @@ class _ApiPresetsTab extends StatelessWidget {
           ),
         ),
 
-        // 프리셋 추가 버튼
         Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -121,7 +111,6 @@ class _ApiPresetsTab extends StatelessWidget {
 
         const Divider(height: 1),
 
-        // 프리셋 목록
         Expanded(
           child: apiConfigs.isEmpty
               ? Center(
@@ -160,7 +149,6 @@ class _ApiPresetsTab extends StatelessWidget {
                 ),
         ),
 
-        // 하단 사용자 이름 설정
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -191,7 +179,6 @@ class _ApiPresetsTab extends StatelessWidget {
     );
   }
 
-  /// 프리셋 템플릿 선택 다이얼로그
   void _showPresetTemplateDialog(BuildContext context) {
     final settingsProvider = context.read<SettingsProvider>();
 
@@ -253,7 +240,6 @@ class _ApiPresetsTab extends StatelessWidget {
     );
   }
 
-  /// 프리셋 편집 다이얼로그 (신규 또는 수정)
   void _showEditPresetDialog(BuildContext context, ApiConfig? existingConfig) {
     showDialog(
       context: context,
@@ -262,7 +248,6 @@ class _ApiPresetsTab extends StatelessWidget {
     );
   }
 
-  /// 프리셋 삭제 확인
   void _confirmDeletePreset(BuildContext context, ApiConfig config) {
     showDialog(
       context: context,
@@ -288,7 +273,6 @@ class _ApiPresetsTab extends StatelessWidget {
   }
 }
 
-/// 템플릿 선택 옵션 위젯
 class _TemplateOption extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -313,7 +297,6 @@ class _TemplateOption extends StatelessWidget {
   }
 }
 
-/// API 프리셋 카드 위젯
 class _ApiPresetCard extends StatelessWidget {
   final ApiConfig config;
   final bool isActive;
@@ -348,14 +331,12 @@ class _ApiPresetCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 선택 라디오
               Radio<bool>(
                 value: true,
                 groupValue: isActive,
                 onChanged: (_) => onTap(),
               ),
 
-              // 프리셋 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,7 +386,6 @@ class _ApiPresetCard extends StatelessWidget {
                       style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // API 키 상태
                     const SizedBox(height: 4),
                     Row(
                       children: [
@@ -434,7 +414,6 @@ class _ApiPresetCard extends StatelessWidget {
                 ),
               ),
 
-              // 편집/삭제 버튼
               Column(
                 children: [
                   IconButton(
@@ -458,7 +437,6 @@ class _ApiPresetCard extends StatelessWidget {
   }
 }
 
-/// API 프리셋 편집 다이얼로그
 class _ApiPresetEditDialog extends StatefulWidget {
   final ApiConfig? existingConfig;
 
@@ -478,7 +456,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   bool _isTesting = false;
   String? _testResult;
 
-  // v2.0.1: 고급 옵션
   late ApiFormat _format;
   late bool _useStreaming;
   late bool _hasFirstSystemPrompt;
@@ -501,7 +478,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
     );
     _customHeaders = Map.from(config?.customHeaders ?? {});
 
-    // v2.0.1: 고급 옵션 초기화
     _format = config?.format ?? ApiFormat.openAICompatible;
     _useStreaming = config?.useStreaming ?? true;
     _hasFirstSystemPrompt = config?.hasFirstSystemPrompt ?? true;
@@ -520,7 +496,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
     super.dispose();
   }
 
-  /// ⭐ v2.0.1: 연결 테스트
   Future<void> _testConnection() async {
     setState(() {
       _isTesting = true;
@@ -557,7 +532,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -576,13 +550,11 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 폼 필드
             Flexible(
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 프리셋 이름
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
@@ -622,7 +594,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 모델
                     TextFormField(
                       controller: _modelController,
                       decoration: const InputDecoration(
@@ -634,7 +605,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // v2.0.1: API 규격 선택
                     DropdownButtonFormField<ApiFormat>(
                       value: _format,
                       decoration: const InputDecoration(
@@ -670,7 +640,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                     ),
                     const SizedBox(height: 16),
 
-                    // 고급 설정 토글
                     InkWell(
                       onTap: () =>
                           setState(() => _showAdvanced = !_showAdvanced),
@@ -694,7 +663,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                       _buildHeadersEditor(),
                     ],
 
-                    // v2.0.1: 연결 테스트 결과
                     if (_testResult != null) ...[
                       const SizedBox(height: 16),
                       Container(
@@ -727,13 +695,11 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
             const SizedBox(height: 16),
 
-            // 버튼 (⭐ v2.0.3: Wrap으로 overflow 방지)
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,
               runSpacing: 8,
               children: [
-                // v2.0.1: 연결 테스트 버튼
                 OutlinedButton.icon(
                   onPressed: _isTesting ? null : _testConnection,
                   icon: _isTesting
@@ -761,7 +727,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
     );
   }
 
-  /// v2.0.1: 고급 옵션 빌드
   Widget _buildAdvancedOptions() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -943,10 +908,9 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   void _saveConfig() {
     final settingsProvider = context.read<SettingsProvider>();
 
-    // v2.0.1: 모든 필드 포함
     final newConfig =
         ApiConfig.custom(
-          id: widget.existingConfig?.id, // null이면 새 ID 생성
+          id: widget.existingConfig?.id,
           name: _nameController.text.trim(),
           baseUrl: _baseUrlController.text.trim(),
           apiKey: _apiKeyController.text,
@@ -979,7 +943,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
     Navigator.pop(context);
 
-    // v2.0.1: 저장 완료 알림
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${newConfig.name} 프리셋이 저장되었습니다.'),
@@ -990,7 +953,6 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 }
 
 // ============================================================================
-// 파라미터 설정 탭
 // ============================================================================
 
 class _ParameterSettingsTab extends StatelessWidget {
@@ -1004,7 +966,6 @@ class _ParameterSettingsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // === 생성 파라미터 ===
         _SectionTitle(title: '생성 파라미터'),
         const SizedBox(height: 8),
         Text(
@@ -1014,7 +975,6 @@ class _ParameterSettingsTab extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Temperature 슬라이더
         _ParameterSlider(
           label: 'Temperature (온도)',
           value: settings.temperature,
@@ -1027,7 +987,6 @@ class _ParameterSettingsTab extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Top-P 슬라이더
         _ParameterSlider(
           label: 'Top-P',
           value: settings.topP,
@@ -1040,7 +999,6 @@ class _ParameterSettingsTab extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Max Tokens 입력
         TextFormField(
           initialValue: settings.maxTokens.toString(),
           decoration: const InputDecoration(
@@ -1060,7 +1018,6 @@ class _ParameterSettingsTab extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Frequency Penalty 슬라이더
         _ParameterSlider(
           label: 'Frequency Penalty (빈도 패널티)',
           value: settings.frequencyPenalty,
@@ -1073,7 +1030,6 @@ class _ParameterSettingsTab extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // Presence Penalty 슬라이더
         _ParameterSlider(
           label: 'Presence Penalty (존재 패널티)',
           value: settings.presencePenalty,
@@ -1085,17 +1041,14 @@ class _ParameterSettingsTab extends StatelessWidget {
         ),
 
         // Note: Additional/Jailbreak prompts removed in v2.0.6
-        // All prompt configuration should use the Prompt Blocks system (프롬프트 편집기)
       ],
     );
   }
 }
 
 // ============================================================================
-// 공통 위젯
 // ============================================================================
 
-/// 섹션 제목 위젯
 class _SectionTitle extends StatelessWidget {
   final String title;
 
@@ -1110,7 +1063,6 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// 파라미터 슬라이더 위젯
 class _ParameterSlider extends StatelessWidget {
   final String label;
   final double value;
@@ -1135,7 +1087,6 @@ class _ParameterSlider extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 라벨과 현재 값
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1149,7 +1100,6 @@ class _ParameterSlider extends StatelessWidget {
             ),
           ],
         ),
-        // 슬라이더
         Slider(
           value: value,
           min: min,
@@ -1157,7 +1107,6 @@ class _ParameterSlider extends StatelessWidget {
           divisions: divisions,
           onChanged: onChanged,
         ),
-        // 설명
         Text(
           description,
           style: TextStyle(fontSize: 12, color: Colors.grey[600]),

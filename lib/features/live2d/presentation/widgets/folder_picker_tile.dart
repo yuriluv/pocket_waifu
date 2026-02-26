@@ -1,12 +1,9 @@
 // ============================================================================
-// 폴더 선택 타일 위젯 (Folder Picker Tile Widget)
 // ============================================================================
-// Live2D 모델 폴더를 선택하는 타일 위젯입니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
-/// 폴더 선택 타일 위젯
 class FolderPickerTile extends StatelessWidget {
   final String? currentPath;
   final String? displayName;
@@ -36,7 +33,6 @@ class FolderPickerTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더
             Row(
               children: [
                 Icon(
@@ -73,7 +69,6 @@ class FolderPickerTile extends StatelessWidget {
               ],
             ),
             
-            // 전체 경로 (선택된 경우)
             if (hasFolder && currentPath != null) ...[
               const SizedBox(height: 8),
               Container(
@@ -108,7 +103,6 @@ class FolderPickerTile extends StatelessWidget {
             
             const SizedBox(height: 12),
             
-            // 버튼들
             Row(
               children: [
                 Expanded(
@@ -140,7 +134,6 @@ class FolderPickerTile extends StatelessWidget {
               ],
             ),
             
-            // 안내 메시지
             const SizedBox(height: 8),
             Row(
               children: [

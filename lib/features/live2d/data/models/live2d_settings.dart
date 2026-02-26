@@ -1,76 +1,50 @@
 // ============================================================================
-// Live2D 설정 (Live2D Settings)
 // ============================================================================
-// Live2D 관련 설정을 담는 데이터 클래스입니다.
-// SharedPreferences로 저장/로드됩니다.
 // ============================================================================
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Live2D 관련 설정을 담는 데이터 클래스
 class Live2DSettings {
-  /// SharedPreferences 키
   static const String _prefsKey = 'live2d_settings';
 
-  /// 플로팅 뷰어 활성화 여부
   final bool isEnabled;
 
-  /// SAF로 선택한 폴더 URI (Android)
   final String? dataFolderUri;
 
-  /// SAF로 선택한 폴더의 실제 경로 (디스플레이용)
   final String? dataFolderPath;
 
-  /// 현재 선택된 모델 ID
   final String? selectedModelId;
 
-  /// 현재 선택된 모델 상대 경로
   final String? selectedModelPath;
 
-  /// 모델 크기 (0.5 ~ 2.0, 기본값 1.0)
   final double scale;
 
-  /// 화면 비율 기준 X 위치 (0.0 ~ 1.0)
   final double positionX;
 
-  /// 화면 비율 기준 Y 위치 (0.0 ~ 1.0)
   final double positionY;
 
-  /// 투명도 (0.0 ~ 1.0, 기본값 1.0) — 캐릭터 시각적 투명도 (GL)
-  /// 터치스루 투명도와 완전히 독립적으로 동작
   final double opacity;
 
-  /// 터치스루 모드 활성화 여부 (기본값 true)
   final bool touchThroughEnabled;
 
-  /// 터치스루 윈도우 알파 (0~100 정수, 기본값 80)
-  /// Android 12+에서 MAX_OBSCURING_OPACITY 0.8 이하로 자동 제한
   final int touchThroughAlpha;
 
-  /// 오버레이 너비 (픽셀)
   final int overlayWidth;
 
-  /// 오버레이 높이 (픽셀)
   final int overlayHeight;
 
-  /// 편집 모드 활성화 여부 (기본값 false)
   final bool editModeEnabled;
 
-  /// 캐릭터 고정 모드 (기본값 false)
   final bool characterPinned;
 
-  /// 캐릭터 상대적 크기 (투명상자 대비, 0.1~3.0, 기본값 1.0)
   final double relativeCharacterScale;
 
-  /// 캐릭터 오프셋 X (투명상자 내 상대 위치, 픽셀)
   final double characterOffsetX;
 
-  /// 캐릭터 오프셋 Y (투명상자 내 상대 위치, 픽셀)
   final double characterOffsetY;
 
-  /// 캐릭터 회전 (0~359도, 기본값 0)
   final int characterRotation;
 
   const Live2DSettings({
@@ -95,10 +69,8 @@ class Live2DSettings {
     this.characterRotation = 0,
   });
 
-  /// 기본 설정
   factory Live2DSettings.defaults() => const Live2DSettings();
 
-  /// SharedPreferences에서 설정 로드
   static Future<Live2DSettings> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -117,7 +89,6 @@ class Live2DSettings {
     }
   }
 
-  /// SharedPreferences에 설정 저장
   Future<bool> save() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -131,7 +102,6 @@ class Live2DSettings {
     }
   }
 
-  /// 복사본 생성 (일부 값 변경)
   Live2DSettings copyWith({
     bool? isEnabled,
     String? dataFolderUri,
@@ -178,7 +148,6 @@ class Live2DSettings {
     );
   }
 
-  /// JSON으로 직렬화
   Map<String, dynamic> toJson() {
     return {
       'isEnabled': isEnabled,
@@ -203,7 +172,6 @@ class Live2DSettings {
     };
   }
 
-  /// JSON에서 역직렬화
   factory Live2DSettings.fromJson(Map<String, dynamic> json) {
     return Live2DSettings(
       isEnabled: json['isEnabled'] as bool? ?? false,

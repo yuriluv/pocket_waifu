@@ -1,15 +1,11 @@
 // ============================================================================
-// 로그 뷰어 위젯 (Log Viewer Widget)
 // ============================================================================
-// Live2D 관련 로그를 확인하는 위젯입니다.
-// Flutter 및 Native 로그를 통합 표시합니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/services/live2d_log_service.dart';
 
-/// 로그 뷰어 다이얼로그 표시
 void showLive2DLogViewer(BuildContext context) {
   showModalBottomSheet(
     context: context,
@@ -22,14 +18,12 @@ void showLive2DLogViewer(BuildContext context) {
   );
 }
 
-/// 로그 소스 필터
 enum LogSourceFilter {
   all,
   flutter,
   native,
 }
 
-/// 로그 뷰어 위젯
 class Live2DLogViewer extends StatefulWidget {
   const Live2DLogViewer({super.key});
 
@@ -60,11 +54,10 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
   void _onLogsChanged() {
     if (mounted) {
       setState(() {});
-      // 자동 스크롤
       if (_autoScroll && _scrollController.hasClients) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            _scrollController.jumpTo(0); // 최신이 위에 있으므로 0으로
+            _scrollController.jumpTo(0);
           }
         });
       }
@@ -74,7 +67,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
   List<Live2DLogEntry> get filteredLogs {
     var logs = _logService.getLogsAboveLevel(_filterLevel);
     
-    // 소스 필터 적용
     switch (_sourceFilter) {
       case LogSourceFilter.flutter:
         logs = logs.where((e) => e.source == Live2DLogSource.flutter).toList();
@@ -103,7 +95,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
       builder: (context, scrollController) {
         return Column(
           children: [
-            // 핸들
             Container(
               margin: const EdgeInsets.symmetric(vertical: 8),
               width: 40,
@@ -114,7 +105,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
               ),
             ),
 
-            // 헤더
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
@@ -145,7 +135,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                           ],
                         ),
                       ),
-                      // 자동 스크롤 토글
                       IconButton(
                         icon: Icon(
                           _autoScroll ? Icons.vertical_align_top : Icons.vertical_align_center,
@@ -154,7 +143,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                         tooltip: _autoScroll ? '자동 스크롤 끄기' : '자동 스크롤 켜기',
                         onPressed: () => setState(() => _autoScroll = !_autoScroll),
                       ),
-                      // 복사 버튼
                       IconButton(
                         icon: const Icon(Icons.copy, size: 20),
                         tooltip: '로그 복사',
@@ -166,7 +154,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                           );
                         },
                       ),
-                      // 클리어 버튼
                       IconButton(
                         icon: const Icon(Icons.delete_outline, size: 20),
                         tooltip: '로그 삭제',
@@ -177,10 +164,8 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // 필터 행
                   Row(
                     children: [
-                      // 소스 필터 칩
                       _FilterChip(
                         label: '전체',
                         selected: _sourceFilter == LogSourceFilter.all,
@@ -199,7 +184,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                         onSelected: () => setState(() => _sourceFilter = LogSourceFilter.native),
                       ),
                       const Spacer(),
-                      // 레벨 필터
                       DropdownButton<Live2DLogLevel>(
                         value: _filterLevel,
                         underline: const SizedBox(),
@@ -226,7 +210,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  // 통계 바
                   _StatisticsBar(stats: stats),
                 ],
               ),
@@ -234,7 +217,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
 
             const Divider(),
 
-            // 로그 목록
             Expanded(
               child: logs.isEmpty
                   ? Center(
@@ -267,7 +249,7 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                       controller: scrollController,
                       itemCount: logs.length,
                       itemBuilder: (context, index) {
-                        final log = logs[logs.length - 1 - index]; // 최신순
+                        final log = logs[logs.length - 1 - index];
                         return _LogEntryTile(entry: log);
                       },
                     ),
@@ -292,7 +274,6 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
   }
 }
 
-/// 필터 칩 위젯
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -330,7 +311,6 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-/// 통계 바 위젯
 class _StatisticsBar extends StatelessWidget {
   final Map<String, int> stats;
   
@@ -386,7 +366,6 @@ class _StatisticsBar extends StatelessWidget {
   }
 }
 
-/// 로그 항목 타일
 class _LogEntryTile extends StatelessWidget {
   final Live2DLogEntry entry;
 
@@ -422,10 +401,8 @@ class _LogEntryTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 헤더
           Row(
             children: [
-              // 소스 아이콘
               Text(
                 entry.sourceIcon,
                 style: const TextStyle(fontSize: 10),
@@ -463,14 +440,12 @@ class _LogEntryTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          // 메시지
           Text(
             entry.message,
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w500,
             ),
           ),
-          // 상세 정보
           if (entry.details != null) ...[
             const SizedBox(height: 4),
             Text(
@@ -482,7 +457,6 @@ class _LogEntryTile extends StatelessWidget {
               ),
             ),
           ],
-          // 에러
           if (entry.error != null) ...[
             const SizedBox(height: 4),
             Container(

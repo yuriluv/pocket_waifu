@@ -6,17 +6,13 @@ import android.util.Log
 import com.example.flutter_application_1.live2d.Live2DEventStreamHandler
 
 /**
- * Live2D 네이티브 로거
  * 
- * Native 측 로그를 수집하고 Flutter로 전달합니다.
- * 모든 Live2D 관련 컴포넌트에서 이 로거를 사용합니다.
  */
 object Live2DLogger {
     
     private const val TAG = "Live2D"
     private const val DEFAULT_TAG = "General"
     
-    // 로그 레벨
     enum class Level(val value: Int, val icon: String) {
         DEBUG(0, "🔍"),
         INFO(1, "ℹ️"),
@@ -24,79 +20,64 @@ object Live2DLogger {
         ERROR(3, "❌")
     }
     
-    // 설정
     private var minLevel = Level.DEBUG
     private var isEnabled = true
     private var sendToFlutter = true
     
-    // ========== 최적화: 로그 스로틀링 ==========
-    // WHY: 렌더 루프 등 고빈도 경로에서 동일 메시지가 반복 출력되면
-    // Logcat/Flutter EventChannel 모두 병목이 됩니다.
-    // 동일 키(tag+message)를 minThrottleIntervalMs 이내에 재전송하지 않습니다.
     private const val MIN_THROTTLE_INTERVAL_MS = 2000L
     private val lastLogTimestamps = HashMap<String, Long>(64)
 
-    // Flutter 전송 스로틀 (별도 간격)
     private const val FLUTTER_THROTTLE_INTERVAL_MS = 3000L
     private val lastFlutterTimestamps = HashMap<String, Long>(64)
 
-    // 주기적으로 스로틀 맵을 정리 (메모리 누수 방지)
     private var lastCleanupTime = 0L
     private const val CLEANUP_INTERVAL_MS = 60_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     
     /**
-     * 로깅 활성화/비활성화
      */
     fun setEnabled(enabled: Boolean) {
         isEnabled = enabled
     }
     
     /**
-     * Flutter 전송 활성화/비활성화
      */
     fun setSendToFlutter(enabled: Boolean) {
         sendToFlutter = enabled
     }
     
     /**
-     * 최소 로그 레벨 설정
      */
     fun setMinLevel(level: Level) {
         minLevel = level
     }
     
     /**
-     * 디버그 로그 (간단 버전)
      */
     fun d(message: String, details: String?) {
         log(Level.DEBUG, DEFAULT_TAG, message, details)
     }
     
     /**
-     * 정보 로그 (간단 버전)
      */
     fun i(message: String, details: String?) {
         log(Level.INFO, DEFAULT_TAG, message, details)
     }
     
     /**
-     * 경고 로그 (간단 버전)
      */
     fun w(message: String, details: String?) {
         log(Level.WARNING, DEFAULT_TAG, message, details, null)
     }
     
     /**
-     * 에러 로그 (간단 버전 - Exception 지원)
      */
     fun e(message: String, error: Throwable?) {
         log(Level.ERROR, DEFAULT_TAG, message, error?.message, error)
     }
     
     /**
-     * 통합 로그 메서드
      */
     private fun log(
         level: Level,
@@ -108,19 +89,16 @@ object Live2DLogger {
         if (!isEnabled) return
         if (level.value < minLevel.value) return
         
-        // ========== 최적화: 스로틀링 ==========
-        // ERROR는 항상 출력, DEBUG/INFO는 스로틀 적용
         val now = System.currentTimeMillis()
         if (level != Level.ERROR && level != Level.WARNING) {
             val throttleKey = "$tag:$message"
             val lastTime = lastLogTimestamps[throttleKey]
             if (lastTime != null && (now - lastTime) < MIN_THROTTLE_INTERVAL_MS) {
-                return // 스로틀: 너무 빈번한 동일 로그 무시
+                return
             }
             lastLogTimestamps[throttleKey] = now
         }
 
-        // 주기적 정리 (맵이 무한히 커지지 않도록)
         if (now - lastCleanupTime > CLEANUP_INTERVAL_MS) {
             lastCleanupTime = now
             lastLogTimestamps.entries.removeAll { (now - it.value) > CLEANUP_INTERVAL_MS }
@@ -135,7 +113,6 @@ object Live2DLogger {
             }
         }
         
-        // Android Logcat 출력
         when (level) {
             Level.DEBUG -> Log.d(fullTag, fullMessage, error)
             Level.INFO -> Log.i(fullTag, fullMessage, error)
@@ -143,7 +120,6 @@ object Live2DLogger {
             Level.ERROR -> Log.e(fullTag, fullMessage, error)
         }
         
-        // Flutter로 전송 (별도 스로틀)
         if (sendToFlutter) {
             val flutterKey = "$tag:$message"
             val lastFlutterTime = lastFlutterTimestamps[flutterKey]
@@ -156,7 +132,6 @@ object Live2DLogger {
     }
     
     /**
-     * Flutter로 로그 전송
      */
     private fun sendLogToFlutter(
         level: Level,
@@ -186,11 +161,9 @@ object Live2DLogger {
     }
     
     // ============================================================================
-    // 편의 메서드 - 특정 컴포넌트용
     // ============================================================================
     
     /**
-     * OpenGL 관련 로그
      */
     object GL {
         private const val SUB_TAG = "OpenGL"
@@ -204,7 +177,6 @@ object Live2DLogger {
     }
     
     /**
-     * 오버레이 서비스 관련 로그
      */
     object Overlay {
         private const val SUB_TAG = "Overlay"
@@ -218,7 +190,6 @@ object Live2DLogger {
     }
     
     /**
-     * 모델 관련 로그
      */
     object Model {
         private const val SUB_TAG = "Model"
@@ -232,7 +203,6 @@ object Live2DLogger {
     }
     
     /**
-     * 렌더러 관련 로그
      */
     object Renderer {
         private const val SUB_TAG = "Renderer"
@@ -246,7 +216,6 @@ object Live2DLogger {
     }
     
     /**
-     * 상호작용 관련 로그
      */
     object Interaction {
         private const val SUB_TAG = "Interaction"
@@ -260,7 +229,6 @@ object Live2DLogger {
     }
     
     /**
-     * 태그가 포함된 내부 로그 메서드
      */
     private fun logWithTag(
         level: Level,

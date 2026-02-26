@@ -1,9 +1,5 @@
 // ============================================================================
-// 채팅 화면 (Chat Screen) v2.0.5
 // ============================================================================
-// 이 파일은 메인 채팅 화면 UI를 담당합니다.
-// 메시지 목록과 입력창을 표시하고, 사용자 입력을 처리합니다.
-// v2.0.5: 세션 ID 캡처 패턴 - 화면 생성 시 세션 ID 고정
 // ============================================================================
 
 import 'package:flutter/foundation.dart';
@@ -20,7 +16,6 @@ import '../widgets/prompt_preview_dialog.dart';
 import 'menu_drawer.dart';
 import 'settings_screen.dart';
 
-/// 채팅 화면 위젯
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
@@ -29,25 +24,16 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  // 텍스트 입력 컨트롤러
   final TextEditingController _textController = TextEditingController();
 
-  // 스크롤 컨트롤러
   final ScrollController _scrollController = ScrollController();
 
-  // v2.0.6: 입력 필드 포커스 노드
   final FocusNode _inputFocusNode = FocusNode();
 
-  // v2.0.6: 입력 필드 활성화 상태 (사용자가 명시적으로 활성화했는지 추적)
-  // - true: 사용자가 입력 필드를 탭하여 활성화함
-  // - false: 사용자가 뒤로가기로 키보드를 닫음
-  // - 메뉴에서 복귀할 때 이 값을 기준으로 포커스 복원 여부 결정
   bool _isInputActive = false;
 
-  // Provider 연결 완료 여부
   bool _isProviderLinked = false;
 
-  // v2.0.5: 현재 화면이 표시하는 세션 ID (메시지 전송 시 사용)
   String? _currentSessionId;
 
   @override
@@ -59,7 +45,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  /// ChatProvider와 ChatSessionProvider 연결
   void _linkProviders() {
     if (_isProviderLinked) return;
 
@@ -72,7 +57,6 @@ class _ChatScreenState extends State<ChatScreen> {
     debugPrint('>>> v2.0.5: Provider 연결 완료');
   }
 
-  /// v2.0.5: 현재 활성 세션 ID 캡처
   void _captureCurrentSessionId() {
     final chatSessionProvider = context.read<ChatSessionProvider>();
     _currentSessionId = chatSessionProvider.activeSessionId;
@@ -82,7 +66,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // 세션 변경 시 ID 업데이트 (드로어에서 세션 전환 시)
     final chatSessionProvider = context.read<ChatSessionProvider>();
     final newSessionId = chatSessionProvider.activeSessionId;
     if (newSessionId != null && newSessionId != _currentSessionId) {
@@ -99,7 +82,6 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  /// 메시지를 보내는 함수
   void _sendMessage() {
     final String text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -108,14 +90,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final chatSessionProvider = context.read<ChatSessionProvider>();
     final settingsProvider = context.read<SettingsProvider>();
 
-    // v2.0.5: 현재 화면의 세션 ID 캡처 (메시지 전송 시점에 고정)
     final sessionId = _currentSessionId ?? chatSessionProvider.activeSessionId;
     if (sessionId == null) {
       _showSnackBar('활성 세션이 없습니다.', isError: true);
       return;
     }
 
-    // === 명령어 파싱 ===
     final commandResult = CommandParser.parse(text);
     if (commandResult.$1) {
       _handleCommand(
@@ -132,22 +112,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
     debugPrint('>>> _sendMessage - 세션 ID: $sessionId');
 
-    // v2.0.5: 세션 ID를 명시적으로 전달
     chatProvider.sendMessage(
       userMessage: text,
       character: settingsProvider.character,
       settings: settingsProvider.settings,
       userName: settingsProvider.userName,
       apiConfig: activeApiConfig,
-      targetSessionId: sessionId, // 🔒 세션 ID 전달
+      targetSessionId: sessionId,
     );
 
     _textController.clear();
     _scrollToBottom();
   }
 
-  /// 명령어 처리
-  /// v2.0.5: 세션 ID를 명시적으로 전달
   void _handleCommand(
     CommandResult command,
     ChatProvider chatProvider,
@@ -159,7 +136,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     switch (command.command) {
       case 'del':
-        // 단일 삭제
         if (command.index != null && command.endIndex == null) {
           final idx = command.index! - 1;
           if (idx >= 0 && idx < currentMessages.length) {
@@ -172,7 +148,6 @@ class _ChatScreenState extends State<ChatScreen> {
             _showSnackBar('잘못된 메시지 번호입니다.', isError: true);
           }
         }
-        // 범위 삭제
         else if (command.index != null && command.endIndex != null) {
           final start = command.index! - 1;
           final end = command.endIndex! - 1;
@@ -244,7 +219,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  /// 스낵바 표시
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -256,7 +230,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// 내보내기 다이얼로그 표시
   void _showExportDialog(String json) {
     showDialog(
       context: context,
@@ -292,7 +265,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  /// 메시지 목록을 맨 아래로 스크롤합니다
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
@@ -305,13 +277,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  /// 마지막 AI 응답을 재생성합니다
   void _regenerateResponse() {
     final chatProvider = context.read<ChatProvider>();
     final settingsProvider = context.read<SettingsProvider>();
     final chatSessionProvider = context.read<ChatSessionProvider>();
 
-    // v2.0.5: 세션 ID 전달
     final sessionId = _currentSessionId ?? chatSessionProvider.activeSessionId;
 
     chatProvider.regenerateLastResponse(
@@ -325,7 +295,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Provider 연결 (최초 1회)
     if (!_isProviderLinked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _linkProviders();
@@ -333,13 +302,11 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
 
-    // Provider 데이터 읽기
     final chatProvider = context.watch<ChatProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
     final chatSessionProvider = context.watch<ChatSessionProvider>();
     final character = settingsProvider.character;
 
-    // v2.0.5: 세션 변경 감지 및 ID 업데이트
     final activeSessionId = chatSessionProvider.activeSessionId;
     if (activeSessionId != null && activeSessionId != _currentSessionId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -355,7 +322,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        // v2.0.6: 뒤로가기 시 입력 필드가 포커스되어 있으면 비활성화
         if (_inputFocusNode.hasFocus) {
           _inputFocusNode.unfocus();
           setState(() {
@@ -366,10 +332,8 @@ class _ChatScreenState extends State<ChatScreen> {
       },
       child: Scaffold(
         drawer: const MenuDrawer(),
-        // v2.0.6: 드로어 열림/닫힘 시 포커스 관리
         onDrawerChanged: (isOpened) {
           if (isOpened) {
-            // 드로어가 열릴 때: 항상 포커스 해제 (isInputActive는 유지)
             if (_inputFocusNode.hasFocus) {
               _inputFocusNode.unfocus();
               debugPrint(
@@ -377,9 +341,7 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             }
           } else {
-            // 드로어가 닫힐 때: isInputActive가 true일 때만 포커스 복원
             if (_isInputActive) {
-              // 약간의 딜레이 후 포커스 복원 (드로어 애니메이션 완료 대기)
               Future.delayed(const Duration(milliseconds: 100), () {
                 if (mounted && _isInputActive) {
                   _inputFocusNode.requestFocus();
@@ -415,7 +377,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
         body: Column(
           children: [
-            // === 에러 메시지 배너 ===
             if (chatProvider.errorMessage != null)
               MaterialBanner(
                 content: Text(
@@ -434,7 +395,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
 
-            // === 메시지 목록 ===
             Expanded(
               child: chatProvider.messages.isEmpty
                   ? Center(
@@ -484,7 +444,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
             ),
 
-            // === 로딩 표시 ===
             if (chatProvider.isLoading)
               Container(
                 padding: const EdgeInsets.all(16),
@@ -504,7 +463,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
 
-            // === 재생성 버튼 (마지막 메시지가 AI일 때만) ===
             if (chatProvider.messages.isNotEmpty &&
                 chatProvider.messages.last.role == MessageRole.assistant &&
                 !chatProvider.isLoading)
@@ -521,14 +479,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
 
-            // === 입력창 ===
             _MessageInput(
               controller: _textController,
               focusNode: _inputFocusNode,
               onSend: _sendMessage,
               isLoading: chatProvider.isLoading,
               onTap: () {
-                // v2.0.6: 사용자가 입력 필드를 탭했을 때 활성화
                 if (!_isInputActive) {
                   setState(() {
                     _isInputActive = true;
@@ -544,8 +500,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// 메시지 버블 위젯
-/// 각 메시지를 말풍선 형태로 표시합니다
 class _MessageBubble extends StatelessWidget {
   final Message message;
   final String characterName;
@@ -561,35 +515,30 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 사용자 메시지인지 AI 메시지인지에 따라 스타일 결정
     final bool isUser = message.role == MessageRole.user;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        // 사용자 메시지는 오른쪽, AI 메시지는 왼쪽 정렬
         mainAxisAlignment: isUser
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // AI 메시지일 때 아바타 표시
           if (!isUser) ...[
             CircleAvatar(
               backgroundColor: Colors.purple[100],
               child: Text(
-                characterName[0], // 캐릭터 이름의 첫 글자
+                characterName[0],
                 style: TextStyle(color: Colors.purple[800]),
               ),
             ),
             const SizedBox(width: 8),
           ],
 
-          // 메시지 버블
           Flexible(
             child: GestureDetector(
               onLongPress: () {
-                // 길게 누르면 삭제 옵션 표시
                 showModalBottomSheet(
                   context: context,
                   builder: (context) => SafeArea(
@@ -609,7 +558,6 @@ class _MessageBubble extends StatelessWidget {
                           title: const Text('복사'),
                           onTap: () {
                             Navigator.pop(context);
-                            // 클립보드에 복사 (실제 구현 시 clipboard 패키지 필요)
                           },
                         ),
                       ],
@@ -630,7 +578,6 @@ class _MessageBubble extends StatelessWidget {
                       ? Theme.of(context).colorScheme.primary
                       : Colors.grey[200],
                   borderRadius: BorderRadius.circular(20).copyWith(
-                    // 말풍선 모양 - 보낸 쪽 모서리를 각지게
                     bottomRight: isUser ? const Radius.circular(4) : null,
                     bottomLeft: !isUser ? const Radius.circular(4) : null,
                   ),
@@ -638,7 +585,6 @@ class _MessageBubble extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 보낸 사람 이름
                     Text(
                       isUser ? userName : characterName,
                       style: TextStyle(
@@ -648,7 +594,6 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    // 메시지 내용
                     Text(
                       message.content,
                       style: TextStyle(
@@ -662,13 +607,12 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
 
-          // 사용자 메시지일 때 아바타 표시
           if (isUser) ...[
             const SizedBox(width: 8),
             CircleAvatar(
               backgroundColor: Theme.of(context).colorScheme.primary,
               child: Text(
-                userName[0], // 사용자 이름의 첫 글자
+                userName[0],
                 style: const TextStyle(color: Colors.white),
               ),
             ),
@@ -679,9 +623,6 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-/// 메시지 입력 위젯
-/// 텍스트 입력창과 전송 버튼을 표시합니다
-/// v2.0.6: 포커스 노드와 탭 콜백 추가
 class _MessageInput extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -714,7 +655,6 @@ class _MessageInput extends StatelessWidget {
       child: SafeArea(
         child: Row(
           children: [
-            // 텍스트 입력창
             Expanded(
               child: TextField(
                 controller: controller,
@@ -735,12 +675,11 @@ class _MessageInput extends StatelessWidget {
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
                 onTap: onTap,
-                maxLines: null, // 여러 줄 입력 가능
+                maxLines: null,
                 keyboardType: TextInputType.multiline,
               ),
             ),
             const SizedBox(width: 8),
-            // 전송 버튼
             IconButton(
               onPressed: isLoading ? null : onSend,
               icon: Icon(

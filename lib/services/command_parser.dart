@@ -1,18 +1,14 @@
 // ============================================================================
-// 명령어 파서 (Command Parser)
 // ============================================================================
-// 슬래시(/) 명령어를 파싱하고 실행하는 서비스입니다.
-// SillyTavern 스타일의 파워유저 기능을 제공합니다.
 // ============================================================================
 
 import 'package:flutter/services.dart';
 
-/// 명령어 실행 결과를 담는 클래스
 class CommandResult {
-  final CommandType type;           // 명령어 종류
-  final bool success;               // 실행 성공 여부
-  final String message;             // 사용자에게 표시할 메시지
-  final Map<String, dynamic> data;  // 명령어 관련 데이터
+  final CommandType type;
+  final bool success;
+  final String message;
+  final Map<String, dynamic> data;
 
   CommandResult({
     required this.type,
@@ -21,9 +17,7 @@ class CommandResult {
     this.data = const {},
   });
 
-  // === 편의 Getter (chat_screen에서 사용) ===
 
-  /// 명령어 문자열 (del, send, edit, copy, clear, export, help)
   String get command {
     switch (type) {
       case CommandType.delete:
@@ -45,51 +39,37 @@ class CommandResult {
     }
   }
 
-  /// 단일 인덱스 (del, edit, copy에서 사용)
   int? get index => data['index'] as int?;
 
-  /// 범위 끝 인덱스 (del 범위 삭제에서 사용)
   int? get endIndex => data['end'] as int?;
 
-  /// 콘텐츠 (send, edit에서 사용)
   String? get content => data['content'] as String?;
 
-  /// 범위 삭제 여부
   bool get isRange => data['isRange'] == true;
 }
 
-/// 명령어 종류 열거형
 enum CommandType {
-  delete,     // /del - 메시지 삭제
-  send,       // /send - API 호출 없이 메시지 추가
-  edit,       // /edit - 메시지 수정
-  copy,       // /copy - 메시지 복사
-  help,       // /help - 도움말
-  clear,      // /clear - 전체 삭제
-  export_,    // /export - 대화 내보내기 (export는 예약어라 _추가)
-  unknown,    // 알 수 없는 명령어
+  delete,
+  send,
+  edit,
+  copy,
+  help,
+  clear,
+  export_,
+  unknown,
 }
 
-/// 명령어 파서 클래스
-/// 슬래시 명령어를 파싱하고 적절한 CommandResult를 반환합니다
 class CommandParser {
-  /// 입력 텍스트를 파싱합니다
   /// 
-  /// 반환값: (명령어 여부, 명령어 결과 또는 null)
-  /// - 명령어가 아니면: (false, null)
-  /// - 명령어이면: (true, CommandResult)
   static (bool, CommandResult?) parse(String input) {
-    // 슬래시로 시작하지 않으면 일반 메시지
     if (!input.startsWith('/')) {
       return (false, null);
     }
 
-    // 공백으로 분리하여 명령어와 인자 추출
     final parts = input.split(' ');
     final command = parts[0].toLowerCase();
     final args = parts.length > 1 ? parts.sublist(1) : <String>[];
 
-    // 명령어별 파싱
     switch (command) {
       case '/del':
       case '/delete':
@@ -123,8 +103,6 @@ class CommandParser {
     }
   }
 
-  /// /del 명령어 파싱
-  /// 형식: /del n 또는 /del n~m
   static CommandResult _parseDel(List<String> args) {
     if (args.isEmpty) {
       return CommandResult(
@@ -136,7 +114,6 @@ class CommandParser {
 
     final arg = args[0];
 
-    // 범위 삭제 (n~m 형식)
     if (arg.contains('~')) {
       final range = arg.split('~');
       if (range.length != 2) {
@@ -166,7 +143,6 @@ class CommandParser {
       );
     }
 
-    // 단일 삭제 (n 형식)
     final index = int.tryParse(arg);
     if (index == null || index < 1) {
       return CommandResult(
@@ -184,8 +160,6 @@ class CommandParser {
     );
   }
 
-  /// /send 명령어 파싱
-  /// 형식: /send 메시지 내용
   static CommandResult _parseSend(List<String> args) {
     if (args.isEmpty) {
       return CommandResult(
@@ -204,8 +178,6 @@ class CommandParser {
     );
   }
 
-  /// /edit 명령어 파싱
-  /// 형식: /edit n 새로운 내용
   static CommandResult _parseEdit(List<String> args) {
     if (args.length < 2) {
       return CommandResult(
@@ -233,8 +205,6 @@ class CommandParser {
     );
   }
 
-  /// /copy 명령어 파싱
-  /// 형식: /copy n
   static CommandResult _parseCopy(List<String> args) {
     if (args.isEmpty) {
       return CommandResult(
@@ -261,7 +231,6 @@ class CommandParser {
     );
   }
 
-  /// /help 명령어 - 도움말 반환
   static CommandResult _getHelp() {
     const helpText = '''
 📖 **명령어 목록**
@@ -285,7 +254,6 @@ class CommandParser {
     );
   }
 
-  /// /clear 명령어 파싱
   static CommandResult _parseClear() {
     return CommandResult(
       type: CommandType.clear,
@@ -295,7 +263,6 @@ class CommandParser {
     );
   }
 
-  /// /export 명령어 파싱
   static CommandResult _parseExport() {
     return CommandResult(
       type: CommandType.export_,
@@ -304,7 +271,6 @@ class CommandParser {
     );
   }
 
-  /// 클립보드에 텍스트 복사 (유틸리티 함수)
   static Future<void> copyToClipboard(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
   }

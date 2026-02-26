@@ -1,21 +1,16 @@
 // ============================================================================
-// 캐릭터 모델 (Character Model)
 // ============================================================================
-// 이 파일은 AI 캐릭터의 정보를 정의합니다.
-// SillyTavern처럼 캐릭터의 이름, 설명, 성격, 첫 인사말 등을 설정할 수 있습니다.
 // ============================================================================
 
-/// AI 캐릭터 정보를 담는 클래스
 class Character {
-  final String id;              // 캐릭터 고유 ID
-  final String name;            // 캐릭터 이름 (예: "미카")
-  final String description;     // 캐릭터 설명 (외모, 배경 등)
-  final String personality;     // 캐릭터 성격 (성격 특성, 말투 등)
-  final String scenario;        // 시나리오 (현재 상황 설명)
-  final String firstMessage;    // 첫 인사말 (대화 시작 시 AI가 먼저 하는 말)
-  final String exampleDialogue; // 예시 대화 (AI가 어떻게 대화하는지 보여주는 예시)
+  final String id;
+  final String name;
+  final String description;
+  final String personality;
+  final String scenario;
+  final String firstMessage;
+  final String exampleDialogue;
 
-  /// Character 생성자
   Character({
     required this.id,
     required this.name,
@@ -26,7 +21,6 @@ class Character {
     this.exampleDialogue = '',
   });
 
-  /// Character 객체를 Map으로 변환합니다 (저장용)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -39,7 +33,6 @@ class Character {
     };
   }
 
-  /// Map에서 Character 객체를 생성합니다 (불러오기용)
   factory Character.fromMap(Map<String, dynamic> map) {
     return Character(
       id: map['id'] ?? '',
@@ -52,7 +45,6 @@ class Character {
     );
   }
 
-  /// 캐릭터 복사본을 만듭니다 (일부 속성만 변경할 때 사용)
   Character copyWith({
     String? id,
     String? name,
@@ -73,7 +65,6 @@ class Character {
     );
   }
 
-  /// 기본 캐릭터를 생성합니다 (앱 처음 실행 시 사용)
   factory Character.defaultCharacter() {
     return Character(
       id: 'default',

@@ -1,8 +1,5 @@
 // ============================================================================
-// 프롬프트 편집 화면 (Prompt Editor Screen)
 // ============================================================================
-// SillyTavern 스타일의 프롬프트 블록 편집 화면입니다.
-// 블록 추가/삭제/활성화/재배치 및 내용 편집이 가능합니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -11,7 +8,6 @@ import '../providers/prompt_block_provider.dart';
 import '../models/prompt_block.dart';
 import '../widgets/prompt_preview_dialog.dart';
 
-/// 프롬프트 블록 편집 화면
 class PromptEditorScreen extends StatelessWidget {
   const PromptEditorScreen({super.key});
 
@@ -21,7 +17,6 @@ class PromptEditorScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('프롬프트 블록 편집'),
         actions: [
-          // 미리보기 버튼 (⭐ v2.0.3: 실제 API 전송 프롬프트 보기)
           IconButton(
             icon: const Icon(Icons.preview),
             tooltip: '미리보기',
@@ -29,7 +24,6 @@ class PromptEditorScreen extends StatelessWidget {
               PromptPreviewDialog.showWithRealPrompt(context);
             },
           ),
-          // 블록 추가 버튼
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '블록 추가',
@@ -47,7 +41,6 @@ class PromptEditorScreen extends StatelessWidget {
 
           return Column(
             children: [
-              // === 안내 문구 ===
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -76,7 +69,6 @@ class PromptEditorScreen extends StatelessWidget {
                 ),
               ),
 
-              // === 블록 목록 (드래그 가능) ===
               Expanded(
                 child: ReorderableListView.builder(
                   padding: const EdgeInsets.all(8),
@@ -99,7 +91,6 @@ class PromptEditorScreen extends StatelessWidget {
                 ),
               ),
 
-              // === 하단 정보 바 ===
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -128,14 +119,11 @@ class PromptEditorScreen extends StatelessWidget {
     );
   }
 
-  /// 블록 추가 다이얼로그
   void _showAddBlockDialog(BuildContext context) {
     showDialog(context: context, builder: (context) => const _AddBlockDialog());
   }
 
-  /// 블록 편집 다이얼로그
   void _showEditBlockDialog(BuildContext context, PromptBlock block) {
-    // ⭐ v2.0.2: read-only 블록은 특별한 다이얼로그 표시
     if (block.isReadOnly) {
       _showReadOnlyBlockDialog(context, block);
       return;
@@ -147,7 +135,6 @@ class PromptEditorScreen extends StatelessWidget {
     );
   }
 
-  /// ⭐ v2.0.2: Read-only 블록 정보 다이얼로그
   void _showReadOnlyBlockDialog(BuildContext context, PromptBlock block) {
     final provider = Provider.of<PromptBlockProvider>(context, listen: false);
 
@@ -195,7 +182,6 @@ class PromptEditorScreen extends StatelessWidget {
                 ),
               ),
 
-              // 과거 기억 블록인 경우 메시지 개수 설정
               if (block.type == PromptBlock.TYPE_PAST_MEMORY) ...[
                 const SizedBox(height: 16),
                 const Text(
@@ -252,7 +238,6 @@ class PromptEditorScreen extends StatelessWidget {
     );
   }
 
-  /// 블록 삭제 확인
   void _confirmDeleteBlock(
     BuildContext context,
     PromptBlockProvider provider,
@@ -285,7 +270,6 @@ class PromptEditorScreen extends StatelessWidget {
   }
 }
 
-/// 블록 카드 위젯
 class _PromptBlockCard extends StatelessWidget {
   final PromptBlock block;
   final int index;
@@ -304,7 +288,6 @@ class _PromptBlockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 블록 타입별 아이콘 및 색상
     final (IconData icon, Color color) = switch (block.type) {
       PromptBlock.TYPE_SYSTEM_PROMPT => (Icons.settings, Colors.blue),
       PromptBlock.TYPE_CHARACTER => (Icons.person, Colors.purple),
@@ -324,11 +307,9 @@ class _PromptBlockCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 드래그 핸들
               const Icon(Icons.drag_handle, color: Colors.grey),
               const SizedBox(width: 8),
 
-              // 블록 아이콘
               Container(
                 width: 40,
                 height: 40,
@@ -340,7 +321,6 @@ class _PromptBlockCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // 블록 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,7 +356,6 @@ class _PromptBlockCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    // ⭐ v2.0.2: read-only 블록은 설명 표시
                     Text(
                       block.isReadOnly
                           ? (block.type == PromptBlock.TYPE_PAST_MEMORY
@@ -403,10 +382,8 @@ class _PromptBlockCard extends StatelessWidget {
                 ),
               ),
 
-              // 활성화 토글
               Switch(value: block.enabled, onChanged: (_) => onToggle()),
 
-              // 삭제 버튼 (⭐ v2.0.2: 시스템 블록은 삭제 불가)
               IconButton(
                 icon: Icon(
                   block.isSystemBlock
@@ -435,7 +412,6 @@ class _PromptBlockCard extends StatelessWidget {
   }
 }
 
-/// 빈 블록 플레이스홀더
 class _EmptyBlocksPlaceholder extends StatelessWidget {
   final VoidCallback onAddBlock;
 
@@ -470,7 +446,6 @@ class _EmptyBlocksPlaceholder extends StatelessWidget {
   }
 }
 
-/// 블록 추가 다이얼로그
 class _AddBlockDialog extends StatefulWidget {
   const _AddBlockDialog();
 
@@ -499,7 +474,6 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 블록 타입 선택
             const Text('블록 타입', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -534,7 +508,6 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 블록 이름
             const Text('블록 이름', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
@@ -547,7 +520,6 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 블록 내용
             const Text('내용', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
@@ -599,7 +571,6 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
   }
 }
 
-/// 블록 편집 다이얼로그
 class _EditBlockDialog extends StatefulWidget {
   final PromptBlock block;
 
@@ -649,7 +620,6 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 블록 이름
               const Text(
                 '블록 이름',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -664,7 +634,6 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
               ),
               const SizedBox(height: 16),
 
-              // 블록 내용
               const Text('내용', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               TextField(
@@ -692,12 +661,10 @@ class _EditBlockDialogState extends State<_EditBlockDialog> {
   void _saveBlock() {
     final provider = Provider.of<PromptBlockProvider>(context, listen: false);
 
-    // 이름 업데이트
     if (_nameController.text.trim() != widget.block.name) {
       provider.updateBlockName(widget.block.id, _nameController.text.trim());
     }
 
-    // 내용 업데이트
     if (_contentController.text != widget.block.content) {
       provider.updateBlockContent(widget.block.id, _contentController.text);
     }

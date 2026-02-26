@@ -1,12 +1,9 @@
 // ============================================================================
-// 크기 슬라이더 타일 위젯 (Size Slider Tile Widget)
 // ============================================================================
-// Live2D 오버레이의 크기를 조절하는 슬라이더 위젯입니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 
-/// 크기 슬라이더 타일 위젯
 class SizeSliderTile extends StatelessWidget {
   final double scale;
   final double opacity;
@@ -36,7 +33,6 @@ class SizeSliderTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더
             Row(
               children: [
                 Icon(
@@ -55,7 +51,6 @@ class SizeSliderTile extends StatelessWidget {
             
             const SizedBox(height: 16),
             
-            // 크기 슬라이더
             _SliderRow(
               icon: Icons.aspect_ratio,
               label: '크기',
@@ -69,7 +64,6 @@ class SizeSliderTile extends StatelessWidget {
             
             const SizedBox(height: 16),
             
-            // 투명도 슬라이더
             _SliderRow(
               icon: Icons.opacity,
               label: '투명도',
@@ -83,7 +77,6 @@ class SizeSliderTile extends StatelessWidget {
             
             const SizedBox(height: 16),
             
-            // 위치 초기화 버튼
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -93,7 +86,6 @@ class SizeSliderTile extends StatelessWidget {
               ),
             ),
             
-            // 안내 메시지
             const SizedBox(height: 8),
             Row(
               children: [
@@ -120,7 +112,6 @@ class SizeSliderTile extends StatelessWidget {
   }
 }
 
-/// 슬라이더 행 위젯
 class _SliderRow extends StatelessWidget {
   final IconData icon;
   final String label;

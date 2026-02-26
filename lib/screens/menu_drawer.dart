@@ -1,8 +1,5 @@
 // ============================================================================
-// 메뉴 드로어 (Menu Drawer)
 // ============================================================================
-// 앱의 메인 네비게이션 드로어입니다.
-// 채팅 목록, 설정, 프롬프트 편집, 테마 설정 등에 접근할 수 있습니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
@@ -16,7 +13,6 @@ import 'settings_screen.dart';
 import '../features/live2d/live2d_module.dart';
 import '../widgets/prompt_preview_dialog.dart';
 
-/// 메뉴 드로어 위젯
 class MenuDrawer extends StatelessWidget {
   const MenuDrawer({super.key});
 
@@ -28,23 +24,18 @@ class MenuDrawer extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // === 드로어 헤더 ===
           _DrawerHeader(themeProvider: themeProvider),
 
-          // === 메뉴 목록 ===
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                // ▶ 채팅 섹션
                 const _SectionTitle(title: '채팅'),
 
-                // 새 채팅 시작
                 _DrawerMenuItem(
                   icon: Icons.add_comment,
                   title: '새 채팅',
                   onTap: () {
-                    // v2.0.4: 세션 생성만 하면 ChatProvider가 자동 연동
                     chatSessionProvider.createNewSession();
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -56,7 +47,6 @@ class MenuDrawer extends StatelessWidget {
                   },
                 ),
 
-                // 채팅 목록
                 _DrawerMenuItem(
                   icon: Icons.list,
                   title: '채팅 목록',
@@ -74,10 +64,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
-                // ▶ 설정 섹션
                 const _SectionTitle(title: '설정'),
 
-                // API 설정
                 _DrawerMenuItem(
                   icon: Icons.key,
                   title: 'API 설정',
@@ -95,10 +83,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
-                // ▶ 프롬프트 섹션
                 const _SectionTitle(title: '프롬프트'),
 
-                // 프롬프트 블록 편집
                 _DrawerMenuItem(
                   icon: Icons.edit_note,
                   title: '프롬프트 블록 편집',
@@ -114,7 +100,6 @@ class MenuDrawer extends StatelessWidget {
                   },
                 ),
 
-                // 프롬프트 미리보기 (⭐ v2.0.3: 실제 API 전송 프롬프트 보기)
                 _DrawerMenuItem(
                   icon: Icons.preview,
                   title: '프롬프트 미리보기',
@@ -127,10 +112,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
-                // ▶ 테마 섹션
                 const _SectionTitle(title: '테마'),
 
-                // 테마 설정
                 _DrawerMenuItem(
                   icon: Icons.palette,
                   title: '테마 설정',
@@ -146,7 +129,6 @@ class MenuDrawer extends StatelessWidget {
                   },
                 ),
 
-                // 다크 모드 토글
                 SwitchListTile(
                   secondary: Icon(
                     themeProvider.themeMode == ThemeMode.dark
@@ -164,10 +146,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
-                // ▶ Live2D 섹션
                 const _SectionTitle(title: 'Live2D'),
 
-                // Live2D 설정
                 _DrawerMenuItem(
                   icon: Icons.face,
                   title: 'Live2D 설정',
@@ -185,10 +165,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const Divider(),
 
-                // ▶ 도움말 섹션
                 const _SectionTitle(title: '도움말'),
 
-                // 명령어 도움말
                 _DrawerMenuItem(
                   icon: Icons.terminal,
                   title: '명령어 도움말',
@@ -199,7 +177,6 @@ class MenuDrawer extends StatelessWidget {
                   },
                 ),
 
-                // 앱 정보
                 _DrawerMenuItem(
                   icon: Icons.info_outline,
                   title: '앱 정보',
@@ -212,7 +189,6 @@ class MenuDrawer extends StatelessWidget {
             ),
           ),
 
-          // === 하단 버전 정보 ===
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
@@ -225,7 +201,6 @@ class MenuDrawer extends StatelessWidget {
     );
   }
 
-  /// 앱 정보 다이얼로그 표시
   void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,
@@ -249,7 +224,6 @@ class MenuDrawer extends StatelessWidget {
   }
 }
 
-/// 드로어 헤더 위젯
 class _DrawerHeader extends StatelessWidget {
   final ThemeProvider themeProvider;
 
@@ -272,7 +246,6 @@ class _DrawerHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          // 앱 아이콘
           Container(
             width: 56,
             height: 56,
@@ -283,7 +256,6 @@ class _DrawerHeader extends StatelessWidget {
             child: const Icon(Icons.favorite, color: Colors.white, size: 32),
           ),
           const SizedBox(height: 12),
-          // 앱 이름
           const Text(
             'Pocket Waifu',
             style: TextStyle(
@@ -292,7 +264,6 @@ class _DrawerHeader extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
-          // 서브타이틀
           Text(
             'AI 캐릭터와 대화하세요',
             style: TextStyle(
@@ -306,7 +277,6 @@ class _DrawerHeader extends StatelessWidget {
   }
 }
 
-/// 섹션 타이틀 위젯
 class _SectionTitle extends StatelessWidget {
   final String title;
 
@@ -329,7 +299,6 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// 드로어 메뉴 아이템 위젯
 class _DrawerMenuItem extends StatelessWidget {
   final IconData icon;
   final String title;

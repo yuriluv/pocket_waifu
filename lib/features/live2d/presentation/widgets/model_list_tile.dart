@@ -1,14 +1,11 @@
 // ============================================================================
-// 모델 목록 타일 위젯 (Model List Tile Widget)
 // ============================================================================
-// Live2D 모델 목록에서 각 모델을 표시하는 타일 위젯입니다.
 // ============================================================================
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../data/models/live2d_model_info.dart';
 
-/// 모델 목록 타일 위젯
 class ModelListTile extends StatelessWidget {
   final Live2DModelInfo model;
   final bool isSelected;
@@ -41,7 +38,6 @@ class ModelListTile extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // 썸네일
               _ModelThumbnail(
                 thumbnailPath: model.thumbnailPath,
                 isSelected: isSelected,
@@ -49,12 +45,10 @@ class ModelListTile extends StatelessWidget {
               
               const SizedBox(width: 12),
               
-              // 모델 정보
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 모델 이름
                     Text(
                       model.name,
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -66,7 +60,6 @@ class ModelListTile extends StatelessWidget {
                     
                     const SizedBox(height: 4),
                     
-                    // 모델 타입
                     Row(
                       children: [
                         _ModelTypeBadge(type: model.type),
@@ -87,7 +80,6 @@ class ModelListTile extends StatelessWidget {
                 ),
               ),
               
-              // 선택 표시
               if (isSelected)
                 Icon(
                   Icons.check_circle,
@@ -106,7 +98,6 @@ class ModelListTile extends StatelessWidget {
   }
 }
 
-/// 모델 썸네일 위젯
 class _ModelThumbnail extends StatelessWidget {
   final String? thumbnailPath;
   final bool isSelected;
@@ -142,7 +133,6 @@ class _ModelThumbnail extends StatelessWidget {
   }
 }
 
-/// 썸네일 없을 때 표시할 아이콘
 class _PlaceholderIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -156,7 +146,6 @@ class _PlaceholderIcon extends StatelessWidget {
   }
 }
 
-/// 모델 타입 배지
 class _ModelTypeBadge extends StatelessWidget {
   final Live2DModelType type;
 

@@ -1,21 +1,16 @@
 // ============================================================================
-// 메시지 액션 아이콘 위젯 (Message Action Icons Widget)
 // ============================================================================
-// 각 메시지 버블 하단에 표시되는 액션 아이콘들입니다.
-// 수정, 삭제, 복사 기능을 제공합니다.
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// 메시지 액션 아이콘 위젯
-/// 각 메시지에 대한 수정/삭제/복사 버튼을 표시합니다
 class MessageActionIcons extends StatelessWidget {
-  final String messageContent;   // 메시지 내용 (복사용)
-  final int messageIndex;        // 메시지 인덱스 (1-based)
-  final VoidCallback onEdit;     // 수정 버튼 클릭 시 콜백
-  final VoidCallback onDelete;   // 삭제 버튼 클릭 시 콜백
-  final bool showEdit;           // 수정 버튼 표시 여부
+  final String messageContent;
+  final int messageIndex;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final bool showEdit;
 
   const MessageActionIcons({
     super.key,
@@ -26,7 +21,6 @@ class MessageActionIcons extends StatelessWidget {
     this.showEdit = true,
   });
 
-  /// 메시지를 클립보드에 복사합니다
   Future<void> _copyToClipboard(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: messageContent));
     
@@ -41,7 +35,6 @@ class MessageActionIcons extends StatelessWidget {
     }
   }
 
-  /// 삭제 확인 다이얼로그를 표시합니다
   Future<void> _showDeleteConfirmDialog(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -72,7 +65,6 @@ class MessageActionIcons extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 메시지 번호 표시
         Text(
           '#$messageIndex',
           style: TextStyle(
@@ -82,7 +74,6 @@ class MessageActionIcons extends StatelessWidget {
         ),
         const SizedBox(width: 8),
 
-        // 수정 버튼
         if (showEdit)
           _ActionIconButton(
             icon: Icons.edit_outlined,
@@ -90,7 +81,6 @@ class MessageActionIcons extends StatelessWidget {
             onPressed: onEdit,
           ),
 
-        // 삭제 버튼
         _ActionIconButton(
           icon: Icons.delete_outline,
           tooltip: '삭제',
@@ -98,7 +88,6 @@ class MessageActionIcons extends StatelessWidget {
           color: Colors.red[400],
         ),
 
-        // 복사 버튼
         _ActionIconButton(
           icon: Icons.copy_outlined,
           tooltip: '복사',
@@ -109,7 +98,6 @@ class MessageActionIcons extends StatelessWidget {
   }
 }
 
-/// 개별 액션 아이콘 버튼
 class _ActionIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -143,11 +131,9 @@ class _ActionIconButton extends StatelessWidget {
   }
 }
 
-/// 메시지 수정 다이얼로그
-/// 메시지 내용을 수정할 수 있는 다이얼로그를 표시합니다
 class MessageEditDialog extends StatefulWidget {
-  final String initialContent;   // 초기 메시지 내용
-  final int messageIndex;        // 메시지 인덱스 (1-based)
+  final String initialContent;
+  final int messageIndex;
 
   const MessageEditDialog({
     super.key,
@@ -155,7 +141,6 @@ class MessageEditDialog extends StatefulWidget {
     required this.messageIndex,
   });
 
-  /// 다이얼로그를 표시하고 수정된 내용을 반환합니다
   static Future<String?> show(
     BuildContext context, {
     required String initialContent,

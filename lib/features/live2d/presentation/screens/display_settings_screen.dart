@@ -1,15 +1,11 @@
 // ============================================================================
-// 디스플레이 설정 화면 (Display Settings Screen)
 // ============================================================================
-// 오버레이 크기, 투명도, 위치 등 표시 설정을 관리하는 화면입니다.
-// Phase 5: UI/UX 개선
 // ============================================================================
 
 import 'package:flutter/material.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/models/live2d_settings.dart';
 
-/// 디스플레이 설정 화면
 class DisplaySettingsScreen extends StatefulWidget {
   const DisplaySettingsScreen({super.key});
 
@@ -128,7 +124,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                // 오버레이 상태 표시
                 if (!_isOverlayActive)
                   Container(
                     margin: const EdgeInsets.all(16),
@@ -154,7 +149,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                     ),
                   ),
                 
-                // === 크기 설정 ===
                 _SectionHeader(
                   title: '크기',
                   icon: Icons.photo_size_select_large,
@@ -200,7 +194,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                 
                 const Divider(height: 32),
                 
-                // === 캐릭터 투명도 설정 (GL 레벨, 터치스루와 독립) ===
                 _SectionHeader(
                   title: '캐릭터 투명도',
                   icon: Icons.opacity,
@@ -246,7 +239,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                 
                 const Divider(height: 32),
                 
-                // === 위치 설정 ===
                 _SectionHeader(
                   title: '기본 위치',
                   icon: Icons.open_with,
@@ -256,7 +248,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      // 위치 미리보기
                       AspectRatio(
                         aspectRatio: 9 / 16,
                         child: Container(
@@ -269,7 +260,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                           ),
                           child: Stack(
                             children: [
-                              // 위치 표시
                               Positioned(
                                 left: _positionX * 0.8 * MediaQuery.of(context).size.width * 0.3,
                                 top: _positionY * 0.8 * MediaQuery.of(context).size.width * 0.3 * (16/9),
@@ -302,7 +292,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                                 ),
                               ),
                               
-                              // 안내 텍스트
                               Positioned(
                                 bottom: 8,
                                 left: 0,
@@ -323,7 +312,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                       
                       const SizedBox(height: 16),
                       
-                      // 퀵 위치 버튼
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -368,7 +356,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
                 
                 const Divider(height: 32),
                 
-                // === 초기화 버튼 ===
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: OutlinedButton.icon(
@@ -386,7 +373,6 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
 }
 
 // ============================================================================
-// 섹션 헤더
 // ============================================================================
 
 class _SectionHeader extends StatelessWidget {
@@ -422,7 +408,6 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ============================================================================
-// 프리셋 버튼 그룹
 // ============================================================================
 
 class _PresetButtons extends StatelessWidget {
@@ -473,7 +458,6 @@ class _PresetButtons extends StatelessWidget {
 }
 
 // ============================================================================
-// 위치 버튼
 // ============================================================================
 
 class _PositionButton extends StatelessWidget {

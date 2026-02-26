@@ -1,15 +1,6 @@
 // ============================================================================
-// Live2D 네이티브 브릿지 (Live2D Native Bridge)
 // ============================================================================
-// Flutter와 Android Native 모듈 간의 통신을 담당합니다.
-// Platform Channel (MethodChannel, EventChannel)을 사용합니다.
 //
-// 주요 기능:
-// - 오버레이 제어 (표시/숨김)
-// - 모델 로드/언로드
-// - 모션/표정 재생
-// - 디스플레이 설정 (크기, 위치, 투명도)
-// - 상호작용 이벤트 수신 (추후 확장)
 // ============================================================================
 
 import 'dart:async';
@@ -17,41 +8,31 @@ import 'package:flutter/services.dart';
 import '../../domain/entities/interaction_event.dart';
 import 'live2d_log_service.dart';
 
-/// Live2D 네이티브 브릿지
 /// 
-/// Flutter와 Android Native 모듈 간의 통신을 담당하는 싱글톤 클래스입니다.
 class Live2DNativeBridge {
-  // === 싱글톤 패턴 ===
   static final Live2DNativeBridge _instance = Live2DNativeBridge._internal();
   factory Live2DNativeBridge() => _instance;
   Live2DNativeBridge._internal();
 
   static const String _tag = 'NativeBridge';
 
-  // === Platform Channel 정의 ===
   static const String _channelName = 'com.example.flutter_application_1/live2d';
   static const String _eventChannelName = 'com.example.flutter_application_1/live2d/events';
   
   final MethodChannel _methodChannel = const MethodChannel(_channelName);
   final EventChannel _eventChannel = const EventChannel(_eventChannelName);
   
-  // === 이벤트 스트림 ===
   StreamSubscription? _eventSubscription;
   
-  // === 이벤트 콜백 ===
   final List<InteractionHandler> _eventHandlers = [];
   
-  // === 상태 ===
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
   // ============================================================================
-  // 초기화 / 정리
   // ============================================================================
 
-  /// 브릿지 초기화
   /// 
-  /// 앱 시작 시 호출하여 이벤트 스트림을 설정합니다.
   Future<void> initialize() async {
     if (_isInitialized) {
       live2dLog.warning(_tag, '이미 초기화됨');
@@ -61,7 +42,6 @@ class Live2DNativeBridge {
     try {
       live2dLog.info(_tag, '네이티브 브릿지 초기화 시작');
       
-      // 이벤트 스트림 설정 (Native 로그 포함)
       _eventSubscription = _eventChannel
           .receiveBroadcastStream()
           .listen(
@@ -78,34 +58,27 @@ class Live2DNativeBridge {
     }
   }
   
-  /// Raw Native 이벤트 처리 (로그 포함)
   void _handleRawNativeEvent(dynamic event) {
     if (event is! Map) return;
     
     final map = Map<String, dynamic>.from(event);
     final type = map['type'] as String?;
     
-    // Native 로그 이벤트 처리
     if (type == 'nativeLog') {
       live2dLog.addNativeLog(map);
       return;
     }
     
-    // 상태 동기화 이벤트 처리
     if (type == 'stateSync') {
       _handleStateSync(map);
       return;
     }
     
-    // 일반 상호작용 이벤트 처리
     final interactionEvent = InteractionEvent.fromMap(map);
     _handleNativeEvent(interactionEvent);
   }
   
-  /// 상태 동기화 이벤트 처리
   /// 
-  /// WHY: Native 서비스가 주기적으로 상태를 브로드캐스트합니다.
-  /// 이를 통해 Flutter와 Native 간의 상태 불일치를 감지하고 수정할 수 있습니다.
   void _handleStateSync(Map<String, dynamic> data) {
     final isRunning = data['isRunning'] as bool? ?? false;
     final modelLoaded = data['modelLoaded'] as bool? ?? false;
@@ -117,21 +90,16 @@ class Live2DNativeBridge {
       details: 'running=$isRunning, model=$modelLoaded, uptime=${uptimeMs ~/ 1000}s',
     );
     
-    // 상태 동기화 콜백 호출
     _stateSyncCallback?.call(data);
   }
   
-  // === 상태 동기화 콜백 ===
   void Function(Map<String, dynamic>)? _stateSyncCallback;
   
-  /// 상태 동기화 콜백 등록
   /// 
-  /// Native에서 주기적으로 상태를 브로드캐스트할 때 호출됩니다.
   void setStateSyncCallback(void Function(Map<String, dynamic>)? callback) {
     _stateSyncCallback = callback;
   }
 
-  /// 브릿지 정리
   void dispose() {
     _eventSubscription?.cancel();
     _eventSubscription = null;
@@ -141,20 +109,16 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 이벤트 핸들링
   // ============================================================================
 
-  /// 이벤트 핸들러 등록
   void addEventHandler(InteractionHandler handler) {
     _eventHandlers.add(handler);
   }
 
-  /// 이벤트 핸들러 제거
   void removeEventHandler(InteractionHandler handler) {
     _eventHandlers.remove(handler);
   }
 
-  /// 네이티브 이벤트 처리
   void _handleNativeEvent(InteractionEvent event) {
     live2dLog.debug(_tag, '이벤트 수신', details: event.toString());
     
@@ -168,10 +132,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 오버레이 제어
   // ============================================================================
 
-  /// 오버레이 표시
   Future<bool> showOverlay() async {
     try {
       live2dLog.info(_tag, '오버레이 표시 요청');
@@ -186,7 +148,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 오버레이 숨김
   Future<bool> hideOverlay() async {
     try {
       live2dLog.info(_tag, '오버레이 숨김 요청');
@@ -201,7 +162,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 오버레이 표시 상태 확인
   Future<bool> isOverlayVisible() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('isOverlayVisible');
@@ -215,10 +175,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 권한 관리
   // ============================================================================
 
-  /// 오버레이 권한 확인
   Future<bool> hasOverlayPermission() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('hasOverlayPermission');
@@ -231,7 +189,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 오버레이 권한 요청
   Future<bool> requestOverlayPermission() async {
     try {
       live2dLog.info(_tag, '오버레이 권한 요청');
@@ -245,7 +202,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 저장소 권한 확인
   Future<bool> hasStoragePermission() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('hasStoragePermission');
@@ -258,7 +214,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 저장소 권한 요청
   Future<bool> requestStoragePermission() async {
     try {
       live2dLog.info(_tag, '저장소 권한 요청');
@@ -273,12 +228,9 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 모델 제어
   // ============================================================================
 
-  /// 모델 로드
   /// 
-  /// [modelPath]는 model3.json 파일의 절대 경로입니다.
   Future<bool> loadModel(String modelPath) async {
     try {
       live2dLog.info(_tag, '모델 로드 요청', details: modelPath);
@@ -295,7 +247,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 모델 언로드
   Future<bool> unloadModel() async {
     try {
       live2dLog.info(_tag, '모델 언로드 요청');
@@ -309,11 +260,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 모션 재생
   /// 
-  /// [group]: 모션 그룹 이름 (예: "idle", "tap", "flick")
-  /// [index]: 그룹 내 모션 인덱스
-  /// [priority]: 우선순위 (1: idle, 2: normal, 3: force)
   Future<bool> playMotion(String group, int index, {int priority = 2}) async {
     try {
       live2dLog.debug(_tag, '모션 재생', details: '$group[$index]');
@@ -331,7 +278,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 표정 설정
   Future<bool> setExpression(String expressionId) async {
     try {
       live2dLog.debug(_tag, '표정 설정', details: expressionId);
@@ -347,7 +293,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 랜덤 표정 설정
   Future<bool> setRandomExpression() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setRandomExpression');
@@ -361,10 +306,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 디스플레이 설정
   // ============================================================================
 
-  /// 크기 설정 (스케일)
   Future<bool> setScale(double scale) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setScale', {
@@ -379,7 +322,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 투명도 설정 (레거시: 캐릭터 GL 투명도로 전달)
   Future<bool> setOpacity(double opacity) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setOpacity', {
@@ -394,7 +336,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 터치스루 토글 설정
   Future<bool> setTouchThroughEnabled(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setTouchThroughEnabled', {
@@ -409,7 +350,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 터치스루 윈도우 알파 설정 (0~100 정수)
   Future<bool> setTouchThroughAlpha(int alpha) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setTouchThroughAlpha', {
@@ -424,7 +364,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 캐릭터 시각적 투명도 (GL 레벨, 윈도우 알파와 독립)
   Future<bool> setCharacterOpacity(double opacity) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setCharacterOpacity', {
@@ -439,7 +378,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 편집 모드 설정
   Future<bool> setEditMode(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setEditMode', {
@@ -454,7 +392,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 캐릭터 고정 모드 설정
   Future<bool> setCharacterPinned(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setCharacterPinned', {
@@ -469,7 +406,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 캐릭터 상대적 크기 설정
   Future<bool> setRelativeScale(double scale) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setRelativeScale', {
@@ -484,7 +420,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 캐릭터 오프셋 설정 (픽셀)
   Future<bool> setCharacterOffset(double x, double y) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setCharacterOffset', {
@@ -500,7 +435,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 캐릭터 회전 설정 (도)
   Future<bool> setCharacterRotation(int degrees) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setCharacterRotation', {
@@ -515,7 +449,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 위치 설정 (비율 0.0 ~ 1.0 또는 픽셀 값)
   Future<bool> setPosition(double x, double y) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setPosition', {
@@ -531,7 +464,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 크기 설정 (픽셀)
   Future<bool> setSize(int width, int height) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setSize', {
@@ -548,10 +480,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 자동 동작 설정
   // ============================================================================
 
-  /// 눈 깜빡임 설정
   Future<bool> setEyeBlink(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setEyeBlink', {
@@ -566,7 +496,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 호흡 설정
   Future<bool> setBreathing(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setBreathing', {
@@ -581,7 +510,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 시선 추적 설정
   Future<bool> setLookAt(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setLookAt', {
@@ -597,10 +525,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 자동 모션 / 액세서리 설정
   // ============================================================================
 
-  /// 자동 모션(아이들) 설정
   Future<bool> setAutoMotion(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setAutoMotion', {
@@ -615,7 +541,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 액세서리 토글
   Future<bool> setAccessory(String accessoryId, bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setAccessory', {
@@ -631,7 +556,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 액세서리 목록 조회
   Future<List<Map<String, dynamic>>> getAccessories() async {
     try {
       final result = await _methodChannel.invokeMethod<List<dynamic>>('getAccessories');
@@ -646,13 +570,9 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 상호작용 신호 (추후 확장)
   // ============================================================================
 
-  /// 외부 신호 전송
   /// 
-  /// 다른 앱 기능에서 Live2D에 명령을 보낼 때 사용합니다.
-  /// 예: 채팅 응답 시 감정 표현, 알림 시 반응 등
   Future<bool> sendSignal(String signalName, {Map<String, dynamic>? data}) async {
     try {
       live2dLog.debug(_tag, '신호 전송', details: signalName);
@@ -670,10 +590,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 모델 정보 조회
   // ============================================================================
 
-  /// 모션 그룹 목록 조회
   Future<List<String>> getMotionGroups() async {
     try {
       final result = await _methodChannel.invokeMethod<List<dynamic>>('getMotionGroups');
@@ -686,7 +604,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 특정 그룹의 모션 수 조회
   Future<int> getMotionCount(String group) async {
     try {
       final result = await _methodChannel.invokeMethod<int>('getMotionCount', {
@@ -701,7 +618,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 특정 그룹의 모션 이름 목록 조회  
   Future<List<String>> getMotionNames(String group) async {
     try {
       final result = await _methodChannel.invokeMethod<List<dynamic>>('getMotionNames', {
@@ -716,7 +632,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 표정 목록 조회
   Future<List<String>> getExpressions() async {
     try {
       final result = await _methodChannel.invokeMethod<List<dynamic>>('getExpressions');
@@ -729,7 +644,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 현재 로드된 모델의 상세 정보 조회
   Future<Map<String, dynamic>> getModelInfo() async {
     try {
       final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getModelInfo');
@@ -743,9 +657,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 모델 파일 분석 (로드하지 않고 정보만 추출)
   /// 
-  /// model3.json 파일을 파싱하여 모션, 표정, 텍스처 정보를 반환합니다.
   Future<Map<String, dynamic>> analyzeModel(String modelPath) async {
     try {
       live2dLog.debug(_tag, '모델 분석', details: modelPath);
@@ -762,7 +674,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 현재 오버레이 크기 조회
   Future<Map<String, int>> getOverlaySize() async {
     try {
       final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getOverlaySize');
@@ -780,10 +691,8 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 렌더링 설정
   // ============================================================================
 
-  /// 목표 FPS 설정
   Future<bool> setTargetFps(int fps) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setTargetFps', {
@@ -798,7 +707,6 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 저전력 모드 설정
   Future<bool> setLowPowerMode(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setLowPowerMode', {
@@ -814,13 +722,9 @@ class Live2DNativeBridge {
   }
 
   // ============================================================================
-  // 디버그 / 유지보수
   // ============================================================================
 
-  /// 시스템 상태 조회 (디버깅용)
   /// 
-  /// 서비스 상태, SDK 상태, 메모리 사용량 등을 반환합니다.
-  /// 디버그 화면이나 문제 진단에 사용합니다.
   Future<Map<String, dynamic>> getHealthStatus() async {
     try {
       live2dLog.debug(_tag, 'Health status 조회');
@@ -835,10 +739,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 강제 재설정
   /// 
-  /// 비정상 상태에서 복구하기 위한 긴급 조치입니다.
-  /// 오버레이를 숨기고 SDK를 재초기화합니다.
   Future<bool> forceReset() async {
     try {
       live2dLog.warning(_tag, '강제 재설정 요청');
