@@ -13,6 +13,8 @@ import '../providers/settings_provider.dart';
 import '../providers/chat_session_provider.dart';
 import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
+import '../widgets/empty_state_view.dart';
+import '../utils/ui_feedback.dart';
 import 'menu_drawer.dart';
 import 'settings_screen.dart';
 
@@ -92,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final sessionId = _currentSessionId ?? chatSessionProvider.activeSessionId;
     if (sessionId == null) {
-      _showSnackBar('활성 세션이 없습니다.', isError: true);
+      context.showErrorSnackBar('활성 세션이 없습니다.');
       return;
     }
 
@@ -143,9 +145,9 @@ class _ChatScreenState extends State<ChatScreen> {
               currentMessages[idx].id,
               targetSessionId: sessionId,
             );
-            _showSnackBar('${command.index}번 메시지를 삭제했습니다.');
+            context.showInfoSnackBar('${command.index}번 메시지를 삭제했습니다.');
           } else {
-            _showSnackBar('잘못된 메시지 번호입니다.', isError: true);
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         }
         else if (command.index != null && command.endIndex != null) {
@@ -158,11 +160,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 targetSessionId: sessionId,
               );
             }
-            _showSnackBar('${command.index}~${command.endIndex}번 메시지를 삭제했습니다.');
+            context.showInfoSnackBar('${command.index}~${command.endIndex}번 메시지를 삭제했습니다.');
           } else {
-            _showSnackBar('잘못된 메시지 범위입니다.', isError: true);
+            context.showErrorSnackBar('잘못된 메시지 범위입니다.');
           }
         }
+        break;
 
       case 'send':
         if (command.content != null && command.content!.isNotEmpty) {
@@ -170,9 +173,10 @@ class _ChatScreenState extends State<ChatScreen> {
             Message(role: MessageRole.user, content: command.content!),
             targetSessionId: sessionId,
           );
-          _showSnackBar('메시지가 기록에 추가되었습니다.');
+          context.showInfoSnackBar('메시지가 기록에 추가되었습니다.');
           _scrollToBottom();
         }
+        break;
 
       case 'edit':
         if (command.index != null && command.content != null) {
@@ -183,11 +187,12 @@ class _ChatScreenState extends State<ChatScreen> {
               command.content!,
               targetSessionId: sessionId,
             );
-            _showSnackBar('${command.index}번 메시지를 수정했습니다.');
+            context.showInfoSnackBar('${command.index}번 메시지를 수정했습니다.');
           } else {
-            _showSnackBar('잘못된 메시지 번호입니다.', isError: true);
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         }
+        break;
 
       case 'copy':
         if (command.index != null) {
@@ -196,11 +201,12 @@ class _ChatScreenState extends State<ChatScreen> {
             Clipboard.setData(
               ClipboardData(text: currentMessages[idx].content),
             );
-            _showSnackBar('${command.index}번 메시지를 복사했습니다.');
+            context.showInfoSnackBar('${command.index}번 메시지를 복사했습니다.');
           } else {
-            _showSnackBar('잘못된 메시지 번호입니다.', isError: true);
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         }
+        break;
 
       case 'clear':
         chatProvider.initializeChat(
@@ -208,27 +214,20 @@ class _ChatScreenState extends State<ChatScreen> {
           userName: settingsProvider.userName,
           targetSessionId: sessionId,
         );
-        _showSnackBar('대화가 초기화되었습니다.');
+        context.showInfoSnackBar('대화가 초기화되었습니다.');
+        break;
 
       case 'export':
         final json = chatSessionProvider.exportSession(sessionId);
         _showExportDialog(json);
+        break;
 
       case 'help':
         CommandHelpDialog.show(context);
+        break;
     }
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : null,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   void _showExportDialog(String json) {
     showDialog(
@@ -250,8 +249,7 @@ class _ChatScreenState extends State<ChatScreen> {
         actions: [
           OutlinedButton.icon(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: json));
-              _showSnackBar('클립보드에 복사되었습니다.');
+              context.copyToClipboard(json);
             },
             icon: const Icon(Icons.copy, size: 18),
             label: const Text('복사'),
@@ -397,34 +395,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
             Expanded(
               child: chatProvider.messages.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.chat_bubble_outline,
-                            size: 64,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            '${character.name}와(과) 대화를 시작해보세요!',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () {
-                              chatProvider.initializeChat(
-                                character: character,
-                                userName: settingsProvider.userName,
-                              );
-                            },
-                            child: const Text('대화 시작'),
-                          ),
-                        ],
+                  ? EmptyStateView(
+                      icon: Icons.chat_bubble_outline,
+                      title: '${character.name}와(과) 대화를 시작해보세요!',
+                      action: ElevatedButton(
+                        onPressed: () {
+                          chatProvider.initializeChat(
+                            character: character,
+                            userName: settingsProvider.userName,
+                          );
+                        },
+                        child: const Text('대화 시작'),
                       ),
                     )
                   : ListView.builder(
@@ -457,7 +438,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     const SizedBox(width: 12),
                     Text(
                       '${character.name}이(가) 입력 중...',
-                      style: TextStyle(color: Colors.grey[600]),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -558,6 +541,7 @@ class _MessageBubble extends StatelessWidget {
                           title: const Text('복사'),
                           onTap: () {
                             Navigator.pop(context);
+                            context.copyToClipboard(message.content);
                           },
                         ),
                       ],
@@ -576,7 +560,7 @@ class _MessageBubble extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isUser
                       ? Theme.of(context).colorScheme.primary
-                      : Colors.grey[200],
+                      : Theme.of(context).colorScheme.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(20).copyWith(
                     bottomRight: isUser ? const Radius.circular(4) : null,
                     bottomLeft: !isUser ? const Radius.circular(4) : null,
@@ -590,14 +574,18 @@ class _MessageBubble extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
-                        color: isUser ? Colors.white70 : Colors.grey[600],
+                        color: isUser
+                            ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       message.content,
                       style: TextStyle(
-                        color: isUser ? Colors.white : Colors.black87,
+                        color: isUser
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                       ),
                     ),
@@ -666,7 +654,7 @@ class _MessageInput extends StatelessWidget {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: Colors.grey[200],
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 10,

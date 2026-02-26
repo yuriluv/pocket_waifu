@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/theme_preset.dart';
+import '../utils/ui_feedback.dart';
 
 class ThemeEditorScreen extends StatelessWidget {
   const ThemeEditorScreen({super.key});
@@ -326,8 +327,10 @@ class _ThemePresetTile extends StatelessWidget {
                 switch (value) {
                   case 'edit':
                     onEdit?.call();
+                    break;
                   case 'delete':
                     onDelete?.call();
+                    break;
                 }
               },
               itemBuilder: (context) => [
@@ -374,9 +377,9 @@ class _ThemePreview extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[200]!),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,12 +445,16 @@ class _PreviewMessage extends StatelessWidget {
         decoration: BoxDecoration(
           color: isUser
               ? Theme.of(context).colorScheme.primary
-              : Colors.grey[200],
+              : Theme.of(context).colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           message,
-          style: TextStyle(color: isUser ? Colors.white : Colors.black87),
+          style: TextStyle(
+            color: isUser
+                ? Theme.of(context).colorScheme.onPrimary
+                : Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
     );
@@ -553,9 +560,7 @@ class _CreateThemeDialogState extends State<_CreateThemeDialog> {
 
   void _createTheme() {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('테마 이름을 입력하세요')));
+      context.showErrorSnackBar('테마 이름을 입력하세요');
       return;
     }
 
@@ -667,9 +672,7 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
 
   void _saveTheme() {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('테마 이름을 입력하세요')));
+      context.showErrorSnackBar('테마 이름을 입력하세요');
       return;
     }
 

@@ -12,6 +12,7 @@ import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
 import '../features/live2d/live2d_module.dart';
 import '../widgets/prompt_preview_dialog.dart';
+import '../utils/ui_feedback.dart';
 
 class MenuDrawer extends StatelessWidget {
   const MenuDrawer({super.key});
@@ -38,12 +39,7 @@ class MenuDrawer extends StatelessWidget {
                   onTap: () {
                     chatSessionProvider.createNewSession();
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('새 채팅을 시작했습니다.'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
+                    context.showInfoSnackBar('새 채팅을 시작했습니다.');
                   },
                 ),
 
@@ -192,7 +188,7 @@ class MenuDrawer extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              'Pocket Waifu v2.0.0',
+              'Pocket Waifu v1.0.0+1',
               style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ),
@@ -205,7 +201,7 @@ class MenuDrawer extends StatelessWidget {
     showAboutDialog(
       context: context,
       applicationName: 'Pocket Waifu',
-      applicationVersion: '2.0.0',
+      applicationVersion: '1.0.0+1',
       applicationIcon: Container(
         width: 48,
         height: 48,
