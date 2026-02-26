@@ -158,27 +158,35 @@ class ThemeProvider extends ChangeNotifier {
     savePresets();
   }
 
-// TODO
+  /// Build a color scheme honoring preset overrides when available.
   ColorScheme getColorScheme(Brightness brightness) {
-    if (_activePreset != null) {
-      final preset = _activePreset!;
-      final primary = preset.getColor(ThemePreset.COLOR_PRIMARY);
-      
-      if (primary != null) {
-        return ColorScheme.fromSeed(
-          seedColor: primary,
-          brightness: preset.isDarkMode ? Brightness.dark : Brightness.light,
-        );
-      }
+    final preset = _activePreset;
+    final seedColor =
+        preset?.getColor(ThemePreset.COLOR_PRIMARY) ?? Colors.purple;
+    final schemeBrightness =
+        preset?.isDarkMode == true ? Brightness.dark : brightness;
+
+    var scheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: schemeBrightness,
+    );
+
+    if (preset == null) {
+      return scheme;
     }
 
-    return ColorScheme.fromSeed(
-      seedColor: Colors.purple,
-      brightness: brightness,
+    final secondary = preset.getColor(ThemePreset.COLOR_SECONDARY);
+    final background = preset.getColor(ThemePreset.COLOR_BACKGROUND);
+    final surface = preset.getColor(ThemePreset.COLOR_SURFACE);
+
+    return scheme.copyWith(
+      secondary: secondary ?? scheme.secondary,
+      background: background ?? scheme.background,
+      surface: surface ?? scheme.surface,
     );
   }
 
-  /// 
+  /// Build theme data based on active presets and brightness.
   ThemeData getThemeData({required bool isDark}) {
     final brightness = isDark ? Brightness.dark : Brightness.light;
     final colorScheme = getColorScheme(brightness);
@@ -186,6 +194,7 @@ class ThemeProvider extends ChangeNotifier {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      scaffoldBackgroundColor: colorScheme.background,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
