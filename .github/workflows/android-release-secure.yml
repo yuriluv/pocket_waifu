@@ -1,0 +1,116 @@
+name: Android Release Secure
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_name:
+        description: Release version name (for example 1.4.0)
+        required: true
+        type: string
+      build_number:
+        description: Release version code (for example 140)
+        required: true
+        type: string
+      upload_logs:
+        description: Send release logs to remote endpoint
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare signing files
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_STORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_STORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=../app/release.keystore
+          EOF
+
+      - name: Build release APK
+        run: flutter build apk --release --build-name "${{ inputs.build_name }}" --build-number "${{ inputs.build_number }}"
+
+      - name: Verify APK exists
+        run: test -f build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Generate checksums and build report
+        env:
+          GIT_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          BUILD_NAME: ${{ inputs.build_name }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          sha256sum build/app/outputs/flutter-apk/app-release.apk > build/app/outputs/flutter-apk/app-release.apk.sha256
+          cat > build/app/outputs/flutter-apk/release-build-report.json <<EOF
+          {
+            "git_sha": "$GIT_SHA",
+            "run_id": "$RUN_ID",
+            "build_name": "$BUILD_NAME",
+            "build_number": "$BUILD_NUMBER",
+            "artifact": "app-release.apk",
+            "checksum_file": "app-release.apk.sha256"
+          }
+          EOF
+
+      - name: Upload release artifact package
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-${{ inputs.build_name }}-${{ inputs.build_number }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-release.apk.sha256
+            build/app/outputs/flutter-apk/release-build-report.json
+
+      - name: Send release logs to remote endpoint
+        if: ${{ inputs.upload_logs }}
+        env:
+          RELEASE_LOG_ENDPOINT: ${{ secrets.RELEASE_LOG_ENDPOINT }}
+          RELEASE_LOG_TOKEN: ${{ secrets.RELEASE_LOG_TOKEN }}
+        run: |
+          chmod +x scripts/upload_release_logs.sh
+          scripts/upload_release_logs.sh build/app/outputs/flutter-apk/release-build-report.json
+
+      - name: Cleanup signing files
+        if: always()
+        run: rm -f android/key.properties android/app/release.keystore
