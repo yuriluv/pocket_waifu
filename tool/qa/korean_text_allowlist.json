@@ -1,0 +1,7 @@
+{
+  "pathRegex": [
+    "^docs/",
+    "^README\\.md$"
+  ],
+  "literalRegex": []
+}
