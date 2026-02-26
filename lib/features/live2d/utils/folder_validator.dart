@@ -19,8 +19,8 @@ class FolderValidator {
 
     try {
       // Trying to list directory to catch permission denied early
-      await dir.list().first;
-    } catch (e) {
+      await dir.list().isEmpty;
+    } on FileSystemException catch (_) {
       return (FolderValidationResult.permissionDenied, 0);
     }
 
