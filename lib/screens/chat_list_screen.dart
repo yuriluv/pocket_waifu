@@ -200,6 +200,11 @@ class _ChatSessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final inactiveContainerColor = colorScheme.surfaceContainerHighest;
+    final mutedTextColor = colorScheme.onSurfaceVariant;
+    final mutedIconColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.75);
+
     String lastMessagePreview = '새 채팅';
     if (session.messages.isNotEmpty) {
       final lastMsg = session.messages.last;
@@ -224,7 +229,7 @@ class _ChatSessionCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: isActive
-            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+            ? BorderSide(color: colorScheme.primary, width: 2)
             : BorderSide.none,
       ),
       child: InkWell(
@@ -239,15 +244,13 @@ class _ChatSessionCard extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isActive
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Colors.grey[100],
+                      ? colorScheme.primaryContainer
+                      : inactiveContainerColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   Icons.chat_bubble,
-                  color: isActive
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey,
+                  color: isActive ? colorScheme.primary : mutedIconColor,
                 ),
               ),
               const SizedBox(width: 12),
@@ -263,9 +266,7 @@ class _ChatSessionCard extends StatelessWidget {
                             session.name,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: isActive
-                                  ? Theme.of(context).colorScheme.primary
-                                  : null,
+                              color: isActive ? colorScheme.primary : null,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -278,7 +279,7 @@ class _ChatSessionCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
+                              color: colorScheme.primary,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
@@ -295,7 +296,7 @@ class _ChatSessionCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       lastMessagePreview,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 12, color: mutedTextColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -305,24 +306,24 @@ class _ChatSessionCard extends StatelessWidget {
                         Icon(
                           Icons.access_time,
                           size: 12,
-                          color: Colors.grey[400],
+                          color: mutedIconColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           dateStr,
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.grey[500],
+                            color: mutedTextColor,
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Icon(Icons.chat, size: 12, color: Colors.grey[400]),
+                        Icon(Icons.chat, size: 12, color: mutedIconColor),
                         const SizedBox(width: 4),
                         Text(
                           '${session.messages.length}개 메시지',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.grey[500],
+                            color: mutedTextColor,
                           ),
                         ),
                       ],
