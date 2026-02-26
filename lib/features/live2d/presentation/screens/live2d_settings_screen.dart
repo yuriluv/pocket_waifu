@@ -26,6 +26,7 @@ import 'gesture_settings_screen.dart';
 import 'auto_behavior_settings_screen.dart';
 import 'display_settings_screen.dart';
 import 'interaction_settings_screen.dart';
+import '../../../../widgets/empty_state_view.dart';
 
 class Live2DSettingsScreen extends StatelessWidget {
   const Live2DSettingsScreen({super.key});
@@ -125,13 +126,18 @@ class _Live2DSettingsScreenContentState
         builder: (context, controller, _) {
           if (controller.state == Live2DControllerState.initial ||
               (controller.isLoading && !controller.hasFolderSelected)) {
-            return const Center(
+            return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('초기화 중...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    '초기화 중...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ),
             );
@@ -423,37 +429,16 @@ class _SectionHeader extends StatelessWidget {
 class _EmptyModelList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          children: [
-            Icon(
-              Icons.folder_open,
-              size: 48,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '모델을 찾을 수 없습니다',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SizedBox(
+        height: 260,
+        child: EmptyStateView(
+          icon: Icons.folder_open,
+          title: '모델을 찾을 수 없습니다',
+          subtitle:
               '선택한 폴더에 Live2D 모델이 없습니다.\n'
-              '.model3.json 또는 .model.json 파일이 있는\n'
-              '폴더를 선택해주세요.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
+              '.model3.json 또는 .model.json 파일이 있는 폴더를 선택해주세요.',
         ),
       ),
     );

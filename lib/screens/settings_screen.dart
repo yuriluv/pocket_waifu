@@ -65,6 +65,8 @@ class _ApiPresetsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final settingsProvider = context.watch<SettingsProvider>();
     final apiConfigs = settingsProvider.apiConfigs;
     final activeConfigId = settingsProvider.activeApiConfigId;
@@ -73,17 +75,30 @@ class _ApiPresetsTab extends StatelessWidget {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          color: Colors.blue.withValues(alpha: 0.1),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+            border: Border(
+              bottom: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+            ),
+          ),
           child: Row(
             children: [
-              const Icon(Icons.info_outline, size: 18, color: Colors.blue),
+              Icon(
+                Icons.info_outline,
+                size: 18,
+                color: colorScheme.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'API 프리셋을 선택하거나 새로 만들어 사용하세요.\n'
                   '각 프리셋은 Base URL, API Key, 모델, 헤더를 자유롭게 설정할 수 있습니다.',
-                  style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                  ),
                 ),
               ),
             ],
@@ -141,8 +156,12 @@ class _ApiPresetsTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.grey[50],
-            border: Border(top: BorderSide(color: Colors.grey[200]!)),
+            color: colorScheme.surfaceContainerLow,
+            border: Border(
+              top: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+              ),
+            ),
           ),
           child: Row(
             children: [
@@ -238,6 +257,7 @@ class _ApiPresetsTab extends StatelessWidget {
   }
 
   void _confirmDeletePreset(BuildContext context, ApiConfig config) {
+    final colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -253,7 +273,7 @@ class _ApiPresetsTab extends StatelessWidget {
               Navigator.pop(context);
               context.read<SettingsProvider>().removeApiConfig(config.id);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: colorScheme.error),
             child: const Text('삭제'),
           ),
         ],
@@ -303,14 +323,23 @@ class _ApiPresetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final hasApiKey = config.apiKey.isNotEmpty;
+    final apiKeyStatusColor = hasApiKey
+        ? colorScheme.tertiary
+        : colorScheme.error;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: isActive ? 3 : 1,
-      color: isActive ? Colors.blue.withValues(alpha: 0.05) : null,
+      color: isActive
+          ? colorScheme.primaryContainer.withValues(alpha: 0.25)
+          : theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: isActive
-            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+            ? BorderSide(color: colorScheme.primary, width: 2)
             : BorderSide.none,
       ),
       child: InkWell(
@@ -350,14 +379,16 @@ class _ApiPresetCard extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.1),
+                              color: colorScheme.tertiaryContainer.withValues(
+                                alpha: 0.55,
+                              ),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
+                            child: Text(
                               '기본',
                               style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.green,
+                                color: colorScheme.onTertiaryContainer,
                               ),
                             ),
                           ),
@@ -367,34 +398,33 @@ class _ApiPresetCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       config.modelName,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       config.baseUrl,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.9,
+                        ),
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(
-                          config.apiKey.isEmpty
-                              ? Icons.warning_amber
-                              : Icons.check_circle,
+                          hasApiKey ? Icons.check_circle : Icons.warning_amber,
                           size: 14,
-                          color: config.apiKey.isEmpty
-                              ? Colors.orange
-                              : Colors.green,
+                          color: apiKeyStatusColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          config.apiKey.isEmpty ? 'API 키 필요' : 'API 키 설정됨',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: config.apiKey.isEmpty
-                                ? Colors.orange
-                                : Colors.green,
+                          hasApiKey ? 'API 키 설정됨' : 'API 키 필요',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: apiKeyStatusColor,
                           ),
                         ),
                       ],
@@ -414,7 +444,7 @@ class _ApiPresetCard extends StatelessWidget {
                     icon: const Icon(Icons.delete_outline, size: 20),
                     onPressed: onDelete,
                     tooltip: '삭제',
-                    color: Colors.red[400],
+                    color: colorScheme.error,
                   ),
                 ],
               ),
@@ -512,6 +542,9 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Dialog(
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
@@ -526,8 +559,7 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
               children: [
                 Text(
                   widget.existingConfig == null ? '새 프리셋 만들기' : '프리셋 편집',
-                  style: const TextStyle(
-                    fontSize: 18,
+                  style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -654,27 +686,38 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
 
                     if (_testResult != null) ...[
                       const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _testResult!.startsWith('✅')
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _testResult!.startsWith('✅')
-                                ? Colors.green
-                                : Colors.red,
-                          ),
-                        ),
-                        child: Text(
-                          _testResult!,
-                          style: TextStyle(
-                            color: _testResult!.startsWith('✅')
-                                ? Colors.green[800]
-                                : Colors.red[800],
-                          ),
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final isSuccess = _testResult!.startsWith('✅');
+                          final statusBackground = isSuccess
+                              ? colorScheme.tertiaryContainer.withValues(
+                                  alpha: 0.5,
+                                )
+                              : colorScheme.errorContainer.withValues(
+                                  alpha: 0.65,
+                                );
+                          final statusBorder = isSuccess
+                              ? colorScheme.tertiary.withValues(alpha: 0.65)
+                              : colorScheme.error.withValues(alpha: 0.7);
+                          final statusTextColor = isSuccess
+                              ? colorScheme.onTertiaryContainer
+                              : colorScheme.onErrorContainer;
+
+                          return Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: statusBackground,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: statusBorder),
+                            ),
+                            child: Text(
+                              _testResult!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: statusTextColor,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ],
@@ -717,17 +760,28 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   }
 
   Widget _buildAdvancedOptions() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha: 0.05),
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.45),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('고급 옵션', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            '고급 옵션',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
           CheckboxListTile(
             title: const Text('스트리밍 사용'),
@@ -778,12 +832,17 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
   }
 
   Widget _buildHeadersEditor() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey[300]!),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -791,9 +850,11 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 '커스텀 HTTP 헤더',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               TextButton.icon(
                 onPressed: _addHeader,
@@ -806,7 +867,9 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
           if (_customHeaders.isEmpty)
             Text(
               '커스텀 헤더가 없습니다',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             )
           else
             ..._customHeaders.entries.map((entry) {
@@ -951,6 +1014,8 @@ class _ParameterSettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final settingsProvider = context.watch<SettingsProvider>();
     final settings = settingsProvider.settings;
 
@@ -961,7 +1026,9 @@ class _ParameterSettingsTab extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           'AI가 텍스트를 생성할 때 사용하는 설정입니다.',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
         ),
 
         const SizedBox(height: 16),
@@ -1047,9 +1114,11 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Text(
       title,
-      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
     );
   }
 }
@@ -1075,6 +1144,8 @@ class _ParameterSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1085,7 +1156,7 @@ class _ParameterSlider extends StatelessWidget {
             Text(
               value.toStringAsFixed(2),
               style: TextStyle(
-                color: Theme.of(context).colorScheme.primary,
+                color: theme.colorScheme.primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1100,7 +1171,9 @@ class _ParameterSlider extends StatelessWidget {
         ),
         Text(
           description,
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
