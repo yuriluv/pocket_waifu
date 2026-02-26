@@ -12,6 +12,7 @@ import '../models/message.dart';
 import '../models/settings.dart';
 import '../models/prompt_block.dart';
 import '../services/prompt_builder.dart';
+import '../services/release_log_service.dart';
 
 class ApiService {
   final PromptBuilder _promptBuilder = PromptBuilder();
@@ -90,6 +91,16 @@ class ApiService {
     debugPrint('>>> URL: ${apiConfig.baseUrl}');
     debugPrint('>>> Headers: ${headers.keys.join(', ')}');
 
+    await ReleaseLogService.instance.info(
+      'api_request',
+      'OpenAI compatible request started',
+      payload: {
+        'provider': apiConfig.format.name,
+        'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+        'event': 'request_start',
+      },
+    );
+
     try {
       final response = await http.post(
         Uri.parse(apiConfig.baseUrl),
@@ -115,10 +126,30 @@ class ApiService {
           errorMessage = response.body;
         }
         debugPrint('>>> API Error: $errorMessage');
+        await ReleaseLogService.instance.warning(
+          'api_response',
+          'OpenAI compatible request failed',
+          payload: {
+            'provider': apiConfig.format.name,
+            'httpStatus': response.statusCode.toString(),
+            'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+            'reason': _safeReason(errorMessage),
+          },
+        );
         throw Exception('API 오류 (${response.statusCode}): $errorMessage');
       }
     } catch (e) {
       debugPrint('>>> Exception: $e');
+      await ReleaseLogService.instance.error(
+        'api_exception',
+        'OpenAI compatible request exception',
+        payload: {
+          'provider': apiConfig.format.name,
+          'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+          'errorType': e.runtimeType.toString(),
+          'reason': _safeReason(e.toString()),
+        },
+      );
       if (e is Exception) rethrow;
       throw Exception('API 요청 실패: $e');
     }
@@ -174,6 +205,16 @@ class ApiService {
     debugPrint('>>> URL: ${apiConfig.baseUrl}');
     debugPrint('>>> Model: ${apiConfig.modelName}');
 
+    await ReleaseLogService.instance.info(
+      'api_request',
+      'Anthropic request started',
+      payload: {
+        'provider': apiConfig.format.name,
+        'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+        'event': 'request_start',
+      },
+    );
+
     try {
       final response = await http.post(
         Uri.parse(apiConfig.baseUrl),
@@ -192,15 +233,47 @@ class ApiService {
         final String errorMessage =
             errorData['error']?['message'] ?? '알 수 없는 오류';
         debugPrint('>>> Anthropic Error: $errorMessage');
+        await ReleaseLogService.instance.warning(
+          'api_response',
+          'Anthropic request failed',
+          payload: {
+            'provider': apiConfig.format.name,
+            'httpStatus': response.statusCode.toString(),
+            'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+            'reason': _safeReason(errorMessage),
+          },
+        );
         throw Exception(
           'Anthropic API 오류 (${response.statusCode}): $errorMessage',
         );
       }
     } catch (e) {
       debugPrint('>>> Exception: $e');
+      await ReleaseLogService.instance.error(
+        'api_exception',
+        'Anthropic request exception',
+        payload: {
+          'provider': apiConfig.format.name,
+          'endpointHost': _safeEndpointHost(apiConfig.baseUrl),
+          'errorType': e.runtimeType.toString(),
+          'reason': _safeReason(e.toString()),
+        },
+      );
       if (e is Exception) rethrow;
       throw Exception('Anthropic API 요청 실패: $e');
     }
+  }
+
+  String _safeEndpointHost(String rawUrl) {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) {
+      return 'invalid_url';
+    }
+    return uri.host;
+  }
+
+  String _safeReason(String input) {
+    return input.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   ///

@@ -1,0 +1,158 @@
+name: Android Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Version name (semver, e.g. 1.2.3)
+        required: true
+        type: string
+      artifact_retention_days:
+        description: Artifact retention days
+        required: false
+        default: "30"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="${{ inputs.version_name }}"
+          fi
+
+          VERSION_CODE="${GITHUB_RUN_NUMBER}"
+          echo "version_name=${VERSION_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "version_code=${VERSION_CODE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Prepare Android signing inputs
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is required" >&2
+            exit 1
+          fi
+
+          mkdir -p android/keystore
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/keystore/release.keystore
+
+          cat > android/key.properties <<EOF
+          storeFile=keystore/release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          EOF
+
+      - name: Prepare local.properties for Cubism SDK
+        shell: bash
+        env:
+          CUBISM_SDK_PATH: ${{ secrets.CUBISM_SDK_PATH }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CUBISM_SDK_PATH}" ]]; then
+            echo "CUBISM_SDK_PATH secret is required" >&2
+            exit 1
+          fi
+
+          cat > android/local.properties <<EOF
+          cubism.sdk.path=${CUBISM_SDK_PATH}
+          EOF
+
+      - name: Build signed release APK
+        env:
+          LOG_INGEST_ENDPOINT: ${{ secrets.LOG_INGEST_ENDPOINT }}
+          LOG_INGEST_TOKEN: ${{ secrets.LOG_INGEST_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG_UPLOAD_ENABLED=false
+          if [[ -n "${LOG_INGEST_ENDPOINT}" ]]; then
+            LOG_UPLOAD_ENABLED=true
+          fi
+
+          flutter build apk \
+            --release \
+            --build-name "${{ steps.version.outputs.version_name }}" \
+            --build-number "${{ steps.version.outputs.version_code }}" \
+            --dart-define=LOG_UPLOAD_ENABLED=${LOG_UPLOAD_ENABLED} \
+            --dart-define=LOG_ENDPOINT="${LOG_INGEST_ENDPOINT}" \
+            --dart-define=LOG_AUTH_TOKEN="${LOG_INGEST_TOKEN}"
+
+      - name: Generate checksum and SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
+          mkdir -p build/release
+          sha256sum "${APK_PATH}" > build/release/app-release.apk.sha256
+          flutter pub deps --json > build/release/flutter_pub_deps.sbom.json
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pocket-waifu-android-${{ steps.version.outputs.version_name }}+${{ steps.version.outputs.version_code }}
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && inputs.artifact_retention_days || 30 }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/release/app-release.apk.sha256
+            build/release/flutter_pub_deps.sbom.json
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish GitHub Release for tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/release/app-release.apk.sha256
+            build/release/flutter_pub_deps.sbom.json
