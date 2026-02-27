@@ -2,6 +2,8 @@
 
 This loop is the default execution path for Part 2 changes. It is intended to keep scope tight and to preserve stability while Part 1 is still in progress.
 
+Hard lock: while Part 1 is not fully completed and verified, Part 2 runtime implementation changes are blocked. Only preparation artifacts (planning docs, instrumentation specs, and checklists) are allowed.
+
 ## Loop
 
 1. Profile

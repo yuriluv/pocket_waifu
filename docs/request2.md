@@ -278,6 +278,14 @@ Guidelines:
 ## Part 2: Baseline Operational Tasks
 
 > **Execution Condition:** The tasks in Part 2 shall only commence **after all tasks in Part 1 have been fully completed, tested, and verified.**
+>
+> **Round-Level Enforcement Addendum (2026-02-27):**
+> 1. Until Part 1 completion is proven by evidence, **Part 2 implementation code changes are prohibited**.
+> 2. Allowed while Part 1 is incomplete: Part 2 preparation documents, instrumentation plans, and quality/ops checklists.
+> 3. During Part 1 execution, work must be split as `Planning/Ops -> Implementation -> QA` with **at least three agents running in parallel**.
+> 4. Review bottlenecks are triaged in a **30-minute SLA** cycle and immediately reassigned when blocked.
+> 5. Any failed task must run `RCA -> fix -> rerun` (max 2 retries), then escalate with blocker owner and ETA.
+> 6. Every cycle must audit: code reflection status, validation completion, and `main` push omission; missing items must create automatic follow-up tasks.
 
 ---
 
