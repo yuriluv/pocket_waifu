@@ -1,0 +1,44 @@
+name: Part1 Review Gate
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export PR body and reviewer metadata
+        id: pr-meta
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const pr = context.payload.pull_request || {};
+            const body = pr.body || '';
+            const requestedReviewers = pr.requested_reviewers || [];
+
+            fs.writeFileSync('artifacts_part1_pr_body.md', body, { encoding: 'utf8' });
+            core.setOutput('requested_reviewer_count', String(requestedReviewers.length));
+
+      - name: Validate Part1 review gate policy
+        run: |
+          chmod +x scripts/request2_part1_review_gate.sh
+          scripts/request2_part1_review_gate.sh \
+            --mode pre-merge \
+            --pr-body-file artifacts_part1_pr_body.md \
+            --reviewer-count "${{ steps.pr-meta.outputs.requested_reviewer_count }}"

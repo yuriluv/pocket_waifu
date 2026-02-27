@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 LOG_DIR="$ROOT/artifacts/qa"
 LOG_FILE="$LOG_DIR/part1_gate_retry_log.tsv"
+GATE_OPS_SCRIPT="$ROOT/scripts/request2_part1_gate_ops.sh"
 
 mkdir -p "$LOG_DIR"
 
@@ -20,6 +21,24 @@ write_log() {
   local message="$5"
   printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
     "$(timestamp)" "$gate" "$attempt" "$status" "$classification" "$message" >>"$LOG_FILE"
+}
+
+require_gate_ops() {
+  if [[ ! -x "$GATE_OPS_SCRIPT" ]]; then
+    printf "Missing executable gate ops script: %s\n" "$GATE_OPS_SCRIPT" >&2
+    exit 2
+  fi
+}
+
+set_gate_status() {
+  local gate="$1"
+  local status="$2"
+  "$GATE_OPS_SCRIPT" set-status "$gate" "$status" >/dev/null
+}
+
+record_retry_cause() {
+  local classification="$1"
+  "$GATE_OPS_SCRIPT" add-retry "$classification" >/dev/null
 }
 
 classify_failure() {
@@ -57,6 +76,7 @@ run_gate() {
 
     if bash -lc "cd '$ROOT' && $command" >"$output_file" 2>&1; then
       write_log "$gate" "$attempt" "PASS" "none" "ok"
+      set_gate_status "$gate" "Pass"
       printf "  attempt %s/%s: PASS\n" "$attempt" "$MAX_RETRIES"
       rm -f "$output_file"
       return 0
@@ -68,10 +88,12 @@ run_gate() {
     summary="$(tr '\n' ' ' <"$output_file" | tr '\t' ' ' | cut -c1-180)"
 
     write_log "$gate" "$attempt" "FAIL" "$classification" "$summary"
+    record_retry_cause "$classification"
     printf "  attempt %s/%s: FAIL (%s)\n" "$attempt" "$MAX_RETRIES" "$classification"
 
     rm -f "$output_file"
     if [[ "$attempt" -eq "$MAX_RETRIES" ]]; then
+      set_gate_status "$gate" "Fail"
       return 1
     fi
     attempt=$((attempt + 1))
@@ -81,6 +103,12 @@ run_gate() {
 }
 
 printf "timestamp\tgate\tattempt\tstatus\tclassification\tmessage\n" >"$LOG_FILE"
+
+require_gate_ops
+"$GATE_OPS_SCRIPT" init >/dev/null || true
+for gate in G1 G2 G3 G4 G5; do
+  set_gate_status "$gate" "Pending"
+done
 
 if [[ "$MAX_RETRIES" -lt 1 || "$MAX_RETRIES" -gt 3 ]]; then
   printf "MAX_RETRIES must be in range 1..3 (current: %s)\n" "$MAX_RETRIES" >&2
