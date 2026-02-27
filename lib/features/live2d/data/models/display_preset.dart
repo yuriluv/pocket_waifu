@@ -7,6 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DisplayPreset {
+  static const int currentSchemaVersion = 1;
+
+  final int schemaVersion;
+
   final String id;
 
   final String name;
@@ -34,6 +38,7 @@ class DisplayPreset {
   final String? linkedModelId;
 
   const DisplayPreset({
+    this.schemaVersion = currentSchemaVersion,
     required this.id,
     required this.name,
     this.relativeCharacterScale = 1.0,
@@ -50,6 +55,7 @@ class DisplayPreset {
   });
 
   Map<String, dynamic> toJson() => {
+        'schemaVersion': schemaVersion,
         'id': id,
         'name': name,
         'relativeCharacterScale': relativeCharacterScale,
@@ -66,6 +72,7 @@ class DisplayPreset {
       };
 
   factory DisplayPreset.fromJson(Map<String, dynamic> json) => DisplayPreset(
+        schemaVersion: json['schemaVersion'] as int? ?? currentSchemaVersion,
         id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
         name: json['name'] as String? ?? '프리셋',
         relativeCharacterScale: (json['relativeCharacterScale'] as num?)?.toDouble() ?? 1.0,
@@ -77,11 +84,12 @@ class DisplayPreset {
         positionX: (json['positionX'] as num?)?.toDouble() ?? 0.5,
         positionY: (json['positionY'] as num?)?.toDouble() ?? 0.5,
         scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
-        linkedModelFolder: json['linkedModelFolder'] as String?,
+        linkedModelFolder: (json['linkedModelFolder'] as String?)?.replaceAll('\\', '/'),
         linkedModelId: json['linkedModelId'] as String?,
       );
 
   DisplayPreset copyWith({
+    int? schemaVersion,
     String? id,
     String? name,
     double? relativeCharacterScale,
@@ -98,6 +106,7 @@ class DisplayPreset {
     bool clearLink = false,
   }) =>
       DisplayPreset(
+        schemaVersion: schemaVersion ?? this.schemaVersion,
         id: id ?? this.id,
         name: name ?? this.name,
         relativeCharacterScale: relativeCharacterScale ?? this.relativeCharacterScale,
@@ -169,26 +178,88 @@ class DisplayPresetManager {
   }
 
   static Future<DisplayPreset?> findLinkedPreset(String modelFolder) async {
+    final normalizedFolder = _normalizeFolder(modelFolder);
+    final legacyFolder = _legacyFolder(normalizedFolder);
     final presets = await loadAll();
     try {
-      return presets.firstWhere((p) => p.linkedModelFolder == modelFolder);
+      return presets.firstWhere(
+        (p) => _folderMatches(
+          presetFolder: p.linkedModelFolder,
+          normalizedFolder: normalizedFolder,
+          legacyFolder: legacyFolder,
+        ),
+      );
     } catch (_) {
       return null;
     }
   }
 
   static Future<DisplayPreset?> findLinkedPresetForModel(
-      String modelFolder, String modelId) async {
+    String modelFolder,
+    String modelId, {
+    String? legacyModelId,
+  }) async {
+    final normalizedFolder = _normalizeFolder(modelFolder);
+    final legacyFolder = _legacyFolder(normalizedFolder);
     final presets = await loadAll();
+    bool modelIdMatches(String? linkedModelId) {
+      if (linkedModelId == null) {
+        return false;
+      }
+      if (linkedModelId == modelId) {
+        return true;
+      }
+      return legacyModelId != null && linkedModelId == legacyModelId;
+    }
     try {
       return presets.firstWhere(
-        (p) => p.linkedModelFolder == modelFolder && p.linkedModelId == modelId,
+        (p) =>
+            _folderMatches(
+              presetFolder: p.linkedModelFolder,
+              normalizedFolder: normalizedFolder,
+              legacyFolder: legacyFolder,
+            ) &&
+            modelIdMatches(p.linkedModelId),
         orElse: () => presets.firstWhere(
-          (p) => p.linkedModelFolder == modelFolder && p.linkedModelId == null,
+          (p) =>
+              _folderMatches(
+                presetFolder: p.linkedModelFolder,
+                normalizedFolder: normalizedFolder,
+                legacyFolder: legacyFolder,
+              ) &&
+              p.linkedModelId == null,
         ),
       );
     } catch (_) {
       return null;
     }
+  }
+
+  static String _normalizeFolder(String folder) {
+    return folder.replaceAll('\\', '/');
+  }
+
+  static String _legacyFolder(String normalizedFolder) {
+    if (!normalizedFolder.contains('/')) {
+      return normalizedFolder;
+    }
+    return normalizedFolder.split('/').first;
+  }
+
+  static bool _folderMatches({
+    required String? presetFolder,
+    required String normalizedFolder,
+    required String legacyFolder,
+  }) {
+    if (presetFolder == null || presetFolder.isEmpty) {
+      return false;
+    }
+
+    final normalizedPresetFolder = _normalizeFolder(presetFolder);
+    if (normalizedPresetFolder == normalizedFolder) {
+      return true;
+    }
+
+    return normalizedPresetFolder == legacyFolder;
   }
 }

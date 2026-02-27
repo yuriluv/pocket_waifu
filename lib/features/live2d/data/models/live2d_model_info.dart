@@ -40,6 +40,21 @@ class Live2DModelInfo {
     this.lastModified,
   });
 
+  String get normalizedRelativePath => _normalizePath(relativePath);
+
+  String get linkFolderKey {
+    final normalized = normalizedRelativePath;
+    final slashIndex = normalized.lastIndexOf('/');
+    if (slashIndex <= 0) {
+      return path.basename(folderPath);
+    }
+    return normalized.substring(0, slashIndex);
+  }
+
+  String get legacyLinkFolderKey => _legacyFolderKey(linkFolderKey);
+
+  String get legacyId => _legacyModelIdFromName(name);
+
   /// 
   static Future<Live2DModelInfo?> fromModelFile(
     File modelFile,
@@ -60,11 +75,8 @@ class Live2DModelInfo {
         type = Live2DModelType.unknown;
       }
 
-      final relativePath = path.relative(modelFilePath, from: rootPath);
-
-      final id = folderName
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+      final relativePath = _normalizePath(path.relative(modelFilePath, from: rootPath));
+      final id = _stableModelId(relativePath, folderName);
 
       final thumbnailPath = await _findThumbnail(folderPath);
 
@@ -116,6 +128,53 @@ class Live2DModelInfo {
     }
 
     return null;
+  }
+
+  static String _normalizePath(String value) {
+    return value.replaceAll('\\', '/');
+  }
+
+  static String _sanitizeSlug(String value) {
+    final normalized = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+    return normalized.replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  static String _legacyModelIdFromName(String folderName) {
+    final slug = _sanitizeSlug(folderName);
+    return slug.isEmpty ? 'model' : slug;
+  }
+
+  static String _legacyFolderKey(String folderKey) {
+    final normalized = _normalizePath(folderKey);
+    if (!normalized.contains('/')) {
+      return normalized;
+    }
+    return normalized.split('/').first;
+  }
+
+  static String _stableModelId(String normalizedRelativePath, String fallbackName) {
+    final folderKey = (() {
+      final slashIndex = normalizedRelativePath.lastIndexOf('/');
+      if (slashIndex <= 0) {
+        return fallbackName;
+      }
+      return normalizedRelativePath.substring(0, slashIndex);
+    })();
+    final slug = _sanitizeSlug(path.basename(folderKey));
+    final hash = _fnv1a32(normalizedRelativePath.toLowerCase())
+        .toRadixString(16)
+        .padLeft(8, '0');
+    final prefix = slug.isEmpty ? 'model' : slug;
+    return '${prefix}_$hash';
+  }
+
+  static int _fnv1a32(String input) {
+    var hash = 0x811c9dc5;
+    for (final codeUnit in input.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash;
   }
 
   Map<String, dynamic> toJson() {

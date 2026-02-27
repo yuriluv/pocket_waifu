@@ -1358,13 +1358,15 @@ class _PresetsDialogState extends State<_PresetsDialog> {
                   itemCount: models.length,
                   itemBuilder: (_, index) {
                     final model = models[index];
-                    final folderName = model.relativePath.split('/').first;
+                    final folderKey = model.linkFolderKey;
                     return ListTile(
                       title: Text(model.name),
-                      subtitle: Text(folderName),
+                      subtitle: Text(folderKey),
                       onTap: () {
                         widget.controller.linkPresetToModel(
-                          preset.id, folderName, model.id,
+                          preset.id,
+                          folderKey,
+                          model.id,
                         );
                         Navigator.pop(ctx);
                         setState(() {});
