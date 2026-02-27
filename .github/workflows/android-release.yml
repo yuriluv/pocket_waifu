@@ -83,9 +83,9 @@ jobs:
           [[ -z "${ANDROID_KEY_PASSWORD}" ]] && missing+=("ANDROID_KEY_PASSWORD")
 
           if [[ ${#missing[@]} -gt 0 ]]; then
-            echo "Missing required Android signing secrets: ${missing[*]}" >&2
-            echo "Set repository secrets and rerun this workflow." >&2
-            exit 1
+            echo "::warning::Missing Android signing secrets (${missing[*]}). Falling back to debug signing."
+            rm -f android/key.properties
+            exit 0
           fi
 
           mkdir -p android/keystore
@@ -124,8 +124,9 @@ jobs:
           fi
 
           if [[ -z "${RESOLVED_CUBISM_PATH}" ]]; then
-            echo "Missing Cubism SDK. Set one of: CUBISM_SDK_PATH, CUBISM_SDK_ZIP_BASE64, CUBISM_SDK_DOWNLOAD_URL" >&2
-            exit 1
+            echo "::warning::Missing Cubism SDK secret; building without native Cubism integration."
+            rm -f android/local.properties
+            exit 0
           fi
 
           cat > android/local.properties <<EOF

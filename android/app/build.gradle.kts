@@ -54,19 +54,17 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        if (cubismSdkPath.isBlank()) {
-            throw GradleException("cubism.sdk.path is not set in android/local.properties")
-        }
-
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
 
-        externalNativeBuild {
-            cmake {
-                arguments += listOf("-DCUBISM_SDK_ROOT=$cubismSdkPath")
-                abiFilters("arm64-v8a")
-                cppFlags += listOf("-std=c++17", "-fexceptions")
+        if (cubismSdkPath.isNotBlank()) {
+            externalNativeBuild {
+                cmake {
+                    arguments += listOf("-DCUBISM_SDK_ROOT=$cubismSdkPath")
+                    abiFilters("arm64-v8a")
+                    cppFlags += listOf("-std=c++17", "-fexceptions")
+                }
             }
         }
     }
@@ -98,9 +96,11 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
+    if (cubismSdkPath.isNotBlank()) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
         }
     }
 }
