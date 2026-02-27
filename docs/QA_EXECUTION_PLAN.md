@@ -32,6 +32,7 @@
 ```bash
 dart run tool/qa/check_korean_policy.dart
 dart run tool/qa/check_korean_policy.dart --strict-strings
+./scripts/qa_part1_gate.sh
 flutter analyze
 flutter test test/qa
 flutter test
@@ -40,6 +41,7 @@ flutter test
 ## Checkpoint Policy
 
 - **Required for merge**
+  - `./scripts/qa_part1_gate.sh`
   - `dart run tool/qa/check_korean_policy.dart`
   - `flutter analyze`
   - `flutter test test/qa`
@@ -51,3 +53,4 @@ flutter test
 
 - The checker is heuristic-based for multi-language source trees and should be tuned through whitelist updates when legitimate localized text is introduced.
 - The regression suite is intentionally focused on stable contracts rather than UI snapshots to reduce flakiness.
+- Part1 gate runner writes retry evidence and failure classification (`code/env/data/procedure`) to `artifacts/qa/part1_gate_retry_log.tsv`.

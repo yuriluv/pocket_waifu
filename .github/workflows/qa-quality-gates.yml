@@ -27,6 +27,9 @@ jobs:
       - name: Korean comment policy gate
         run: dart run tool/qa/check_korean_policy.dart
 
+      - name: Part1 QA gate runner
+        run: ./scripts/qa_part1_gate.sh
+
       - name: Analyze
         run: flutter analyze
 

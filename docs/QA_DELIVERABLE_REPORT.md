@@ -14,8 +14,12 @@
 - Prompt builder regression tests: `test/qa/prompt_builder_regression_test.dart`
 - Model contract tests: `test/qa/model_contract_test.dart`
 - QA plan: `docs/QA_EXECUTION_PLAN.md`
+- Part1 gate matrix: `docs/PART1_QA_GATE_MATRIX_2026-02-27.md`
 - APK release/logging QA matrix: `docs/APK_RELEASE_QA_TEST_MATRIX_2026-02-26.md`
 - APK release/logging bug template: `docs/APK_RELEASE_LOGGING_QA_BUG_REPORT_TEMPLATE.md`
+- Part1 gate runner: `scripts/qa_part1_gate.sh`
+- Part1 freeze policy test: `test/qa/part1_gate_policy_test.dart`
+- Live2D bridge contract test: `test/qa/live2d_bridge_contract_test.dart`
 
 ## Added for APK Release/Logging Collaboration Recovery
 
@@ -31,6 +35,8 @@
    - `flutter analyze`
 3. Regression contracts pass:
    - `flutter test test/qa`
+4. Part1 gate runbook passes with retry evidence:
+   - `./scripts/qa_part1_gate.sh`
 
 ## Optional Hardening
 
