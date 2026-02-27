@@ -73,9 +73,18 @@ class Live2DNativeBridge {
       _handleStateSync(map);
       return;
     }
+
+    if (_isNotificationContractEvent(type)) {
+      _notificationContractCallback?.call(map);
+    }
     
     final interactionEvent = InteractionEvent.fromMap(map);
     _handleNativeEvent(interactionEvent);
+  }
+
+  bool _isNotificationContractEvent(String? type) {
+    return type == 'notificationSessionSync' ||
+        type == 'notificationTouchThroughToggled';
   }
   
   /// 
@@ -94,16 +103,24 @@ class Live2DNativeBridge {
   }
   
   void Function(Map<String, dynamic>)? _stateSyncCallback;
+  void Function(Map<String, dynamic>)? _notificationContractCallback;
   
   /// 
   void setStateSyncCallback(void Function(Map<String, dynamic>)? callback) {
     _stateSyncCallback = callback;
   }
 
+  /// Newcastle notification/session sync contract callback.
+  void setNotificationContractCallback(void Function(Map<String, dynamic>)? callback) {
+    _notificationContractCallback = callback;
+  }
+
   void dispose() {
     _eventSubscription?.cancel();
     _eventSubscription = null;
     _eventHandlers.clear();
+    _stateSyncCallback = null;
+    _notificationContractCallback = null;
     _isInitialized = false;
     live2dLog.info(_tag, '네이티브 브릿지 정리됨');
   }
@@ -372,6 +389,36 @@ class Live2DNativeBridge {
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setCharacterOpacity 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<bool> setNotificationResponse(String message, {String? sessionId}) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setNotificationResponse', {
+        'message': message,
+        if (sessionId != null) 'sessionId': sessionId,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setNotificationResponse 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<bool> setNotificationError(String errorMessage, {String? sessionId}) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setNotificationError', {
+        'error': errorMessage,
+        if (sessionId != null) 'sessionId': sessionId,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setNotificationError 실패', error: e);
       return false;
     } on MissingPluginException {
       return false;
