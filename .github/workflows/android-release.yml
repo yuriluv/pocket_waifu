@@ -69,13 +69,16 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          KEYSTORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-${ANDROID_STORE_PASSWORD:-}}"
+
           missing=()
           [[ -z "${ANDROID_KEYSTORE_BASE64}" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
-          [[ -z "${ANDROID_KEYSTORE_PASSWORD}" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "${KEYSTORE_PASSWORD}" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD (or ANDROID_STORE_PASSWORD)")
           [[ -z "${ANDROID_KEY_ALIAS}" ]] && missing+=("ANDROID_KEY_ALIAS")
           [[ -z "${ANDROID_KEY_PASSWORD}" ]] && missing+=("ANDROID_KEY_PASSWORD")
 
@@ -90,7 +93,7 @@ jobs:
 
           cat > android/key.properties <<EOF
           storeFile=keystore/release.keystore
-          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          storePassword=${KEYSTORE_PASSWORD}
           keyAlias=${ANDROID_KEY_ALIAS}
           keyPassword=${ANDROID_KEY_PASSWORD}
           EOF
