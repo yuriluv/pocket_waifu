@@ -8,6 +8,29 @@ enum FolderValidationResult {
 }
 
 class FolderValidator {
+  static String? normalizePath(String? input) {
+    if (input == null) return null;
+    final trimmed = input.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static Future<bool> isExistingDirectory(String? input) async {
+    final normalized = normalizePath(input);
+    if (normalized == null) return false;
+    try {
+      return await Directory(normalized).exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String? displayName(String? input) {
+    final normalized = normalizePath(input);
+    if (normalized == null) return null;
+    final parts = normalized.replaceAll('\\', '/').split('/').where((e) => e.isNotEmpty).toList();
+    return parts.isEmpty ? normalized : parts.last;
+  }
+
   static Future<(FolderValidationResult, int)> validate(
     String path,
     Future<List<dynamic>> Function(String) scanModels,
