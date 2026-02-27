@@ -29,6 +29,8 @@ enum InteractionType {
   modelUnloaded,
   motionStarted,
   motionFinished,
+  notificationSessionSync,
+  notificationTouchThroughToggled,
   
   externalCommand,
   
@@ -69,7 +71,7 @@ class InteractionEvent {
     return InteractionEvent(
       type: _parseType(map['type'] as String?),
       position: _parsePosition(map),
-      extras: map['extras'] as Map<String, dynamic>?,
+      extras: _parseExtras(map['extras']),
       timestamp: DateTime.fromMillisecondsSinceEpoch(
         (map['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
       ),
@@ -110,6 +112,11 @@ class InteractionEvent {
       );
     }
     return null;
+  }
+
+  static Map<String, dynamic>? _parseExtras(dynamic extras) {
+    if (extras is! Map) return null;
+    return extras.map((key, value) => MapEntry(key.toString(), value));
   }
 
   factory InteractionEvent.command(String commandName, {

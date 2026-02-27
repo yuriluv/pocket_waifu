@@ -23,8 +23,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
+import androidx.core.app.RemoteInput
 import com.example.flutter_application_1.MainActivity
-import com.example.flutter_application_1.R
 import com.example.flutter_application_1.live2d.Live2DEventStreamHandler
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
@@ -67,6 +67,12 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_RELATIVE_SCALE = "com.example.flutter_application_1.live2d.SET_RELATIVE_SCALE"
         const val ACTION_SET_CHARACTER_OFFSET = "com.example.flutter_application_1.live2d.SET_CHARACTER_OFFSET"
         const val ACTION_SET_CHARACTER_ROTATION = "com.example.flutter_application_1.live2d.SET_CHARACTER_ROTATION"
+        const val ACTION_NOTIFICATION_SHOW_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SHOW_REPLY"
+        const val ACTION_NOTIFICATION_SEND_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SEND_REPLY"
+        const val ACTION_NOTIFICATION_CANCEL_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_CANCEL_REPLY"
+        const val ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH = "com.example.flutter_application_1.live2d.NOTIFICATION_TOGGLE_TOUCH_THROUGH"
+        const val ACTION_NOTIFICATION_SET_RESPONSE = "com.example.flutter_application_1.live2d.NOTIFICATION_SET_RESPONSE"
+        const val ACTION_NOTIFICATION_SET_ERROR = "com.example.flutter_application_1.live2d.NOTIFICATION_SET_ERROR"
 
         const val EDGE_LEFT = 1
         const val EDGE_TOP = 2
@@ -98,9 +104,23 @@ class Live2DOverlayService : Service() {
         const val EXTRA_OFFSET_X = "offset_x"
         const val EXTRA_OFFSET_Y = "offset_y"
         const val EXTRA_ROTATION = "rotation"
+        const val EXTRA_NOTIFICATION_MESSAGE = "notification_message"
+        const val EXTRA_NOTIFICATION_ERROR = "notification_error"
+        const val EXTRA_NOTIFICATION_SESSION_ID = "notification_session_id"
         
         private const val CHANNEL_ID = "live2d_overlay_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val REMOTE_INPUT_REPLY_KEY = "notification_reply_text"
+        private const val SESSION_SYNC_CONTRACT = "newcastle.notification.session_sync.v1"
+        private const val SESSION_SYNC_CONTRACT_VERSION = 1
+        private const val SESSION_SYNC_SCOPE_ACTIVE_MAIN = "active_main_session"
+        private const val REPLY_LOADING_TEXT = "응답 생성 중..."
+
+        private const val REQUEST_CODE_OPEN_APP = 1000
+        private const val REQUEST_CODE_NOTIFICATION_SHOW_REPLY = 1001
+        private const val REQUEST_CODE_NOTIFICATION_SEND_REPLY = 1002
+        private const val REQUEST_CODE_NOTIFICATION_CANCEL_REPLY = 1003
+        private const val REQUEST_CODE_NOTIFICATION_TOUCH_THROUGH = 1004
         
         // Android 12+ (API 31) Untrusted Touch Occlusion:
         private val MAX_OVERLAY_ALPHA = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.8f else 1.0f
@@ -166,6 +186,13 @@ class Live2DOverlayService : Service() {
     private enum class TouchState { IDLE, DRAGGING, BOX_DRAGGING, BOX_RESIZING }
     private var touchState = TouchState.IDLE
     private var resizeEdgeMask = 0  // bitmask: 1=LEFT, 2=TOP, 4=RIGHT, 8=BOTTOM
+    private enum class NotificationLayoutState { DEFAULT, REPLY }
+    private var notificationLayoutState = NotificationLayoutState.DEFAULT
+    private var notificationMessage = "오버레이가 실행 중입니다"
+    private var notificationLoading = false
+    private var notificationPendingReply: String? = null
+    private var notificationError: String? = null
+    private var notificationSessionId: String? = null
 
     
     private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
@@ -302,6 +329,18 @@ class Live2DOverlayService : Service() {
                 intent.getFloatExtra(EXTRA_OFFSET_Y, 0f)
             )
             ACTION_SET_CHARACTER_ROTATION -> setCharacterRotationValue(intent.getIntExtra(EXTRA_ROTATION, 0))
+            ACTION_NOTIFICATION_SHOW_REPLY -> openNotificationReplyLayout()
+            ACTION_NOTIFICATION_SEND_REPLY -> handleInlineReplyFromNotification(intent)
+            ACTION_NOTIFICATION_CANCEL_REPLY -> cancelNotificationReplyLayout()
+            ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH -> toggleTouchThroughFromNotification()
+            ACTION_NOTIFICATION_SET_RESPONSE -> updateNotificationResponse(
+                message = intent.getStringExtra(EXTRA_NOTIFICATION_MESSAGE),
+                sessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID),
+            )
+            ACTION_NOTIFICATION_SET_ERROR -> updateNotificationError(
+                errorMessage = intent.getStringExtra(EXTRA_NOTIFICATION_ERROR),
+                sessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID),
+            )
         }
         
         return START_STICKY
@@ -660,6 +699,7 @@ class Live2DOverlayService : Service() {
         Live2DLogger.Overlay.d("터치스루 토글", "enabled=$enabled")
         touchThroughEnabled = enabled
         updateTouchMode()
+        refreshForegroundNotification()
     }
     
     /**
@@ -1125,6 +1165,260 @@ class Live2DOverlayService : Service() {
     
     // ============================================================================
     // ============================================================================
+
+    private fun openNotificationReplyLayout() {
+        notificationLayoutState = NotificationLayoutState.REPLY
+        refreshForegroundNotification()
+        publishNotificationSessionSync(phase = "reply_input_opened")
+    }
+
+    private fun cancelNotificationReplyLayout() {
+        notificationLayoutState = NotificationLayoutState.DEFAULT
+        refreshForegroundNotification()
+        publishNotificationSessionSync(phase = "reply_input_cancelled")
+    }
+
+    private fun handleInlineReplyFromNotification(intent: Intent) {
+        val replyText = RemoteInput.getResultsFromIntent(intent)
+            ?.getCharSequence(REMOTE_INPUT_REPLY_KEY)
+            ?.toString()
+            ?.trim()
+
+        if (replyText.isNullOrEmpty()) {
+            cancelNotificationReplyLayout()
+            return
+        }
+
+        notificationSessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID) ?: notificationSessionId
+        notificationLayoutState = NotificationLayoutState.DEFAULT
+        notificationLoading = true
+        notificationPendingReply = replyText
+        notificationError = null
+        refreshForegroundNotification()
+
+        publishNotificationSessionSync(
+            phase = "reply_submitted",
+            replyText = replyText,
+        )
+    }
+
+    private fun toggleTouchThroughFromNotification() {
+        setTouchThroughEnabled(!touchThroughEnabled)
+        publishNotificationTouchThroughEvent()
+        publishNotificationSessionSync(phase = "touch_through_toggled")
+    }
+
+    private fun updateNotificationResponse(message: String?, sessionId: String?) {
+        if (!sessionId.isNullOrBlank()) {
+            notificationSessionId = sessionId
+        }
+
+        notificationLoading = false
+        notificationPendingReply = null
+        notificationError = null
+        notificationLayoutState = NotificationLayoutState.DEFAULT
+
+        if (!message.isNullOrBlank()) {
+            notificationMessage = message.trim()
+        }
+
+        refreshForegroundNotification()
+
+        publishNotificationSessionSync(
+            phase = "assistant_response_synced",
+            assistantMessage = notificationMessage,
+        )
+    }
+
+    private fun updateNotificationError(errorMessage: String?, sessionId: String?) {
+        if (!sessionId.isNullOrBlank()) {
+            notificationSessionId = sessionId
+        }
+
+        notificationLoading = false
+        notificationPendingReply = null
+        notificationLayoutState = NotificationLayoutState.DEFAULT
+        notificationError = errorMessage?.trim()?.ifBlank { null } ?: "응답 생성 실패"
+        refreshForegroundNotification()
+
+        publishNotificationSessionSync(
+            phase = "assistant_response_failed",
+            errorMessage = notificationError,
+        )
+    }
+
+    private fun buildNotificationContentText(): String {
+        notificationError?.let { error ->
+            return "오류: $error"
+        }
+
+        if (notificationLoading) {
+            val pending = notificationPendingReply?.takeIf { it.isNotBlank() } ?: "요청 처리 중"
+            return "$REPLY_LOADING_TEXT\n$pending"
+        }
+
+        return notificationMessage
+    }
+
+    private fun refreshForegroundNotification() {
+        try {
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager?.notify(NOTIFICATION_ID, createNotification())
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.w("알림 갱신 실패", e.message)
+        }
+    }
+
+    private fun createOpenAppPendingIntent(): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        return PendingIntent.getActivity(
+            this,
+            REQUEST_CODE_OPEN_APP,
+            intent,
+            pendingIntentFlags(),
+        )
+    }
+
+    private fun pendingIntentFlags(mutable: Boolean = false): Int {
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags or if (mutable) PendingIntent.FLAG_MUTABLE else PendingIntent.FLAG_IMMUTABLE
+        } else if (!mutable) {
+            flags or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            flags
+        }
+        return flags
+    }
+
+    private fun createServicePendingIntent(
+        action: String,
+        requestCode: Int,
+        mutable: Boolean = false,
+    ): PendingIntent {
+        val intent = Intent(this, Live2DOverlayService::class.java).apply {
+            this.action = action
+            notificationSessionId?.let { putExtra(EXTRA_NOTIFICATION_SESSION_ID, it) }
+        }
+
+        return PendingIntent.getService(
+            this,
+            requestCode,
+            intent,
+            pendingIntentFlags(mutable),
+        )
+    }
+
+    private fun createReplyEntryAction(): NotificationCompat.Action {
+        val pendingIntent = createServicePendingIntent(
+            action = ACTION_NOTIFICATION_SHOW_REPLY,
+            requestCode = REQUEST_CODE_NOTIFICATION_SHOW_REPLY,
+        )
+
+        return NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_edit,
+            "Reply",
+            pendingIntent,
+        ).build()
+    }
+
+    private fun createInlineReplyAction(): NotificationCompat.Action {
+        val remoteInput = RemoteInput.Builder(REMOTE_INPUT_REPLY_KEY)
+            .setLabel("답장을 입력하세요")
+            .build()
+
+        val pendingIntent = createServicePendingIntent(
+            action = ACTION_NOTIFICATION_SEND_REPLY,
+            requestCode = REQUEST_CODE_NOTIFICATION_SEND_REPLY,
+            mutable = true,
+        )
+
+        return NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_send,
+            "Reply",
+            pendingIntent,
+        )
+            .addRemoteInput(remoteInput)
+            .setAllowGeneratedReplies(true)
+            .build()
+    }
+
+    private fun createCancelReplyAction(): NotificationCompat.Action {
+        val pendingIntent = createServicePendingIntent(
+            action = ACTION_NOTIFICATION_CANCEL_REPLY,
+            requestCode = REQUEST_CODE_NOTIFICATION_CANCEL_REPLY,
+        )
+
+        return NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "Cancel",
+            pendingIntent,
+        ).build()
+    }
+
+    private fun createTouchThroughToggleAction(): NotificationCompat.Action {
+        val pendingIntent = createServicePendingIntent(
+            action = ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH,
+            requestCode = REQUEST_CODE_NOTIFICATION_TOUCH_THROUGH,
+        )
+
+        return NotificationCompat.Action.Builder(
+            android.R.drawable.ic_menu_view,
+            "Touch-Through",
+            pendingIntent,
+        ).build()
+    }
+
+    private fun publishNotificationTouchThroughEvent() {
+        Live2DEventStreamHandler.getInstance()?.sendSystemEvent(
+            "notificationTouchThroughToggled",
+            mapOf(
+                "contract" to SESSION_SYNC_CONTRACT,
+                "contractVersion" to SESSION_SYNC_CONTRACT_VERSION,
+                "source" to "notification_action",
+                "touchThroughEnabled" to touchThroughEnabled,
+            ),
+        )
+    }
+
+    private fun publishNotificationSessionSync(
+        phase: String,
+        replyText: String? = null,
+        assistantMessage: String? = null,
+        errorMessage: String? = null,
+    ) {
+        val extras = mutableMapOf<String, Any?>(
+            "contract" to SESSION_SYNC_CONTRACT,
+            "contractVersion" to SESSION_SYNC_CONTRACT_VERSION,
+            "source" to "notification_reply",
+            "phase" to phase,
+            "sessionScope" to SESSION_SYNC_SCOPE_ACTIVE_MAIN,
+            "sessionId" to notificationSessionId,
+            "requiresSerialization" to true,
+            "touchThroughEnabled" to touchThroughEnabled,
+        )
+
+        if (!replyText.isNullOrBlank()) {
+            extras["replyText"] = replyText
+        }
+        if (!assistantMessage.isNullOrBlank()) {
+            extras["assistantMessage"] = assistantMessage
+        }
+        if (!errorMessage.isNullOrBlank()) {
+            extras["error"] = errorMessage
+        }
+
+        Live2DEventStreamHandler.getInstance()?.sendEvent(
+            mapOf(
+                "type" to "notificationSessionSync",
+                "timestamp" to System.currentTimeMillis(),
+                "extras" to extras,
+            ),
+        )
+    }
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1143,22 +1437,30 @@ class Live2DOverlayService : Service() {
     }
     
     private fun createNotification(): Notification {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val contentText = buildNotificationContentText()
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Live2D 오버레이")
-            .setContentText("오버레이가 실행 중입니다")
+            .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(createOpenAppPendingIntent())
+            .setSubText(if (touchThroughEnabled) "Touch-Through ON" else "Touch-Through OFF")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
-            .build()
+            .setOnlyAlertOnce(true)
+
+        when (notificationLayoutState) {
+            NotificationLayoutState.DEFAULT -> {
+                builder.addAction(createReplyEntryAction())
+                builder.addAction(createTouchThroughToggleAction())
+            }
+            NotificationLayoutState.REPLY -> {
+                builder.addAction(createInlineReplyAction())
+                builder.addAction(createCancelReplyAction())
+            }
+        }
+
+        return builder.build()
     }
 }
