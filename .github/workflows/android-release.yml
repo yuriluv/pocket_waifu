@@ -73,8 +73,15 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "${ANDROID_KEYSTORE_BASE64}" ]]; then
-            echo "ANDROID_KEYSTORE_BASE64 secret is required" >&2
+          missing=()
+          [[ -z "${ANDROID_KEYSTORE_BASE64}" ]] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [[ -z "${ANDROID_KEYSTORE_PASSWORD}" ]] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [[ -z "${ANDROID_KEY_ALIAS}" ]] && missing+=("ANDROID_KEY_ALIAS")
+          [[ -z "${ANDROID_KEY_PASSWORD}" ]] && missing+=("ANDROID_KEY_PASSWORD")
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "Missing required Android signing secrets: ${missing[*]}" >&2
+            echo "Set repository secrets and rerun this workflow." >&2
             exit 1
           fi
 
@@ -92,15 +99,34 @@ jobs:
         shell: bash
         env:
           CUBISM_SDK_PATH: ${{ secrets.CUBISM_SDK_PATH }}
+          CUBISM_SDK_ZIP_BASE64: ${{ secrets.CUBISM_SDK_ZIP_BASE64 }}
+          CUBISM_SDK_DOWNLOAD_URL: ${{ secrets.CUBISM_SDK_DOWNLOAD_URL }}
         run: |
           set -euo pipefail
-          if [[ -z "${CUBISM_SDK_PATH}" ]]; then
-            echo "CUBISM_SDK_PATH secret is required" >&2
+
+          RESOLVED_CUBISM_PATH=""
+
+          if [[ -n "${CUBISM_SDK_PATH}" ]]; then
+            RESOLVED_CUBISM_PATH="${CUBISM_SDK_PATH}"
+          elif [[ -n "${CUBISM_SDK_ZIP_BASE64}" ]]; then
+            mkdir -p "$RUNNER_TEMP/cubism-sdk"
+            echo "${CUBISM_SDK_ZIP_BASE64}" | base64 --decode > "$RUNNER_TEMP/cubism-sdk/cubism.zip"
+            unzip -q "$RUNNER_TEMP/cubism-sdk/cubism.zip" -d "$RUNNER_TEMP/cubism-sdk/unpacked"
+            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -maxdepth 3 -type d | head -n 1)
+          elif [[ -n "${CUBISM_SDK_DOWNLOAD_URL}" ]]; then
+            mkdir -p "$RUNNER_TEMP/cubism-sdk"
+            curl -fsSL "${CUBISM_SDK_DOWNLOAD_URL}" -o "$RUNNER_TEMP/cubism-sdk/cubism.zip"
+            unzip -q "$RUNNER_TEMP/cubism-sdk/cubism.zip" -d "$RUNNER_TEMP/cubism-sdk/unpacked"
+            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -maxdepth 3 -type d | head -n 1)
+          fi
+
+          if [[ -z "${RESOLVED_CUBISM_PATH}" ]]; then
+            echo "Missing Cubism SDK. Set one of: CUBISM_SDK_PATH, CUBISM_SDK_ZIP_BASE64, CUBISM_SDK_DOWNLOAD_URL" >&2
             exit 1
           fi
 
           cat > android/local.properties <<EOF
-          cubism.sdk.path=${CUBISM_SDK_PATH}
+          cubism.sdk.path=${RESOLVED_CUBISM_PATH}
           EOF
 
       - name: Build signed release APK
