@@ -2,6 +2,8 @@
 // ============================================================================
 // ============================================================================
 
+import 'package:flutter/services.dart';
+
 class CommandResult {
   final CommandType type;
   final bool success;
