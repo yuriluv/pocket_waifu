@@ -8,6 +8,7 @@ import android.os.Environment
 import android.net.Uri
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
+import com.example.flutter_application_1.live2d.cubism.Live2DNativeBridge
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
@@ -58,6 +59,11 @@ class Live2DMethodHandler(
                 "setCharacterOffset" -> setCharacterOffset(call, result)
                 "setCharacterRotation" -> setCharacterRotation(call, result)
                 
+                "getDisplayState" -> getDisplayState(result)
+                "setParameter" -> setParameter(call, result)
+                "getParameter" -> getParameter(call, result)
+                "getParameterIds" -> getParameterIds(result)
+                
                 "setEyeBlink" -> setEyeBlink(call, result)
                 "setBreathing" -> setBreathing(call, result)
                 "setLookAt" -> setLookAt(call, result)
@@ -66,6 +72,7 @@ class Live2DMethodHandler(
                 
                 "getMotionGroups" -> getMotionGroups(result)
                 "getMotionCount" -> getMotionCount(call, result)
+                "getMotionNames" -> getMotionNames(call, result)
                 "getExpressions" -> getExpressions(result)
                 "getModelInfo" -> getModelInfo(result)
                 "analyzeModel" -> analyzeModel(call, result)
@@ -504,6 +511,64 @@ class Live2DMethodHandler(
             result.error("EDIT_MODE_ERROR", e.message, null)
         }
     }
+
+    private fun getDisplayState(result: MethodChannel.Result) {
+        try {
+            val state = Live2DOverlayService.getDisplayState(context)
+            result.success(state)
+        } catch (e: Exception) {
+            Live2DLogger.e("디스플레이 상태 조회 실패", e)
+            result.error("DISPLAY_STATE_ERROR", e.message, null)
+        }
+    }
+
+    private fun setParameter(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id")
+        val value = call.argument<Double>("value")?.toFloat() ?: 0f
+        val duration = call.argument<Int>("durationMs") ?: 0
+        if (id.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "id is required", null)
+            return
+        }
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_PARAMETER
+                putExtra(Live2DOverlayService.EXTRA_PARAMETER_ID, id)
+                putExtra(Live2DOverlayService.EXTRA_PARAMETER_VALUE, value)
+                putExtra(Live2DOverlayService.EXTRA_PARAMETER_DURATION, duration)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("파라미터 설정 실패", e)
+            result.error("PARAM_ERROR", e.message, null)
+        }
+    }
+
+    private fun getParameter(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id")
+        if (id.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "id is required", null)
+            return
+        }
+        try {
+            val value = Live2DNativeBridge.nativeGetParameterValue(id)
+            result.success(value.toDouble())
+        } catch (e: Exception) {
+            Live2DLogger.e("파라미터 조회 실패", e)
+            result.error("PARAM_ERROR", e.message, null)
+        }
+    }
+
+    private fun getParameterIds(result: MethodChannel.Result) {
+        try {
+            val ids = Live2DNativeBridge.nativeGetParameterIds()
+            result.success(ids.toList())
+        } catch (e: Exception) {
+            Live2DLogger.e("파라미터 ID 조회 실패", e)
+            result.error("PARAM_ERROR", e.message, null)
+        }
+    }
     
     private fun setPosition(call: MethodCall, result: MethodChannel.Result) {
         val x = (call.argument<Double>("x") ?: call.argument<Int>("x")?.toDouble() ?: 0.0).toInt()
@@ -654,6 +719,24 @@ class Live2DMethodHandler(
             }
         } catch (e: Exception) {
             Live2DLogger.e("모션 수 조회 실패", e)
+            result.error("INFO_ERROR", e.message, null)
+        }
+    }
+
+    private fun getMotionNames(call: MethodCall, result: MethodChannel.Result) {
+        val group = call.argument<String>("group") ?: ""
+        try {
+            val modelInfo = Live2DOverlayService.currentModelInfo
+            if (modelInfo != null) {
+                @Suppress("UNCHECKED_CAST")
+                val motionGroups = modelInfo["motionGroups"] as? Map<String, List<String>>
+                val names = motionGroups?.get(group) ?: emptyList()
+                result.success(names)
+            } else {
+                result.success(emptyList<String>())
+            }
+        } catch (e: Exception) {
+            Live2DLogger.e("모션 이름 조회 실패", e)
             result.error("INFO_ERROR", e.message, null)
         }
     }

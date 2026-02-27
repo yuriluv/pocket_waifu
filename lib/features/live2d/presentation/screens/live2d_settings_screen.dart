@@ -1019,6 +1019,16 @@ class _EditModeControlPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Icon(Icons.edit_attributes, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text('편집 모드 활성', style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            )),
+          ],
+        ),
+        const SizedBox(height: 12),
         _buildToggleTile(
           theme: theme,
           icon: Icons.push_pin,
@@ -1079,6 +1089,36 @@ class _EditModeControlPanel extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Text('°'),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(Icons.save, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text('레이아웃 저장', style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            )),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: controller.selectedModel == null
+                  ? null
+                  : () => controller.saveDisplayConfigForModel(
+                        controller.selectedModel!.id,
+                      ),
+              icon: const Icon(Icons.save, size: 18),
+              label: const Text('저장'),
+            ),
+            TextButton.icon(
+              onPressed: controller.selectedModel == null
+                  ? null
+                  : () => controller.resetDisplayConfigForModel(
+                        controller.selectedModel!.id,
+                      ),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('초기화'),
+            ),
           ],
         ),
 

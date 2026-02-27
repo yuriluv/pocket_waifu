@@ -6,11 +6,14 @@ import 'package:flutter/foundation.dart';
 import '../../data/models/live2d_model_info.dart';
 import '../../data/models/live2d_settings.dart';
 import '../../data/models/display_preset.dart';
+import '../../data/models/display_config.dart';
 import '../../data/repositories/live2d_repository.dart';
 import '../../data/services/live2d_log_service.dart';
 import '../../data/services/live2d_storage_service.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/interaction_manager.dart';
+import '../../data/services/display_config_store.dart';
+import '../../data/services/live2d_overlay_state_service.dart';
 
 enum Live2DControllerState {
   initial,
@@ -26,6 +29,10 @@ class Live2DController extends ChangeNotifier {
   final Live2DStorageService _storageService = Live2DStorageService();
   final Live2DNativeBridge _nativeBridge = Live2DNativeBridge();
   final InteractionManager _interactionManager = InteractionManager();
+  final Live2DDisplayConfigStore _displayConfigStore =
+      Live2DDisplayConfigStore();
+  final Live2DOverlayStateService _overlayStateService =
+      Live2DOverlayStateService();
 
   Live2DControllerState _state = Live2DControllerState.initial;
   Live2DSettings _settings = Live2DSettings.defaults();
@@ -72,6 +79,7 @@ class Live2DController extends ChangeNotifier {
       await _nativeBridge.initialize();
       
       _interactionManager.initialize();
+      _overlayStateService.attach();
       
       _settings = await Live2DSettings.load();
       live2dLog.debug(_tag, '설정 로드됨', details: _settings.toString());
@@ -218,12 +226,99 @@ class Live2DController extends ChangeNotifier {
         live2dLog.info(_tag, '링크된 프리셋 적용', details: linkedPreset.name);
         await loadPreset(linkedPreset);
       }
+      await _applyDisplayConfigForModel(model.id);
     }
 
     if (_settings.isEnabled && model != null) {
       await _loadModelToOverlay(model);
     }
 
+    notifyListeners();
+  }
+
+  Future<void> saveDisplayConfigForModel(String modelId) async {
+    final state = await _overlayStateService.fetchCurrentState();
+    if (state == null) {
+      live2dLog.warning(_tag, '오버레이 상태 없음 - 저장 스킵');
+      return;
+    }
+    final config = Live2DDisplayConfig.fromOverlayState(
+      modelId: modelId,
+      modelPath: _settings.selectedModelPath,
+      containerWidthPx: state.containerWidth,
+      containerHeightPx: state.containerHeight,
+      containerX: state.containerX,
+      containerY: state.containerY,
+      relativeScale: state.relativeScale,
+      offsetX: state.offsetX,
+      offsetY: state.offsetY,
+      rotationDeg: state.rotationDeg,
+      screenWidthPx: state.screenWidth,
+      screenHeightPx: state.screenHeight,
+      density: state.density,
+    );
+    if (!config.isValid) {
+      live2dLog.warning(_tag, '디스플레이 설정 유효성 실패 - 기본값 사용');
+      await _displayConfigStore.save(
+        Live2DDisplayConfig.fallbackFor(modelId),
+      );
+      return;
+    }
+    await _displayConfigStore.save(config);
+    _settings = _settings.copyWith(
+      overlayWidth: state.containerWidth,
+      overlayHeight: state.containerHeight,
+      positionX: (state.containerX / state.screenWidth).clamp(0.0, 1.0),
+      positionY: (state.containerY / state.screenHeight).clamp(0.0, 1.0),
+      relativeCharacterScale: state.relativeScale,
+      characterOffsetX: state.offsetX,
+      characterOffsetY: state.offsetY,
+      characterRotation: state.rotationDeg,
+    );
+    await _settings.save();
+    notifyListeners();
+  }
+
+  Future<void> resetDisplayConfigForModel(String modelId) async {
+    final state = await _overlayStateService.fetchCurrentState();
+    if (state == null) return;
+    final width = _settings.overlayWidth;
+    final height = _settings.overlayHeight;
+    final centerX = (state.screenWidth - width) ~/ 2;
+    final centerY = (state.screenHeight - height) ~/ 2;
+    await _nativeBridge.setSize(width, height);
+    await _nativeBridge.setPosition(centerX.toDouble(), centerY.toDouble());
+    await _nativeBridge.setRelativeScale(1.0);
+    await _nativeBridge.setCharacterOffset(0, 0);
+    await _nativeBridge.setCharacterRotation(0);
+
+    final config = Live2DDisplayConfig.fromOverlayState(
+      modelId: modelId,
+      modelPath: _settings.selectedModelPath,
+      containerWidthPx: width,
+      containerHeightPx: height,
+      containerX: centerX,
+      containerY: centerY,
+      relativeScale: 1.0,
+      offsetX: 0.0,
+      offsetY: 0.0,
+      rotationDeg: 0,
+      screenWidthPx: state.screenWidth,
+      screenHeightPx: state.screenHeight,
+      density: state.density,
+    );
+    await _displayConfigStore.save(config);
+    _settings = _settings.copyWith(
+      overlayWidth: width,
+      overlayHeight: height,
+      positionX: (centerX / state.screenWidth).clamp(0.0, 1.0),
+      positionY: (centerY / state.screenHeight).clamp(0.0, 1.0),
+      relativeCharacterScale: 1.0,
+      characterOffsetX: 0.0,
+      characterOffsetY: 0.0,
+      characterRotation: 0,
+    );
+    await _settings.save();
     notifyListeners();
   }
 
@@ -470,6 +565,50 @@ class Live2DController extends ChangeNotifier {
     await _nativeBridge.loadModel(model.modelFilePath);
   }
 
+  Future<void> _applyDisplayConfigForModel(String modelId) async {
+    var config = await _displayConfigStore.loadForModel(modelId);
+    if (config == null || !config.isValid) {
+      config = await _displayConfigStore.migrateLegacy(
+        modelId: modelId,
+        settings: _settings,
+      );
+    }
+    final state = await _overlayStateService.fetchCurrentState();
+    if (state == null) return;
+    final normalized = config.normalizeWithScreen(
+      state.screenWidth,
+      state.screenHeight,
+      state.density,
+    );
+    final widthPx =
+        (normalized.containerWidthRatio * state.screenWidth).round();
+    final heightPx =
+        (normalized.containerHeightRatio * state.screenHeight).round();
+    final posX = (normalized.containerXRatio * state.screenWidth).round();
+    final posY = (normalized.containerYRatio * state.screenHeight).round();
+    final offsetX = normalized.modelOffsetXRatio * widthPx;
+    final offsetY = normalized.modelOffsetYRatio * heightPx;
+
+    await _nativeBridge.setSize(widthPx, heightPx);
+    await _nativeBridge.setPosition(posX.toDouble(), posY.toDouble());
+    await _nativeBridge.setRelativeScale(normalized.relativeScaleRatio);
+    await _nativeBridge.setCharacterOffset(offsetX, offsetY);
+    await _nativeBridge.setCharacterRotation(normalized.rotationDeg);
+
+    _settings = _settings.copyWith(
+      overlayWidth: widthPx,
+      overlayHeight: heightPx,
+      positionX: normalized.containerXRatio,
+      positionY: normalized.containerYRatio,
+      relativeCharacterScale: normalized.relativeScaleRatio,
+      characterOffsetX: offsetX,
+      characterOffsetY: offsetY,
+      characterRotation: normalized.rotationDeg,
+    );
+    await _settings.save();
+    notifyListeners();
+  }
+
   void _setState(Live2DControllerState newState) {
     _state = newState;
     _errorMessage = null;
@@ -520,6 +659,7 @@ class Live2DController extends ChangeNotifier {
   void dispose() {
     _nativeBridge.setStateSyncCallback(null);
     _interactionManager.dispose();
+    _overlayStateService.detach();
     _nativeBridge.dispose();
     super.dispose();
   }

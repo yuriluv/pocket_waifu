@@ -29,6 +29,12 @@ class Live2DNativeBridge {
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
+  Stream<InteractionEvent> get eventStream =>
+      _eventChannel.receiveBroadcastStream().map((event) {
+        if (event is! Map) return InteractionEvent.now(type: InteractionType.unknown);
+        return InteractionEvent.fromMap(Map<String, dynamic>.from(event));
+      });
+
   // ============================================================================
   // ============================================================================
 
@@ -493,6 +499,64 @@ class Live2DNativeBridge {
       return false;
     } on MissingPluginException {
       return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> getDisplayState() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+          'getDisplayState');
+      if (result == null) return {};
+      return Map<String, dynamic>.from(result);
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getDisplayState 실패', error: e);
+      return {};
+    } on MissingPluginException {
+      return {};
+    }
+  }
+
+  Future<bool> setParameter(String paramId, double value,
+      {int durationMs = 0}) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setParameter', {
+        'id': paramId,
+        'value': value,
+        'durationMs': durationMs,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setParameter 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<double?> getParameter(String paramId) async {
+    try {
+      final result = await _methodChannel.invokeMethod<double>('getParameter', {
+        'id': paramId,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getParameter 실패', error: e);
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  Future<List<String>> getParameterIds() async {
+    try {
+      final result =
+          await _methodChannel.invokeMethod<List<dynamic>>('getParameterIds');
+      return result?.cast<String>() ?? [];
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getParameterIds 실패', error: e);
+      return [];
+    } on MissingPluginException {
+      return [];
     }
   }
 

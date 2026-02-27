@@ -67,6 +67,7 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_RELATIVE_SCALE = "com.example.flutter_application_1.live2d.SET_RELATIVE_SCALE"
         const val ACTION_SET_CHARACTER_OFFSET = "com.example.flutter_application_1.live2d.SET_CHARACTER_OFFSET"
         const val ACTION_SET_CHARACTER_ROTATION = "com.example.flutter_application_1.live2d.SET_CHARACTER_ROTATION"
+        const val ACTION_SET_PARAMETER = "com.example.flutter_application_1.live2d.SET_PARAMETER"
         const val ACTION_NOTIFICATION_SHOW_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SHOW_REPLY"
         const val ACTION_NOTIFICATION_SEND_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SEND_REPLY"
         const val ACTION_NOTIFICATION_CANCEL_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_CANCEL_REPLY"
@@ -104,6 +105,9 @@ class Live2DOverlayService : Service() {
         const val EXTRA_OFFSET_X = "offset_x"
         const val EXTRA_OFFSET_Y = "offset_y"
         const val EXTRA_ROTATION = "rotation"
+        const val EXTRA_PARAMETER_ID = "parameter_id"
+        const val EXTRA_PARAMETER_VALUE = "parameter_value"
+        const val EXTRA_PARAMETER_DURATION = "parameter_duration"
         const val EXTRA_NOTIFICATION_MESSAGE = "notification_message"
         const val EXTRA_NOTIFICATION_ERROR = "notification_error"
         const val EXTRA_NOTIFICATION_SESSION_ID = "notification_session_id"
@@ -152,6 +156,18 @@ class Live2DOverlayService : Service() {
         @Volatile
         var currentModelInfo: Map<String, Any>? = null
             private set
+
+        @Volatile
+        private var lastDisplayState: Map<String, Any> = emptyMap()
+
+        fun getDisplayState(context: Context): Map<String, Any> {
+            val metrics = context.resources.displayMetrics
+            return lastDisplayState.toMutableMap().apply {
+                put("screenWidth", metrics.widthPixels)
+                put("screenHeight", metrics.heightPixels)
+                put("density", metrics.density)
+            }
+        }
     }
     
     private lateinit var windowManager: WindowManager
@@ -329,6 +345,11 @@ class Live2DOverlayService : Service() {
                 intent.getFloatExtra(EXTRA_OFFSET_Y, 0f)
             )
             ACTION_SET_CHARACTER_ROTATION -> setCharacterRotationValue(intent.getIntExtra(EXTRA_ROTATION, 0))
+            ACTION_SET_PARAMETER -> setParameterValue(
+                intent.getStringExtra(EXTRA_PARAMETER_ID) ?: "",
+                intent.getFloatExtra(EXTRA_PARAMETER_VALUE, 0f),
+                intent.getIntExtra(EXTRA_PARAMETER_DURATION, 0)
+            )
             ACTION_NOTIFICATION_SHOW_REPLY -> openNotificationReplyLayout()
             ACTION_NOTIFICATION_SEND_REPLY -> handleInlineReplyFromNotification(intent)
             ACTION_NOTIFICATION_CANCEL_REPLY -> cancelNotificationReplyLayout()
@@ -428,6 +449,7 @@ class Live2DOverlayService : Service() {
             updateTouchMode()
             
             updateEditModeBorder()
+            updateDisplayState()
             
             startStateChecks()
             
@@ -757,6 +779,7 @@ class Live2DOverlayService : Service() {
         Live2DLogger.Overlay.d("상대 스케일", "scale=$scale")
         relativeCharacterScale = scale.coerceIn(0.1f, 3.0f)
         glSurfaceView?.setRelativeScale(relativeCharacterScale)
+        updateDisplayState()
     }
     
     /**
@@ -766,6 +789,7 @@ class Live2DOverlayService : Service() {
         characterOffsetPixelX = x
         characterOffsetPixelY = y
         glSurfaceView?.setCharacterOffset(x, y)
+        updateDisplayState()
     }
     
     /**
@@ -774,6 +798,12 @@ class Live2DOverlayService : Service() {
         Live2DLogger.Overlay.d("캐릭터 회전", "$degrees°")
         characterRotationDeg = degrees % 360
         glSurfaceView?.setCharacterRotation(characterRotationDeg)
+        updateDisplayState()
+    }
+
+    private fun setParameterValue(paramId: String, value: Float, durationMs: Int) {
+        if (paramId.isBlank()) return
+        glSurfaceView?.setParameterValue(paramId, value, durationMs)
     }
     
     /**
@@ -784,6 +814,7 @@ class Live2DOverlayService : Service() {
         characterOffsetPixelX = (pinnedCharScreenX - boxCenterX).toFloat()
         characterOffsetPixelY = (pinnedCharScreenY - boxCenterY).toFloat()
         glSurfaceView?.setCharacterOffset(characterOffsetPixelX, characterOffsetPixelY)
+        updateDisplayState()
     }
     
     /**
@@ -852,6 +883,7 @@ class Live2DOverlayService : Service() {
         if (characterPinned) {
             updateCharacterOffsetFromPinned()
         }
+        updateDisplayState()
     }
     
     /**
@@ -963,6 +995,7 @@ class Live2DOverlayService : Service() {
         overlayView?.let {
             windowManager.updateViewLayout(it, overlayParams)
         }
+        updateDisplayState()
     }
     
     private fun setSize(width: Int, height: Int) {
@@ -975,6 +1008,30 @@ class Live2DOverlayService : Service() {
         overlayView?.let {
             windowManager.updateViewLayout(it, overlayParams)
         }
+        updateDisplayState()
+    }
+
+    private fun updateDisplayState() {
+        val metrics = resources.displayMetrics
+        val state = mapOf(
+            "containerWidth" to currentWidth,
+            "containerHeight" to currentHeight,
+            "containerX" to overlayParams.x,
+            "containerY" to overlayParams.y,
+            "relativeScale" to relativeCharacterScale,
+            "offsetX" to characterOffsetPixelX,
+            "offsetY" to characterOffsetPixelY,
+            "rotationDeg" to characterRotationDeg,
+            "screenWidth" to metrics.widthPixels,
+            "screenHeight" to metrics.heightPixels,
+            "density" to metrics.density,
+            "globalScale" to currentScale,
+        )
+        lastDisplayState = state
+        Live2DEventStreamHandler.getInstance()?.sendSystemEvent(
+            "displayStateChanged",
+            state,
+        )
     }
     
     // ============================================================================
@@ -1034,6 +1091,7 @@ class Live2DOverlayService : Service() {
         }
         
         Live2DLogger.Overlay.d("동적 사이징 적용", "${newWidth}x${newHeight} (scale=$scale, padding=$PADDING_MULTIPLIER)")
+        updateDisplayState()
     }
     
     /**

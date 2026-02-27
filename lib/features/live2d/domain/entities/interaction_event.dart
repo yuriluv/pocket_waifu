@@ -31,6 +31,7 @@ enum InteractionType {
   motionFinished,
   notificationSessionSync,
   notificationTouchThroughToggled,
+  displayStateChanged,
   
   externalCommand,
   
