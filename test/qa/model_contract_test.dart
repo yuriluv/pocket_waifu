@@ -26,13 +26,13 @@ void main() {
     });
 
     test('PromptBlock map conversion preserves read-only types', () {
-      final block = PromptBlock.pastMemory();
+      final block = PromptBlock.pastMemory(range: '5', userHeader: 'user');
 
       final restored = PromptBlock.fromMap(block.toMap());
 
-      expect(restored.id, PromptBlock.TYPE_PAST_MEMORY);
-      expect(restored.type, PromptBlock.TYPE_PAST_MEMORY);
-      expect(restored.isReadOnly, isTrue);
+      expect(restored.type, PromptBlock.typePastMemory);
+      expect(restored.range, '5');
+      expect(restored.userHeader, 'user');
     });
 
     test('AppSettings defaults can be materialized from empty map', () {

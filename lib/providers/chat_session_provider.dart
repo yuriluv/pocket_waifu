@@ -2,6 +2,7 @@
 // ============================================================================
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,6 +19,7 @@ class ChatSessionProvider extends ChangeNotifier {
   String? _activeSessionId;
   bool _isLoading = false;
   final Uuid _uuid = const Uuid();
+  Future<void> _sessionQueue = Future.value();
 
   // === Getter ===
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -37,6 +39,19 @@ class ChatSessionProvider extends ChangeNotifier {
 
   ChatSessionProvider() {
     loadAllSessions();
+  }
+
+  Future<T> runSerialized<T>(Future<T> Function() action) {
+    final completer = Completer<T>();
+    _sessionQueue = _sessionQueue.then((_) async {
+      try {
+        final result = await action();
+        completer.complete(result);
+      } catch (e, stack) {
+        completer.completeError(e, stack);
+      }
+    });
+    return completer.future;
   }
 
   Future<void> loadAllSessions() async {

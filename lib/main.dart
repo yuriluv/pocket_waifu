@@ -15,7 +15,15 @@ import 'providers/settings_provider.dart';
 import 'providers/prompt_block_provider.dart';
 import 'providers/chat_session_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/global_runtime_provider.dart';
+import 'providers/notification_settings_provider.dart';
+import 'providers/prompt_preset_provider.dart';
 import 'services/release_log_service.dart';
+import 'services/notification_bridge.dart';
+import 'services/notification_coordinator.dart';
+import 'services/proactive_response_service.dart';
+import 'services/live2d_global_runtime_handler.dart';
+import 'services/global_runtime_registry.dart';
 
 import 'screens/chat_screen.dart';
 
@@ -78,6 +86,75 @@ class PocketWaifuApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChatSessionProvider()),
 
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+
+        ChangeNotifierProvider(create: (_) => GlobalRuntimeProvider()),
+
+        ChangeNotifierProvider(create: (_) => NotificationSettingsProvider()),
+
+        ChangeNotifierProvider(create: (_) => PromptPresetProvider()),
+
+        ProxyProvider2<SettingsProvider, NotificationSettingsProvider,
+            NotificationSettingsProvider>(
+          update: (_, settingsProvider, notificationSettings, __) {
+            notificationSettings.rebindApiPresets(settingsProvider.apiConfigs);
+            return notificationSettings;
+          },
+        ),
+
+        ProxyProvider2<PromptPresetProvider, NotificationSettingsProvider,
+            NotificationSettingsProvider>(
+          update: (_, promptPresets, notificationSettings, __) {
+            notificationSettings.rebindPromptPresets(promptPresets.presets);
+            return notificationSettings;
+          },
+        ),
+
+        Provider(
+          create: (_) {
+            final handler = Live2DGlobalRuntimeHandler();
+            GlobalRuntimeRegistry.instance.register(handler);
+            return handler;
+          },
+          dispose: (_, handler) =>
+              GlobalRuntimeRegistry.instance.unregister(handler),
+        ),
+
+        ProxyProvider5<SettingsProvider, PromptBlockProvider,
+            ChatSessionProvider, NotificationSettingsProvider,
+            GlobalRuntimeProvider, NotificationCoordinator>(
+          create: (_) =>
+              NotificationCoordinator(bridge: NotificationBridge.instance),
+          update: (_, settings, prompt, sessions, notificationSettings,
+              globalRuntime, coordinator) {
+            coordinator.attach(
+              settingsProvider: settings,
+              promptBlockProvider: prompt,
+              sessionProvider: sessions,
+              notificationSettingsProvider: notificationSettings,
+              globalRuntimeProvider: globalRuntime,
+            );
+            return coordinator;
+          },
+          dispose: (_, coordinator) => coordinator.dispose(),
+        ),
+
+        ProxyProvider4<NotificationCoordinator, GlobalRuntimeProvider,
+            NotificationSettingsProvider, SettingsProvider,
+            ProactiveResponseService>(
+          create: (context) =>
+              ProactiveResponseService(context.read<NotificationCoordinator>()),
+          update: (_, coordinator, globalRuntime, notificationSettings,
+              settingsProvider, service) {
+            final instance =
+                service ?? ProactiveResponseService(coordinator);
+            instance.attach(
+              globalRuntimeProvider: globalRuntime,
+              notificationSettingsProvider: notificationSettings,
+              settingsProvider: settingsProvider,
+            );
+            return instance;
+          },
+        ),
       ],
       child: const _AppWithTheme(),
     );

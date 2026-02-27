@@ -6,6 +6,7 @@ import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
 import '../services/api_service.dart';
+import '../services/global_runtime_registry.dart';
 import '../services/prompt_builder.dart';
 import 'chat_session_provider.dart';
 
@@ -84,42 +85,54 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
-    _errorMessage = null;
-    sessionProvider.addMessageToSession(
-      sessionId,
-      _createMessage(
-        sessionId: sessionId,
-        role: MessageRole.user,
-        content: userMessage.trim(),
-      ),
-    );
-    notifyListeners();
-
-    _setLoading(true);
-
-    try {
-      final response = await _requestAssistantResponse(
-        sessionId: sessionId,
-        character: character,
-        settings: settings,
-        userName: userName,
-        apiConfig: apiConfig,
-      );
-
+    await sessionProvider.runSerialized(() async {
+      _errorMessage = null;
       sessionProvider.addMessageToSession(
         sessionId,
         _createMessage(
           sessionId: sessionId,
-          role: MessageRole.assistant,
-          content: response,
+          role: MessageRole.user,
+          content: userMessage.trim(),
         ),
       );
-    } catch (e) {
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      debugPrint('sendMessage failed: $e');
-    } finally {
-      _setLoading(false);
-    }
+      notifyListeners();
+
+      _setLoading(true);
+
+      final requestHandle = _apiService.createRequestHandle();
+      final cancelListener =
+          GlobalRuntimeRegistry.instance.registerCancelable(requestHandle.cancel);
+
+      try {
+        final response = await _requestAssistantResponse(
+          sessionId: sessionId,
+          character: character,
+          settings: settings,
+          userName: userName,
+          apiConfig: apiConfig,
+          requestHandle: requestHandle,
+        );
+
+        sessionProvider.addMessageToSession(
+          sessionId,
+          _createMessage(
+            sessionId: sessionId,
+            role: MessageRole.assistant,
+            content: response,
+          ),
+        );
+      } catch (e) {
+        if (e is ApiCancelledException) {
+          debugPrint('sendMessage cancelled');
+        } else {
+          _errorMessage = e.toString().replaceFirst('Exception: ', '');
+          debugPrint('sendMessage failed: $e');
+        }
+      } finally {
+        GlobalRuntimeRegistry.instance.unregister(cancelListener);
+        _setLoading(false);
+      }
+    });
   }
 
   Future<String> _requestAssistantResponse({
@@ -128,6 +141,7 @@ class ChatProvider extends ChangeNotifier {
     required AppSettings settings,
     required String userName,
     required ApiConfig? apiConfig,
+    ApiRequestHandle? requestHandle,
   }) async {
     final sessionProvider = _sessionProvider!;
     final chatHistory = sessionProvider.getMessagesForSession(sessionId);
@@ -140,7 +154,11 @@ class ChatProvider extends ChangeNotifier {
     );
 
     if (apiConfig == null) {
-      return _apiService.sendMessage(messages: apiMessages, settings: settings);
+      return _apiService.sendMessage(
+        messages: apiMessages,
+        settings: settings,
+        requestHandle: requestHandle,
+      );
     }
 
     final formattedMessages = apiMessages
@@ -151,6 +169,7 @@ class ChatProvider extends ChangeNotifier {
       apiConfig: apiConfig,
       messages: formattedMessages,
       settings: settings,
+      requestHandle: requestHandle,
     );
   }
 

@@ -8,14 +8,20 @@ void main() {
     test('buildFinalPrompt keeps order and injects past-memory XML', () {
       final builder = PromptBuilder();
       final blocks = [
-        PromptBlock(
+        PromptBlock.prompt(
           id: 'rule-block',
-          name: 'Rules',
+          title: 'Rules',
           content: 'Keep roleplay consistency.',
           order: 1,
         ),
-        PromptBlock.pastMemory()..order = 2,
-        PromptBlock.userInput()..order = 3,
+        PromptBlock.pastMemory(
+          title: 'Past Memory',
+          range: '2',
+          userHeader: 'user',
+          charHeader: 'char',
+          order: 2,
+        ),
+        PromptBlock.input(title: 'Input', order: 3),
       ];
       final pastMessages = [
         Message(id: 'a', role: MessageRole.system, content: 'ignored system'),
@@ -30,27 +36,22 @@ void main() {
       );
 
       expect(prompt, contains('Keep roleplay consistency.'));
-      expect(prompt, contains('<user chat 1>hello</user chat 1>'));
-      expect(prompt, contains('<char chat 1>hi there</char chat 1>'));
+      expect(prompt, contains('<user>hello</user>'));
+      expect(prompt, contains('<char>hi there</char>'));
       expect(prompt, endsWith('current input'));
     });
 
-    test('buildMessagesForApi merges consecutive user roles', () {
+    test('buildMessagesForApi returns single message payload', () {
       final builder = PromptBuilder();
       final blocks = [
-        PromptBlock(
-          id: PromptBlock.TYPE_SYSTEM_PROMPT,
-          name: 'System',
-          type: PromptBlock.TYPE_SYSTEM_PROMPT,
+        PromptBlock.prompt(
+          title: 'System',
           content: 'System contract',
           order: 0,
         ),
-        PromptBlock.pastMemory()..order = 1,
+        PromptBlock.input(title: 'Input', order: 1),
       ];
-      final pastMessages = [
-        Message(id: 'u1', role: MessageRole.user, content: 'old user one'),
-        Message(id: 'u2', role: MessageRole.user, content: 'old user two'),
-      ];
+      final pastMessages = <Message>[];
 
       final apiMessages = builder.buildMessagesForApi(
         blocks: blocks,
@@ -61,11 +62,9 @@ void main() {
       );
 
       expect(apiMessages.first['role'], 'system');
-      expect(apiMessages[1]['role'], 'user');
-      expect(apiMessages[1]['content'], contains('old user one'));
-      expect(apiMessages[1]['content'], contains('old user two'));
-      expect(apiMessages[1]['content'], contains('new user input'));
-      expect(apiMessages.length, 2);
+      expect(apiMessages.first['content'], contains('System contract'));
+      expect(apiMessages.first['content'], contains('new user input'));
+      expect(apiMessages.length, 1);
     });
   });
 }

@@ -96,6 +96,18 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Native Live2D character overlay using OpenGL" />
         </service>
+
+        <!-- ================================================================== -->
+        <!-- Notification Foreground Service -->
+        <!-- ================================================================== -->
+        <service
+            android:name=".notifications.NotificationForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".notifications.NotificationActionReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

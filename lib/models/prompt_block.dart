@@ -1,151 +1,165 @@
-// ============================================================================
-// ============================================================================
-// ============================================================================
-
 import 'package:uuid/uuid.dart';
 
 class PromptBlock {
+  static const String typePrompt = 'prompt';
+  static const String typePastMemory = 'pastmemory';
+  static const String typeInput = 'input';
+
   final String id;
-  String name;
   String type;
+  String title;
+  bool isActive;
   String content;
-  bool isEnabled;
-  bool isSystemBlock;
+  String range;
+  String userHeader;
+  String charHeader;
   int order;
-
-  bool get enabled => isEnabled;
-
-  bool get isReadOnly => type == TYPE_PAST_MEMORY || type == TYPE_USER_INPUT;
-
-
-  static const String TYPE_PAST_MEMORY = 'past_memory';
-
-  static const String TYPE_USER_INPUT = 'user_input';
-
-  static const String TYPE_SYSTEM_PROMPT = 'system_prompt';
-
-  static const String TYPE_CHARACTER = 'character';
 
   PromptBlock({
     String? id,
-    required this.name,
-    String? type,
+    required this.type,
+    required this.title,
+    this.isActive = true,
     this.content = '',
-    this.isEnabled = true,
-    this.isSystemBlock = false,
+    this.range = '1',
+    this.userHeader = 'user',
+    this.charHeader = 'char',
     this.order = 0,
-  }) : id = id ?? const Uuid().v4(),
-       type = type ?? 'custom';
+  }) : id = id ?? const Uuid().v4();
+
+  PromptBlock copyWith({
+    String? id,
+    String? type,
+    String? title,
+    bool? isActive,
+    String? content,
+    String? range,
+    String? userHeader,
+    String? charHeader,
+    int? order,
+  }) {
+    return PromptBlock(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      isActive: isActive ?? this.isActive,
+      content: content ?? this.content,
+      range: range ?? this.range,
+      userHeader: userHeader ?? this.userHeader,
+      charHeader: charHeader ?? this.charHeader,
+      order: order ?? this.order,
+    );
+  }
+
+  PromptBlock clone() {
+    return copyWith(id: const Uuid().v4());
+  }
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'name': name,
       'type': type,
+      'title': title,
+      'isActive': isActive,
       'content': content,
-      'isEnabled': isEnabled,
-      'isSystemBlock': isSystemBlock,
+      'range': range,
+      'userHeader': userHeader,
+      'charHeader': charHeader,
       'order': order,
     };
+  }
+
+  Map<String, dynamic> toExternalMap() {
+    final map = <String, dynamic>{
+      'type': type,
+      'title': title,
+      'isActive': isActive,
+    };
+
+    if (type == typePrompt) {
+      map['content'] = content;
+    } else if (type == typePastMemory) {
+      map['range'] = range;
+      map['userHeader'] = userHeader;
+      map['charHeader'] = charHeader;
+    }
+
+    return map;
   }
 
   factory PromptBlock.fromMap(Map<String, dynamic> map) {
     return PromptBlock(
       id: map['id'],
-      name: map['name'] ?? '',
-      type: map['type'] ?? 'custom',
+      type: map['type'] ?? typePrompt,
+      title: map['title'] ?? '',
+      isActive: map['isActive'] ?? true,
       content: map['content'] ?? '',
-      isEnabled: map['isEnabled'] ?? true,
-      isSystemBlock: map['isSystemBlock'] ?? false,
+      range: map['range']?.toString() ?? '1',
+      userHeader: map['userHeader'] ?? 'user',
+      charHeader: map['charHeader'] ?? 'char',
       order: map['order'] ?? 0,
     );
   }
 
-  PromptBlock copyWith({
+  static PromptBlock prompt({
     String? id,
-    String? name,
-    String? type,
-    String? content,
-    bool? isEnabled,
-    bool? isSystemBlock,
-    int? order,
+    String title = 'Prompt',
+    String content = '',
+    bool isActive = true,
+    int order = 0,
   }) {
     return PromptBlock(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      type: type ?? this.type,
-      content: content ?? this.content,
-      isEnabled: isEnabled ?? this.isEnabled,
-      isSystemBlock: isSystemBlock ?? this.isSystemBlock,
-      order: order ?? this.order,
+      id: id,
+      type: typePrompt,
+      title: title,
+      content: content,
+      isActive: isActive,
+      order: order,
     );
   }
 
-  factory PromptBlock.pastMemory() {
+  static PromptBlock pastMemory({
+    String? id,
+    String title = 'Past Memory',
+    String range = '10',
+    String userHeader = 'user',
+    String charHeader = 'char',
+    bool isActive = true,
+    int order = 0,
+  }) {
     return PromptBlock(
-      id: TYPE_PAST_MEMORY,
-      name: '📜 과거 기억',
-      type: TYPE_PAST_MEMORY,
-      content: '',
-      isEnabled: true,
-      isSystemBlock: true,
-      order: 100,
+      id: id,
+      type: typePastMemory,
+      title: title,
+      range: range,
+      userHeader: userHeader,
+      charHeader: charHeader,
+      isActive: isActive,
+      order: order,
     );
   }
 
-  factory PromptBlock.userInput() {
+  static PromptBlock input({
+    String? id,
+    String title = 'Input',
+    bool isActive = true,
+    int order = 0,
+  }) {
     return PromptBlock(
-      id: TYPE_USER_INPUT,
-      name: '💬 사용자 입력',
-      type: TYPE_USER_INPUT,
-      content: '',
-      isEnabled: true,
-      isSystemBlock: true,
-      order: 999,
+      id: id,
+      type: typeInput,
+      title: title,
+      isActive: isActive,
+      order: order,
     );
   }
 
-  factory PromptBlock.systemPrompt() {
-    return PromptBlock(
-      id: TYPE_SYSTEM_PROMPT,
-      name: '⚙️ 시스템 프롬프트',
-      type: TYPE_SYSTEM_PROMPT,
-      content: '''당신은 롤플레이 AI입니다.
-아래의 캐릭터 정보와 시나리오에 따라 일관되게 행동하세요.
-항상 캐릭터로서 응답하며, AI라는 사실을 언급하지 마세요.''',
-      isEnabled: true,
-      isSystemBlock: true,
-      order: 0,
-    );
-  }
-
-  factory PromptBlock.character() {
-    return PromptBlock(
-      id: TYPE_CHARACTER,
-      name: '👤 캐릭터 설정',
-      type: TYPE_CHARACTER,
-      content: '''[캐릭터 이름]
-미카
-
-[캐릭터 설명]
-미카는 20대 초반의 밝고 귀여운 여성입니다.
-긴 검은 머리에 큰 눈을 가지고 있으며, 항상 웃는 얼굴입니다.
-
-[성격]
-- 밝고 긍정적인 성격
-- 장난기가 많고 귀여운 말투를 사용
-- 이모티콘과 감탄사를 자주 사용
-
-[시나리오]
-당신은 미카의 주인이며, 미카는 당신과 함께 사는 AI 동반자입니다.''',
-      isEnabled: true,
-      isSystemBlock: true,
-      order: 10,
-    );
+  static bool isRecognizedType(String type) {
+    return type == typePrompt || type == typePastMemory || type == typeInput;
   }
 
   @override
   String toString() {
-    return 'PromptBlock(id: $id, name: $name, enabled: $isEnabled, order: $order)';
+    return 'PromptBlock(id: $id, type: $type, title: $title, active: $isActive, order: $order)';
   }
 }

@@ -307,7 +307,6 @@ class ApiService {
       blocks: blocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
-      pastMessageCount: pastMessageCount,
       hasFirstSystemPrompt: hasFirstSystemPrompt,
       requiresAlternateRole: requiresAlternateRole,
     );
@@ -457,7 +456,6 @@ class ApiService {
       blocks: blocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
-      pastMessageCount: pastMessageCount,
       hasFirstSystemPrompt: hasFirstSystemPrompt,
       requiresAlternateRole: requiresAlternateRole,
     );

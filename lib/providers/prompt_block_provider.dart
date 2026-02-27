@@ -1,208 +1,383 @@
-// ============================================================================
-// ============================================================================
-// ============================================================================
-
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/prompt_block.dart';
+import '../models/prompt_preset.dart';
 import '../models/message.dart';
 import '../services/prompt_builder.dart';
 
 class PromptBlockProvider extends ChangeNotifier {
-  static const String _blocksKey = 'prompt_blocks';
-  static const String _pastMessageCountKey = 'past_message_count';
+  static const String _presetsKey = 'prompt_presets';
+  static const String _activePresetKey = 'active_prompt_preset_id';
+  static const String _legacyBlocksKey = 'prompt_blocks';
+  static const String _legacyPastMessageCountKey = 'past_message_count';
 
-  List<PromptBlock> _blocks = [];
-  int _pastMessageCount = 10;
-  bool _isLoading = false;
-  final Uuid _uuid = const Uuid();
   final PromptBuilder _promptBuilder = PromptBuilder();
+  final Uuid _uuid = const Uuid();
 
-  // === Getter ===
-  List<PromptBlock> get blocks => List.unmodifiable(_blocks);
-  int get pastMessageCount => _pastMessageCount;
+  bool _isLoading = false;
+  List<PromptPreset> _presets = [];
+  String? _activePresetId;
+  List<PromptBlock> _workingBlocks = [];
+  bool _hasUnsavedChanges = false;
+
   bool get isLoading => _isLoading;
+  List<PromptPreset> get presets => List.unmodifiable(_presets);
+  String? get activePresetId => _activePresetId;
+  bool get hasUnsavedChanges => _hasUnsavedChanges;
+  List<PromptBlock> get blocks => List.unmodifiable(_workingBlocks);
 
-  PromptBlockProvider() {
-    loadBlocks();
+  PromptPreset? get activePreset {
+    if (_activePresetId == null) return null;
+    try {
+      return _presets.firstWhere((p) => p.id == _activePresetId);
+    } catch (_) {
+      return _presets.isNotEmpty ? _presets.first : null;
+    }
   }
 
-  Future<void> loadBlocks() async {
+  PromptBlockProvider() {
+    loadPresets();
+  }
+
+  Future<void> loadPresets() async {
     _isLoading = true;
     notifyListeners();
 
     try {
       final prefs = await SharedPreferences.getInstance();
+      final String? presetsJson = prefs.getString(_presetsKey);
 
-      final String? blocksJson = prefs.getString(_blocksKey);
-      if (blocksJson != null) {
-        final List<dynamic> blocksList = jsonDecode(blocksJson);
-        _blocks = blocksList.map((json) => PromptBlock.fromMap(json)).toList();
-      } else {
-        _initializeDefaultBlocks();
+      if (presetsJson != null) {
+        final List<dynamic> presetList = jsonDecode(presetsJson);
+        _presets = presetList
+            .whereType<Map<String, dynamic>>()
+            .map(PromptPreset.fromMap)
+            .toList();
+        _presets = _presets
+            .map((preset) => preset.copyWith(blocks: _normalizeBlocks(preset.blocks)))
+            .toList();
       }
 
-      _pastMessageCount = prefs.getInt(_pastMessageCountKey) ?? 10;
+      if (_presets.isEmpty) {
+        await _migrateLegacyBlocks(prefs);
+      }
+
+      if (_presets.isEmpty) {
+        _presets = [_buildDefaultPreset()];
+      }
+
+      _activePresetId = prefs.getString(_activePresetKey);
+      if (_activePresetId == null ||
+          !_presets.any((p) => p.id == _activePresetId)) {
+        _activePresetId = _presets.first.id;
+      }
+
+      _setWorkingBlocks(_cloneBlocks(activePreset?.blocks ?? []));
     } catch (e) {
-      debugPrint('블록 불러오기 실패: $e');
-      _initializeDefaultBlocks();
+      debugPrint('프롬프트 프리셋 불러오기 실패: $e');
+      _presets = [_buildDefaultPreset()];
+      _activePresetId = _presets.first.id;
+      _setWorkingBlocks(_cloneBlocks(_presets.first.blocks));
     }
 
     _isLoading = false;
     notifyListeners();
   }
 
-  void _initializeDefaultBlocks() {
-    _blocks = [
-      PromptBlock.systemPrompt(),
-      PromptBlock.character(),
-      PromptBlock.pastMemory(),
-      PromptBlock.userInput(),
-    ];
+  Future<void> _migrateLegacyBlocks(SharedPreferences prefs) async {
+    final legacyJson = prefs.getString(_legacyBlocksKey);
+    if (legacyJson == null) return;
+
+    try {
+      final List<dynamic> legacyList = jsonDecode(legacyJson);
+      if (legacyList.isEmpty) return;
+
+      final int legacyPastCount =
+          prefs.getInt(_legacyPastMessageCountKey) ?? 10;
+
+      final legacyBlocks = legacyList.whereType<Map<String, dynamic>>().toList();
+      legacyBlocks.sort((a, b) {
+        final aOrder = a['order'] ?? 0;
+        final bOrder = b['order'] ?? 0;
+        return aOrder.compareTo(bOrder);
+      });
+
+      final migratedBlocks = <PromptBlock>[];
+      for (final legacy in legacyBlocks) {
+        final legacyType = legacy['type']?.toString() ?? 'custom';
+        final legacyName = legacy['name']?.toString() ?? 'Prompt';
+        final legacyContent = legacy['content']?.toString() ?? '';
+        final legacyEnabled = legacy['isEnabled'] ?? true;
+
+        if (legacyType == 'past_memory') {
+          migratedBlocks.add(
+            PromptBlock.pastMemory(
+              title: legacyName,
+              range: legacyPastCount.toString(),
+              isActive: legacyEnabled,
+            ),
+          );
+        } else if (legacyType == 'user_input') {
+          migratedBlocks.add(
+            PromptBlock.input(title: legacyName, isActive: legacyEnabled),
+          );
+        } else {
+          migratedBlocks.add(
+            PromptBlock.prompt(
+              title: legacyName,
+              content: legacyContent,
+              isActive: legacyEnabled,
+            ),
+          );
+        }
+      }
+
+      final preset = PromptPreset(
+        name: 'Migrated Preset',
+        blocks: _normalizeBlocks(migratedBlocks),
+      );
+      _presets = [preset];
+      _activePresetId = preset.id;
+      await _savePresets();
+    } catch (e) {
+      debugPrint('레거시 프롬프트 블록 마이그레이션 실패: $e');
+    }
   }
 
-  Future<void> saveBlocks() async {
+  PromptPreset _buildDefaultPreset() {
+    final blocks = [
+      PromptBlock.prompt(
+        title: 'System',
+        content: '''당신은 롤플레이 AI입니다.
+아래의 캐릭터 정보와 시나리오에 따라 일관되게 행동하세요.
+항상 캐릭터로서 응답하며, AI라는 사실을 언급하지 마세요.''',
+      ),
+      PromptBlock.prompt(
+        title: 'Character',
+        content: '''[캐릭터 이름]
+미카
+
+[캐릭터 설명]
+미카는 20대 초반의 밝고 귀여운 여성입니다.
+긴 검은 머리에 큰 눈을 가지고 있으며, 항상 웃는 얼굴입니다.
+
+[성격]
+- 밝고 긍정적인 성격
+- 장난기가 많고 귀여운 말투를 사용
+- 이모티콘과 감탄사를 자주 사용
+
+[시나리오]
+당신은 미카의 주인이며, 미카는 당신과 함께 사는 AI 동반자입니다.''',
+      ),
+      PromptBlock.pastMemory(title: 'Past Memory', range: '10'),
+      PromptBlock.input(title: 'Input'),
+    ];
+
+    return PromptPreset(name: 'Default Preset', blocks: _normalizeBlocks(blocks));
+  }
+
+  Future<void> _savePresets() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      final String blocksJson = jsonEncode(
-        _blocks.map((block) => block.toMap()).toList(),
+      final String presetsJson = jsonEncode(
+        _presets.map((p) => p.toMap()).toList(),
       );
-      await prefs.setString(_blocksKey, blocksJson);
-
-      await prefs.setInt(_pastMessageCountKey, _pastMessageCount);
+      await prefs.setString(_presetsKey, presetsJson);
+      if (_activePresetId != null) {
+        await prefs.setString(_activePresetKey, _activePresetId!);
+      }
     } catch (e) {
-      debugPrint('블록 저장 실패: $e');
+      debugPrint('프롬프트 프리셋 저장 실패: $e');
     }
   }
 
-  ///
-  void addBlock(dynamic nameOrBlock, [String? content]) {
-    PromptBlock newBlock;
+  void _setWorkingBlocks(List<PromptBlock> blocks) {
+    _workingBlocks = blocks;
+    _hasUnsavedChanges = false;
+  }
 
-    if (nameOrBlock is PromptBlock) {
-      newBlock = nameOrBlock.id.isEmpty
-          ? nameOrBlock.copyWith(id: _uuid.v4())
-          : nameOrBlock;
-    } else if (nameOrBlock is String && content != null) {
-      final userInputIndex = _blocks.indexWhere(
-        (b) => b.id == PromptBlock.TYPE_USER_INPUT,
-      );
-      final newOrder = userInputIndex > 0
-          ? _blocks[userInputIndex - 1].order + 1
-          : 50;
+  List<PromptBlock> _cloneBlocks(List<PromptBlock> blocks) {
+    return blocks
+        .map(
+          (b) => b.copyWith(
+            id: _uuid.v4(),
+            order: b.order,
+          ),
+        )
+        .toList();
+  }
 
-      newBlock = PromptBlock(
-        id: _uuid.v4(),
-        name: nameOrBlock,
-        content: content,
-        isEnabled: true,
-        isSystemBlock: false,
-        order: newOrder,
-      );
-    } else {
-      debugPrint('addBlock: 잘못된 인자');
-      return;
+  List<PromptBlock> _normalizeBlocks(List<PromptBlock> blocks) {
+    final usedIds = <String>{};
+    final normalized = <PromptBlock>[];
+
+    for (int i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      if (block.id.isEmpty || usedIds.contains(block.id)) {
+        block = block.copyWith(id: _uuid.v4());
+      }
+      usedIds.add(block.id);
+      normalized.add(block.copyWith(order: i));
     }
 
-    _blocks.add(newBlock);
-    _sortBlocks();
+    return normalized;
+  }
+
+  void _markDirty() {
+    _hasUnsavedChanges = true;
+  }
+
+  void setActivePreset(String id) {
+    if (!_presets.any((p) => p.id == id)) return;
+    _activePresetId = id;
+    _setWorkingBlocks(_cloneBlocks(activePreset?.blocks ?? []));
     notifyListeners();
-    saveBlocks();
+    _savePresets();
   }
 
-  bool removeBlock(String id) {
-    final block = _blocks.firstWhere(
-      (b) => b.id == id,
-      orElse: () => PromptBlock(name: ''),
+  void addPreset(String name) {
+    final newPreset = PromptPreset(
+      name: name.trim().isEmpty ? 'New Preset' : name.trim(),
+      blocks: _normalizeBlocks(_cloneBlocks(_workingBlocks)),
     );
+    _presets.add(newPreset);
+    _activePresetId = newPreset.id;
+    _setWorkingBlocks(_cloneBlocks(newPreset.blocks));
+    notifyListeners();
+    _savePresets();
+  }
 
-    if (block.isSystemBlock) {
-      debugPrint('시스템 블록은 삭제할 수 없습니다.');
+  void saveActivePreset() {
+    final preset = activePreset;
+    if (preset == null) return;
+
+    final index = _presets.indexWhere((p) => p.id == preset.id);
+    if (index == -1) return;
+
+    _presets[index] = preset.copyWith(
+      blocks: _normalizeBlocks(_cloneBlocks(_workingBlocks)),
+    );
+    _setWorkingBlocks(_cloneBlocks(_presets[index].blocks));
+    notifyListeners();
+    _savePresets();
+  }
+
+  bool deletePreset(String id) {
+    if (_presets.length <= 1) {
       return false;
     }
 
-    _blocks.removeWhere((b) => b.id == id);
+    _presets.removeWhere((p) => p.id == id);
+    if (_activePresetId == id) {
+      _activePresetId = _presets.first.id;
+      _setWorkingBlocks(_cloneBlocks(_presets.first.blocks));
+    }
     notifyListeners();
-    saveBlocks();
+    _savePresets();
     return true;
   }
 
+  void renamePreset(String id, String name) {
+    final index = _presets.indexWhere((p) => p.id == id);
+    if (index == -1) return;
+    _presets[index] = _presets[index].copyWith(
+      name: name.trim().isEmpty ? _presets[index].name : name.trim(),
+    );
+    notifyListeners();
+    _savePresets();
+  }
+
+  void addBlock(PromptBlock block) {
+    _workingBlocks.add(block.copyWith(id: _uuid.v4()));
+    _workingBlocks = _normalizeBlocks(_workingBlocks);
+    _markDirty();
+    notifyListeners();
+  }
+
+  void duplicateBlock(String id) {
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    final clone = _workingBlocks[index].clone();
+    _workingBlocks.insert(index + 1, clone);
+    _workingBlocks = _normalizeBlocks(_workingBlocks);
+    _markDirty();
+    notifyListeners();
+  }
+
+  void removeBlock(String id) {
+    _workingBlocks.removeWhere((b) => b.id == id);
+    _workingBlocks = _normalizeBlocks(_workingBlocks);
+    _markDirty();
+    notifyListeners();
+  }
+
   void toggleBlock(String id) {
-    final index = _blocks.indexWhere((b) => b.id == id);
-    if (index != -1) {
-      _blocks[index] = _blocks[index].copyWith(
-        isEnabled: !_blocks[index].isEnabled,
-      );
-      notifyListeners();
-      saveBlocks();
-    }
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    _workingBlocks[index] = _workingBlocks[index].copyWith(
+      isActive: !_workingBlocks[index].isActive,
+    );
+    _markDirty();
+    notifyListeners();
   }
 
   void reorderBlocks(int oldIndex, int newIndex) {
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
-
-    final block = _blocks.removeAt(oldIndex);
-    _blocks.insert(newIndex, block);
-
-    for (int i = 0; i < _blocks.length; i++) {
-      _blocks[i] = _blocks[i].copyWith(order: i * 10);
-    }
-
+    final block = _workingBlocks.removeAt(oldIndex);
+    _workingBlocks.insert(newIndex, block);
+    _workingBlocks = _normalizeBlocks(_workingBlocks);
+    _markDirty();
     notifyListeners();
-    saveBlocks();
   }
 
   void updateBlockContent(String id, String content) {
-    final index = _blocks.indexWhere((b) => b.id == id);
-    if (index != -1) {
-      _blocks[index] = _blocks[index].copyWith(content: content);
-      notifyListeners();
-      saveBlocks();
-    }
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    _workingBlocks[index] = _workingBlocks[index].copyWith(content: content);
+    _markDirty();
+    notifyListeners();
   }
 
-  void updateBlockName(String id, String name) {
-    final index = _blocks.indexWhere((b) => b.id == id);
-    if (index != -1) {
-      _blocks[index] = _blocks[index].copyWith(name: name);
-      notifyListeners();
-      saveBlocks();
-    }
+  void updateBlockTitle(String id, String title) {
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    _workingBlocks[index] = _workingBlocks[index].copyWith(title: title);
+    _markDirty();
+    notifyListeners();
   }
 
-  void setPastMessageCount(int count) {
-    if (count > 0) {
-      _pastMessageCount = count;
-      notifyListeners();
-      saveBlocks();
-    }
+  void updatePastMemoryRange(String id, String range) {
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    _workingBlocks[index] = _workingBlocks[index].copyWith(range: range);
+    _markDirty();
+    notifyListeners();
   }
 
-  void _sortBlocks() {
-    _blocks.sort((a, b) => a.order.compareTo(b.order));
+  void updatePastMemoryHeaders(String id, String userHeader, String charHeader) {
+    final index = _workingBlocks.indexWhere((b) => b.id == id);
+    if (index == -1) return;
+    _workingBlocks[index] = _workingBlocks[index].copyWith(
+      userHeader: userHeader,
+      charHeader: charHeader,
+    );
+    _markDirty();
+    notifyListeners();
   }
 
-  PromptBlock? getBlock(String id) {
-    try {
-      return _blocks.firstWhere((b) => b.id == id);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  ///
   String buildFinalPrompt(List<Message> pastMessages, String currentInput) {
     return _promptBuilder.buildFinalPrompt(
-      blocks: _blocks,
+      blocks: _workingBlocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
-      pastMessageCount: _pastMessageCount,
     );
   }
 
@@ -213,38 +388,151 @@ class PromptBlockProvider extends ChangeNotifier {
     bool requiresAlternateRole = true,
   }) {
     return _promptBuilder.buildMessagesForApi(
-      blocks: _blocks,
+      blocks: _workingBlocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
-      pastMessageCount: _pastMessageCount,
       hasFirstSystemPrompt: hasFirstSystemPrompt,
       requiresAlternateRole: requiresAlternateRole,
     );
   }
 
-  void resetToDefaults() {
-    _initializeDefaultBlocks();
-    _pastMessageCount = 10;
-    notifyListeners();
-    saveBlocks();
+  Future<(bool, String?)> exportPresetToFile(PromptPreset preset) async {
+    try {
+      final filePath = await FilePicker.platform.saveFile(
+        dialogTitle: '프롬프트 프리셋 저장',
+        fileName: '${preset.name}.json',
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (filePath == null) {
+        return (false, '저장이 취소되었습니다.');
+      }
+      final file = File(filePath);
+      final jsonString = jsonEncode(preset.toExternalMap());
+      await file.writeAsString(jsonString);
+      return (true, null);
+    } catch (e) {
+      return (false, '저장 실패: $e');
+    }
   }
 
-  String buildPreviewText() {
-    final StringBuffer buffer = StringBuffer();
-
-    for (final block in _blocks.where((b) => b.isEnabled)) {
-      if (block.type == PromptBlock.TYPE_PAST_MEMORY) {
-        buffer.writeln('[과거 대화]');
-        buffer.writeln('(최근 $_pastMessageCount개 메시지가 여기에 포함됩니다)');
-      } else if (block.type == PromptBlock.TYPE_USER_INPUT) {
-        buffer.writeln('[사용자 입력]');
-        buffer.writeln('(사용자 입력이 여기에 포함됩니다)');
-      } else {
-        buffer.writeln(block.content.isEmpty ? '(내용 없음)' : block.content);
+  Future<(bool, String?)> importPresetFromFile({String? overrideName}) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        return (false, '가져오기가 취소되었습니다.');
       }
-      buffer.writeln();
+
+      final file = result.files.single;
+      String rawJson;
+      if (file.bytes != null) {
+        rawJson = utf8.decode(file.bytes!);
+      } else if (file.path != null) {
+        rawJson = await File(file.path!).readAsString();
+      } else {
+        return (false, '파일을 읽을 수 없습니다.');
+      }
+
+      final decoded = jsonDecode(rawJson);
+      final (preset, error) = _parseImportedPreset(decoded, overrideName);
+      if (preset == null) {
+        return (false, error ?? 'JSON 파싱 실패');
+      }
+
+      _presets.add(preset);
+      _activePresetId = preset.id;
+      _setWorkingBlocks(_cloneBlocks(preset.blocks));
+      notifyListeners();
+      await _savePresets();
+      return (true, null);
+    } catch (e) {
+      return (false, 'JSON 파싱 실패: $e');
+    }
+  }
+
+  (PromptPreset?, String?) _parseImportedPreset(
+    dynamic decoded,
+    String? overrideName,
+  ) {
+    if (decoded is List) {
+      final blocks = _parseBlocksFromDynamic(decoded);
+      if (blocks.isEmpty) {
+        return (null, '프롬프트 블록이 비어있습니다.');
+      }
+      return (
+        PromptPreset(
+          name: overrideName?.trim().isNotEmpty == true
+              ? overrideName!.trim()
+              : 'Imported Preset',
+          blocks: _normalizeBlocks(blocks),
+        ),
+        null,
+      );
     }
 
-    return buffer.toString().trim();
+    if (decoded is Map) {
+      final name = decoded['name']?.toString() ?? overrideName ?? 'Imported Preset';
+      final blocksRaw = decoded['blocks'];
+      if (blocksRaw is! List) {
+        return (null, 'blocks 필드가 없습니다.');
+      }
+      final blocks = _parseBlocksFromDynamic(blocksRaw);
+      if (blocks.isEmpty) {
+        return (null, '프롬프트 블록이 비어있습니다.');
+      }
+      return (
+        PromptPreset(
+          name: name.trim().isEmpty ? 'Imported Preset' : name.trim(),
+          blocks: _normalizeBlocks(blocks),
+        ),
+        null,
+      );
+    }
+
+    return (null, '지원하지 않는 JSON 형식입니다.');
+  }
+
+  List<PromptBlock> _parseBlocksFromDynamic(List<dynamic> rawBlocks) {
+    final blocks = <PromptBlock>[];
+    for (final raw in rawBlocks) {
+      if (raw is! Map) continue;
+      final type = raw['type']?.toString() ?? PromptBlock.typePrompt;
+      if (!PromptBlock.isRecognizedType(type)) {
+        continue;
+      }
+      final title = raw['title']?.toString() ?? 'Prompt';
+      final isActive = raw['isActive'] ?? true;
+      if (type == PromptBlock.typePastMemory) {
+        blocks.add(
+          PromptBlock.pastMemory(
+            title: title,
+            range: raw['range']?.toString() ?? '1',
+            userHeader: raw['userHeader']?.toString() ?? 'user',
+            charHeader: raw['charHeader']?.toString() ?? 'char',
+            isActive: isActive,
+          ),
+        );
+      } else if (type == PromptBlock.typeInput) {
+        blocks.add(
+          PromptBlock.input(
+            title: title,
+            isActive: isActive,
+          ),
+        );
+      } else {
+        blocks.add(
+          PromptBlock.prompt(
+            title: title,
+            content: raw['content']?.toString() ?? '',
+            isActive: isActive,
+          ),
+        );
+      }
+    }
+    return blocks;
   }
 }

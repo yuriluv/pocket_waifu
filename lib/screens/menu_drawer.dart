@@ -12,6 +12,7 @@ import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
 import '../features/live2d/live2d_module.dart';
 import '../widgets/prompt_preview_dialog.dart';
+import 'prompt_preview_screen.dart';
 import '../utils/ui_feedback.dart';
 
 class MenuDrawer extends StatelessWidget {
@@ -102,7 +103,12 @@ class MenuDrawer extends StatelessWidget {
                   subtitle: '실제 API 전송 프롬프트 확인',
                   onTap: () {
                     Navigator.pop(context);
-                    PromptPreviewDialog.showWithRealPrompt(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PromptPreviewScreen(),
+                      ),
+                    );
                   },
                 ),
 

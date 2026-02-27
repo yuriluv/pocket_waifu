@@ -21,9 +21,8 @@ class PromptBuilder {
     required List<PromptBlock> blocks,
     required List<Message> pastMessages,
     required String currentInput,
-    int pastMessageCount = 10,
   }) {
-    final enabledBlocks = blocks.where((block) => block.isEnabled).toList()
+    final enabledBlocks = blocks.where((block) => block.isActive).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
 
     final List<String> promptParts = [];
@@ -31,10 +30,12 @@ class PromptBuilder {
     for (final block in enabledBlocks) {
       String content = '';
 
-      if (block.id == PromptBlock.TYPE_PAST_MEMORY) {
-        content = _buildPastMemoryXml(pastMessages, pastMessageCount);
-      } else if (block.id == PromptBlock.TYPE_USER_INPUT) {
+      if (block.type == PromptBlock.typePastMemory) {
+        content = _buildPastMemoryXml(pastMessages, block);
+      } else if (block.type == PromptBlock.typeInput) {
         content = currentInput;
+      } else if (block.type == PromptBlock.typePrompt) {
+        content = block.content;
       } else {
         content = block.content;
       }
@@ -51,52 +52,37 @@ class PromptBuilder {
   /// ```xml
   /// ```
   ///
-  String _buildPastMemoryXml(List<Message> messages, int count) {
+  String _buildPastMemoryXml(List<Message> messages, PromptBlock block) {
     if (messages.isEmpty) return '';
 
-    final recentMessages = messages.length > count
-        ? messages.sublist(messages.length - count)
-        : messages;
-
-    final filteredMessages = recentMessages
+    final filteredMessages = messages
         .where((msg) => msg.role != MessageRole.system)
         .toList();
 
     if (filteredMessages.isEmpty) return '';
 
+    final int range = _parseNaturalRange(block.range);
+    final recentMessages = filteredMessages.length > range
+        ? filteredMessages.sublist(filteredMessages.length - range)
+        : filteredMessages;
+
+    final String userHeader = block.userHeader.trim().isEmpty
+        ? 'user'
+        : block.userHeader.trim();
+    final String charHeader = block.charHeader.trim().isEmpty
+        ? 'char'
+        : block.charHeader.trim();
+
     final List<String> xmlParts = [];
-    int turnNumber = 1;
-    int i = 0;
-
-    while (i < filteredMessages.length) {
-      final msg = filteredMessages[i];
-
+    for (final msg in recentMessages) {
       if (msg.role == MessageRole.user) {
-        xmlParts.add(
-          '<user chat $turnNumber>${msg.content}</user chat $turnNumber>',
-        );
-        i++;
-
-        if (i < filteredMessages.length &&
-            filteredMessages[i].role == MessageRole.assistant) {
-          xmlParts.add(
-            '<char chat $turnNumber>${filteredMessages[i].content}</char chat $turnNumber>',
-          );
-          i++;
-        }
-        turnNumber++;
+        xmlParts.add('<$userHeader>${msg.content}</$userHeader>');
       } else if (msg.role == MessageRole.assistant) {
-        xmlParts.add(
-          '<char chat $turnNumber>${msg.content}</char chat $turnNumber>',
-        );
-        i++;
-        turnNumber++;
-      } else {
-        i++;
+        xmlParts.add('<$charHeader>${msg.content}</$charHeader>');
       }
     }
 
-    return xmlParts.join('\n');
+    return xmlParts.join('');
   }
 
   ///
@@ -104,79 +90,34 @@ class PromptBuilder {
     required List<PromptBlock> blocks,
     required List<Message> pastMessages,
     required String currentInput,
-    int pastMessageCount = 10,
     bool hasFirstSystemPrompt = true,
     bool requiresAlternateRole = true,
   }) {
-    final List<Map<String, String>> formatted = [];
+    // Kept for API compatibility with existing call sites.
+    final _ = requiresAlternateRole;
 
-    final enabledBlocks = blocks.where((block) => block.isEnabled).toList()
-      ..sort((a, b) => a.order.compareTo(b.order));
-
-    final systemParts = <String>[];
-    for (final block in enabledBlocks) {
-      if (block.id != PromptBlock.TYPE_PAST_MEMORY &&
-          block.id != PromptBlock.TYPE_USER_INPUT &&
-          block.content.isNotEmpty) {
-        systemParts.add('[${block.name}]\n${block.content}');
-      }
-    }
-
-    if (hasFirstSystemPrompt && systemParts.isNotEmpty) {
-      formatted.add({'role': 'system', 'content': systemParts.join('\n\n')});
-    }
-
-    final pastMemoryBlock = enabledBlocks.firstWhere(
-      (b) => b.id == PromptBlock.TYPE_PAST_MEMORY,
-      orElse: () => PromptBlock.pastMemory()..isEnabled = false,
+    final String prompt = buildFinalPrompt(
+      blocks: blocks,
+      pastMessages: pastMessages,
+      currentInput: currentInput,
     );
 
-    if (pastMemoryBlock.isEnabled && pastMessages.isNotEmpty) {
-      final recentMessages = pastMessages.length > pastMessageCount
-          ? pastMessages.sublist(pastMessages.length - pastMessageCount)
-          : pastMessages;
-
-      for (final msg in recentMessages) {
-        if (msg.role == MessageRole.user) {
-          formatted.add({'role': 'user', 'content': msg.content});
-        } else if (msg.role == MessageRole.assistant) {
-          formatted.add({'role': 'assistant', 'content': msg.content});
-        }
-      }
+    if (prompt.isEmpty) {
+      return [];
     }
 
-    if (currentInput.isNotEmpty) {
-      formatted.add({'role': 'user', 'content': currentInput});
-    }
-
-    if (requiresAlternateRole) {
-      return _mergeConsecutiveSameRoles(formatted);
-    }
-
-    return formatted;
+    final role = hasFirstSystemPrompt ? 'system' : 'user';
+    return [
+      {'role': role, 'content': prompt},
+    ];
   }
 
-  List<Map<String, String>> _mergeConsecutiveSameRoles(
-    List<Map<String, String>> messages,
-  ) {
-    if (messages.isEmpty) return messages;
-
-    final List<Map<String, String>> merged = [];
-
-    for (final msg in messages) {
-      if (merged.isEmpty) {
-        merged.add(Map.from(msg));
-      } else {
-        final lastMsg = merged.last;
-        if (lastMsg['role'] == msg['role']) {
-          lastMsg['content'] = '${lastMsg['content']}\n\n${msg['content']}';
-        } else {
-          merged.add(Map.from(msg));
-        }
-      }
+  int _parseNaturalRange(String value) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed == null || parsed <= 0) {
+      return 1;
     }
-
-    return merged;
+    return parsed;
   }
 
   // ============================================================================

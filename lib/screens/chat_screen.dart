@@ -15,6 +15,8 @@ import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import '../widgets/empty_state_view.dart';
 import '../utils/ui_feedback.dart';
+import '../services/proactive_response_service.dart';
+import '../features/live2d/data/models/live2d_settings.dart';
 import 'menu_drawer.dart';
 import 'settings_screen.dart';
 
@@ -25,7 +27,8 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
 
   final ScrollController _scrollController = ScrollController();
@@ -38,12 +41,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String? _currentSessionId;
 
+  AppLifecycleState? _lastLifecycleState;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _linkProviders();
       _captureCurrentSessionId();
+      _syncProactiveEnvironment();
     });
   }
 
@@ -74,14 +81,36 @@ class _ChatScreenState extends State<ChatScreen> {
       _currentSessionId = newSessionId;
       debugPrint('>>> v2.0.5: 세션 ID 업데이트됨: $_currentSessionId');
     }
+    _syncProactiveEnvironment();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _textController.dispose();
     _scrollController.dispose();
     _inputFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lastLifecycleState = state;
+    _syncProactiveEnvironment();
+  }
+
+  Future<void> _syncProactiveEnvironment() async {
+    if (!mounted) return;
+    final proactive = context.read<ProactiveResponseService>();
+    final orientation = MediaQuery.of(context).orientation;
+    proactive.updateEnvironment(
+      screenLandscape: orientation == Orientation.landscape,
+      screenOff: _lastLifecycleState == AppLifecycleState.paused,
+    );
+    try {
+      final settings = await Live2DSettings.load();
+      proactive.updateEnvironment(overlayOn: settings.isEnabled);
+    } catch (_) {}
   }
 
   void _sendMessage() {

@@ -17,11 +17,16 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.InputStream
 import java.net.URLEncoder
 import com.example.flutter_application_1.live2d.Live2DPlugin
+import com.example.flutter_application_1.notifications.NotificationActionStore
+import com.example.flutter_application_1.notifications.NotificationConstants
+import com.example.flutter_application_1.notifications.NotificationForegroundService
+import com.example.flutter_application_1.notifications.NotificationHelper
 
 /**
  * 
@@ -32,6 +37,8 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
+        private const val NOTIFICATION_CHANNEL = "com.example.flutter_application_1/notifications"
+        private const val ENGINE_ID = "main_engine"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
         
         private const val SERVER_PORT = 8080
@@ -103,6 +110,7 @@ class MainActivity : FlutterActivity() {
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        FlutterEngineCache.getInstance().put(ENGINE_ID, flutterEngine)
         
         flutterEngine.plugins.add(Live2DPlugin())
         
@@ -160,6 +168,69 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NOTIFICATION_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "initializeChannels" -> {
+                        NotificationHelper.createChannels(this)
+                        result.success(true)
+                    }
+                    "startForegroundService" -> {
+                        val title = call.argument<String>("title") ?: "Pocket Waifu"
+                        val message = call.argument<String>("message") ?: "대기 중"
+                        val ongoing = call.argument<Boolean>("ongoing") ?: true
+                        val sessionId = call.argument<String>("sessionId")
+                        val intent = Intent(this, NotificationForegroundService::class.java).apply {
+                            putExtra(NotificationConstants.EXTRA_TITLE, title)
+                            putExtra(NotificationConstants.EXTRA_MESSAGE, message)
+                            putExtra(NotificationConstants.EXTRA_ONGOING, ongoing)
+                            putExtra(NotificationConstants.EXTRA_SESSION_ID, sessionId)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    }
+                    "stopForegroundService" -> {
+                        stopService(Intent(this, NotificationForegroundService::class.java))
+                        result.success(true)
+                    }
+                    "updatePersistentNotification" -> {
+                        val title = call.argument<String>("title") ?: "Pocket Waifu"
+                        val message = call.argument<String>("message") ?: ""
+                        val isLoading = call.argument<Boolean>("isLoading") ?: false
+                        val isError = call.argument<Boolean>("isError") ?: false
+                        val ongoing = call.argument<Boolean>("ongoing") ?: true
+                        val sessionId = call.argument<String>("sessionId")
+                        NotificationHelper.notifyPersistent(
+                            this, title, message, ongoing, isLoading, isError, sessionId
+                        )
+                        result.success(true)
+                    }
+                    "showHeadsUpNotification" -> {
+                        val title = call.argument<String>("title") ?: "Pocket Waifu"
+                        val message = call.argument<String>("message") ?: ""
+                        val sessionId = call.argument<String>("sessionId")
+                        NotificationHelper.notifyHeadsUp(this, title, message, sessionId)
+                        result.success(true)
+                    }
+                    "clearAllNotifications" -> {
+                        NotificationHelper.clearAll(this)
+                        result.success(true)
+                    }
+                    "drainPendingActions" -> {
+                        val actions = NotificationActionStore.drainActions(this)
+                        result.success(actions)
+                    }
+                    "setNotificationsEnabled" -> {
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
     
     /**
