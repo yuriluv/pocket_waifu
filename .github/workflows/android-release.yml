@@ -89,7 +89,11 @@ jobs:
           fi
 
           mkdir -p android/keystore
-          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/keystore/release.keystore
+          if ! echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/keystore/release.keystore 2>/dev/null; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 decode failed. Falling back to debug signing."
+            rm -f android/key.properties android/keystore/release.keystore
+            exit 0
+          fi
 
           cat > android/key.properties <<EOF
           storeFile=keystore/release.keystore
