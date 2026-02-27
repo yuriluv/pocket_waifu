@@ -43,3 +43,15 @@
 
 - `dart` and `flutter` binaries are not available in the current isolated runner.
 - Validation commands are prepared and documented; execution must run in CI or a developer environment with Flutter SDK installed.
+
+## Added for Newcastle (2026-02-27)
+
+1. Integrated planning/ops-first execution package with full requirement traceability and dependency-ordered WBS.
+2. Android real-device validation matrix covering Priority 1-8 plus concurrency regression set.
+3. Two-step self-review log and QA pre-validation report for release gating.
+
+### Newcastle Artifacts
+
+- `docs/NEWCASTLE_INTEGRATED_EXECUTION_PLAN_2026-02-27.md`
+- `docs/NEWCASTLE_ANDROID_REAL_DEVICE_VALIDATION_MATRIX_2026-02-27.md`
+- `docs/NEWCASTLE_SELF_REVIEW_AND_QA_REPORT_2026-02-27.md`
