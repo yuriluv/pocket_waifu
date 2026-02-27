@@ -55,3 +55,16 @@
 - `docs/NEWCASTLE_INTEGRATED_EXECUTION_PLAN_2026-02-27.md`
 - `docs/NEWCASTLE_ANDROID_REAL_DEVICE_VALIDATION_MATRIX_2026-02-27.md`
 - `docs/NEWCASTLE_SELF_REVIEW_AND_QA_REPORT_2026-02-27.md`
+
+## Added for Request2 Autopilot-30m (2026-02-27)
+
+1. Added QA gate automation for 30-minute orchestration checkpoints with Part1-first enforcement.
+2. Added automated validation for failure taxonomy, 10-minute reproducibility SLA, and Part1 completion gate conditions.
+3. Added hard block for document-only closeout and main push evidence verification.
+
+### Request2 Artifacts
+
+- `tool/qa/check_request2_autopilot.dart`
+- `test/qa/request2_autopilot_gate_test.dart`
+- `docs/REQUEST2_QA_AUTOPILOT_EXECUTION_PLAN_2026-02-27.md`
+- `docs/REQUEST2_QA_TEAM_DELIVERABLE_2026-02-27.md`
