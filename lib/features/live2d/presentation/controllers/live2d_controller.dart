@@ -15,12 +15,7 @@ import '../../data/services/interaction_manager.dart';
 import '../../data/services/display_config_store.dart';
 import '../../data/services/live2d_overlay_state_service.dart';
 
-enum Live2DControllerState {
-  initial,
-  loading,
-  ready,
-  error,
-}
+enum Live2DControllerState { initial, loading, ready, error }
 
 class Live2DController extends ChangeNotifier {
   static const String _tag = 'Controller';
@@ -80,7 +75,7 @@ class Live2DController extends ChangeNotifier {
 
   bool get isOverlayVisible => _settings.isEnabled;
   bool get isEnabled => _settings.isEnabled;
-  
+
   InteractionManager get interactionManager => _interactionManager;
 
   Future<bool> get hasOverlayPermission => _nativeBridge.hasOverlayPermission();
@@ -88,16 +83,16 @@ class Live2DController extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_state == Live2DControllerState.loading) return;
-    
+
     _setState(Live2DControllerState.loading);
     live2dLog.info(_tag, '컨트롤러 초기화 시작');
 
     try {
       await _nativeBridge.initialize();
-      
+
       _interactionManager.initialize();
       _overlayStateService.attach();
-      
+
       _settings = await Live2DSettings.load();
       live2dLog.debug(_tag, '설정 로드됨', details: _settings.toString());
 
@@ -109,15 +104,19 @@ class Live2DController extends ChangeNotifier {
 
       if (_storageService.hasFolderSelected) {
         final isValid = await _storageService.validateCurrentFolder();
-        
+
         if (!isValid) {
-          _settings = _settings.copyWith(clearDataFolder: true, clearSelectedModel: true);
+          _settings = _settings.copyWith(
+            clearDataFolder: true,
+            clearSelectedModel: true,
+          );
           await _settings.save();
           live2dLog.warning(_tag, '저장된 폴더가 유효하지 않아 초기화됨');
         } else {
           await _scanModels();
-          
-          if (_settings.selectedModelId != null || _settings.selectedModelPath != null) {
+
+          if (_settings.selectedModelId != null ||
+              _settings.selectedModelPath != null) {
             final model = selectedModel;
             if (model == null) {
               _settings = _settings.copyWith(clearSelectedModel: true);
@@ -137,9 +136,9 @@ class Live2DController extends ChangeNotifier {
       }
 
       _setState(Live2DControllerState.ready);
-      
+
       _presets = await DisplayPresetManager.loadAll();
-      
+
       live2dLog.info(_tag, '컨트롤러 초기화 완료');
     } catch (e, stack) {
       _setError('초기화 실패: $e');
@@ -152,7 +151,7 @@ class Live2DController extends ChangeNotifier {
 
     try {
       final folderPath = await _storageService.pickFolder();
-      
+
       if (folderPath == null) {
         live2dLog.info(_tag, '폴더 선택 취소됨');
         return false;
@@ -215,10 +214,11 @@ class Live2DController extends ChangeNotifier {
     }
 
     _setState(Live2DControllerState.loading);
-    
+
     await _scanModels();
-    
-    if (_settings.selectedModelId != null || _settings.selectedModelPath != null) {
+
+    if (_settings.selectedModelId != null ||
+        _settings.selectedModelPath != null) {
       final model = selectedModel;
       if (model == null) {
         _settings = _settings.copyWith(clearSelectedModel: true);
@@ -245,7 +245,7 @@ class Live2DController extends ChangeNotifier {
         selectedModelPath: model.relativePath,
       );
     }
-    
+
     await _settings.save();
     live2dLog.info(_tag, '모델 선택됨', details: model?.name ?? 'none');
 
@@ -292,9 +292,7 @@ class Live2DController extends ChangeNotifier {
     );
     if (!config.isValid) {
       live2dLog.warning(_tag, '디스플레이 설정 유효성 실패 - 기본값 사용');
-      await _displayConfigStore.save(
-        Live2DDisplayConfig.fallbackFor(modelId),
-      );
+      await _displayConfigStore.save(Live2DDisplayConfig.fallbackFor(modelId));
       return;
     }
     await _displayConfigStore.save(config);
@@ -391,10 +389,7 @@ class Live2DController extends ChangeNotifier {
   }
 
   Future<void> resetPosition() async {
-    _settings = _settings.copyWith(
-      positionX: 0.5,
-      positionY: 0.5,
-    );
+    _settings = _settings.copyWith(positionX: 0.5, positionY: 0.5);
     await _settings.save();
     await _nativeBridge.setPosition(0.5, 0.5);
     notifyListeners();
@@ -425,6 +420,18 @@ class Live2DController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setOverlaySize(int width, int height) async {
+    final safeWidth = width.clamp(120, 1920).toInt();
+    final safeHeight = height.clamp(160, 2160).toInt();
+    _settings = _settings.copyWith(
+      overlayWidth: safeWidth,
+      overlayHeight: safeHeight,
+    );
+    await _nativeBridge.setSize(safeWidth, safeHeight);
+    await _settings.save();
+    notifyListeners();
+  }
+
   Future<void> setCharacterOffset(double x, double y) async {
     _settings = _settings.copyWith(characterOffsetX: x, characterOffsetY: y);
     await _nativeBridge.setCharacterOffset(x, y);
@@ -447,18 +454,18 @@ class Live2DController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 
+  ///
   Future<void> savePreset(String name) async {
     final overlaySize = await _nativeBridge.getOverlaySize();
     final currentWidth = overlaySize['width'] ?? _settings.overlayWidth;
     final currentHeight = overlaySize['height'] ?? _settings.overlayHeight;
-    
+
     _settings = _settings.copyWith(
       overlayWidth: currentWidth,
       overlayHeight: currentHeight,
     );
     await _settings.save();
-    
+
     final preset = DisplayPreset(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -474,11 +481,15 @@ class Live2DController extends ChangeNotifier {
     );
     await DisplayPresetManager.add(preset);
     _presets = await DisplayPresetManager.loadAll();
-    live2dLog.info(_tag, '프리셋 저장됨', details: 'name=$name, overlaySize=${currentWidth}x$currentHeight');
+    live2dLog.info(
+      _tag,
+      '프리셋 저장됨',
+      details: 'name=$name, overlaySize=${currentWidth}x$currentHeight',
+    );
     notifyListeners();
   }
 
-  /// 
+  ///
   Future<void> loadPreset(DisplayPreset preset) async {
     _settings = _settings.copyWith(
       relativeCharacterScale: preset.relativeCharacterScale,
@@ -492,15 +503,23 @@ class Live2DController extends ChangeNotifier {
       positionY: preset.positionY,
     );
     await _settings.save();
-    
+
     await _nativeBridge.setSize(preset.overlayWidth, preset.overlayHeight);
     await _nativeBridge.setRelativeScale(preset.relativeCharacterScale);
-    await _nativeBridge.setCharacterOffset(preset.characterOffsetX, preset.characterOffsetY);
+    await _nativeBridge.setCharacterOffset(
+      preset.characterOffsetX,
+      preset.characterOffsetY,
+    );
     await _nativeBridge.setCharacterRotation(preset.characterRotation);
     await _nativeBridge.setScale(preset.scale);
     await _nativeBridge.setPosition(preset.positionX, preset.positionY);
-    
-    live2dLog.info(_tag, '프리셋 불러옴', details: 'name=${preset.name}, overlaySize=${preset.overlayWidth}x${preset.overlayHeight}');
+
+    live2dLog.info(
+      _tag,
+      '프리셋 불러옴',
+      details:
+          'name=${preset.name}, overlaySize=${preset.overlayWidth}x${preset.overlayHeight}',
+    );
     notifyListeners();
   }
 
@@ -510,7 +529,11 @@ class Live2DController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> linkPresetToModel(String presetId, String modelFolder, String? modelId) async {
+  Future<void> linkPresetToModel(
+    String presetId,
+    String modelFolder,
+    String? modelId,
+  ) async {
     final index = _presets.indexWhere((p) => p.id == presetId);
     if (index < 0) return;
     final normalizedFolder = modelFolder.replaceAll('\\', '/');
@@ -559,23 +582,26 @@ class Live2DController extends ChangeNotifier {
       await _nativeBridge.setTouchThroughEnabled(_settings.touchThroughEnabled);
       await _nativeBridge.setTouchThroughAlpha(_settings.touchThroughAlpha);
       await _nativeBridge.setEditMode(_settings.editModeEnabled);
-      
+
       await _nativeBridge.setRelativeScale(_settings.relativeCharacterScale);
-      await _nativeBridge.setCharacterOffset(_settings.characterOffsetX, _settings.characterOffsetY);
+      await _nativeBridge.setCharacterOffset(
+        _settings.characterOffsetX,
+        _settings.characterOffsetY,
+      );
       await _nativeBridge.setCharacterRotation(_settings.characterRotation);
 
       await _loadModelToOverlay(selectedModel!);
 
       _settings = _settings.copyWith(isEnabled: true);
       await _settings.save();
-      
+
       live2dLog.info(_tag, '플로팅 뷰어 활성화됨 (Native)');
     } else {
       await _nativeBridge.hideOverlay();
 
       _settings = _settings.copyWith(isEnabled: false, editModeEnabled: false);
       await _settings.save();
-      
+
       live2dLog.info(_tag, '플로팅 뷰어 비활성화됨');
     }
 
@@ -614,10 +640,10 @@ class Live2DController extends ChangeNotifier {
       state.screenHeight,
       state.density,
     );
-    final widthPx =
-        (normalized.containerWidthRatio * state.screenWidth).round();
-    final heightPx =
-        (normalized.containerHeightRatio * state.screenHeight).round();
+    final widthPx = (normalized.containerWidthRatio * state.screenWidth)
+        .round();
+    final heightPx = (normalized.containerHeightRatio * state.screenHeight)
+        .round();
     final posX = (normalized.containerXRatio * state.screenWidth).round();
     final posY = (normalized.containerYRatio * state.screenHeight).round();
     final offsetX = normalized.modelOffsetXRatio * widthPx;
@@ -668,8 +694,11 @@ class Live2DController extends ChangeNotifier {
     try {
       final isActuallyVisible = await _nativeBridge.isOverlayVisible();
       if (_settings.isEnabled != isActuallyVisible) {
-        live2dLog.info(_tag, '오버레이 상태 불일치 수정',
-            details: 'settings=${_settings.isEnabled}, actual=$isActuallyVisible');
+        live2dLog.info(
+          _tag,
+          '오버레이 상태 불일치 수정',
+          details: 'settings=${_settings.isEnabled}, actual=$isActuallyVisible',
+        );
         _settings = _settings.copyWith(isEnabled: isActuallyVisible);
         await _settings.save();
         notifyListeners();

@@ -17,3 +17,6 @@ DEC-P1-MAINLINE-STRATEGY-001	decision	planning	done	sage	0	0	procedure	2026-02-2
 DEC-P1-QA-GATE-WAIVER-001	decision	qa	done	hawk	0	0	procedure	2026-02-28T06:03:00Z	main
 FOLLOWUP-P1-QA-NO-WAIVER-001	qa	qa	in_progress	raven	0	0	procedure	2026-02-28T06:03:00Z	main
 FOLLOWUP-P1-CONFLICT-SPLIT-001	implementation	dev	in_progress	bolt	0	0	code	2026-02-28T06:03:00Z	main
+DES-P1-EDITMODE-UX-005	implementation	design	done	luna	0	0	none	2026-02-28T06:17:01Z	main
+DES-P1-LUA-REGEX-PROTO-006	implementation	design	done	luna	0	0	none	2026-02-28T06:17:01Z	main
+FOLLOWUP-P1-DES-PROTO-BIND-001	planning_ops	design	pending	luna	0	0	procedure	2026-02-28T06:17:01Z	main

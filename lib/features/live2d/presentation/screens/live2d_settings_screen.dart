@@ -3,7 +3,6 @@
 // ============================================================================
 
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../services/model_scanner_service.dart';
@@ -26,6 +25,7 @@ import 'gesture_settings_screen.dart';
 import 'auto_behavior_settings_screen.dart';
 import 'display_settings_screen.dart';
 import 'interaction_settings_screen.dart';
+import 'live2d_pipeline_prototype_screen.dart';
 import '../../../../widgets/empty_state_view.dart';
 
 class Live2DSettingsScreen extends StatelessWidget {
@@ -63,11 +63,11 @@ class _Live2DSettingsScreenContentState
 
   Future<void> _checkPermissions() async {
     setState(() => _isCheckingPermissions = true);
-    
+
     final controller = context.read<Live2DController>();
     _hasOverlayPermission = await controller.hasOverlayPermission;
     _hasStoragePermission = await controller.hasStoragePermission;
-    
+
     if (mounted) {
       setState(() => _isCheckingPermissions = false);
     }
@@ -171,10 +171,7 @@ class _Live2DSettingsScreenContentState
               children: [
                 const SizedBox(height: 8),
 
-                _SectionHeader(
-                  title: '권한',
-                  icon: Icons.security,
-                ),
+                _SectionHeader(title: '권한', icon: Icons.security),
                 PermissionStatusTile(
                   hasOverlayPermission: _hasOverlayPermission,
                   hasStoragePermission: _hasStoragePermission,
@@ -183,10 +180,7 @@ class _Live2DSettingsScreenContentState
                   isLoading: _isCheckingPermissions,
                 ),
 
-                _SectionHeader(
-                  title: '데이터 폴더',
-                  icon: Icons.folder,
-                ),
+                _SectionHeader(title: '데이터 폴더', icon: Icons.folder),
                 FolderPickerTile(
                   currentPath: controller.folderPath,
                   displayName: controller.folderDisplayName,
@@ -211,7 +205,7 @@ class _Live2DSettingsScreenContentState
                       ),
                     ),
                   ),
-                  
+
                   if (controller.modelCount == 0)
                     _EmptyModelList()
                   else
@@ -221,17 +215,13 @@ class _Live2DSettingsScreenContentState
                       return ModelListTile(
                         model: model,
                         isSelected: isSelected,
-                        onTap: () => controller.selectModel(
-                          isSelected ? null : model,
-                        ),
+                        onTap: () =>
+                            controller.selectModel(isSelected ? null : model),
                       );
                     }),
                 ],
 
-                _SectionHeader(
-                  title: '표시 설정',
-                  icon: Icons.tune,
-                ),
+                _SectionHeader(title: '표시 설정', icon: Icons.tune),
                 SizeSliderTile(
                   scale: controller.settings.scale,
                   opacity: controller.settings.opacity,
@@ -241,10 +231,7 @@ class _Live2DSettingsScreenContentState
                   enabled: controller.hasFolderSelected,
                 ),
 
-                _SectionHeader(
-                  title: '터치스루',
-                  icon: Icons.touch_app,
-                ),
+                _SectionHeader(title: '터치스루', icon: Icons.touch_app),
                 _TouchThroughTile(
                   enabled: controller.settings.touchThroughEnabled,
                   alpha: controller.settings.touchThroughAlpha,
@@ -253,13 +240,11 @@ class _Live2DSettingsScreenContentState
                   isActive: controller.hasFolderSelected,
                 ),
 
-                _SectionHeader(
-                  title: '플로팅 뷰어',
-                  icon: Icons.visibility,
-                ),
+                _SectionHeader(title: '플로팅 뷰어', icon: Icons.visibility),
                 OverlayToggleTile(
                   isEnabled: controller.isEnabled,
-                  canEnable: _hasOverlayPermission &&
+                  canEnable:
+                      _hasOverlayPermission &&
                       controller.hasFolderSelected &&
                       controller.selectedModel != null,
                   disabledReason: _getDisabledReason(controller),
@@ -272,27 +257,19 @@ class _Live2DSettingsScreenContentState
                     }
                   },
                 ),
-                
-                _SectionHeader(
-                  title: '고급 설정',
-                  icon: Icons.settings,
-                ),
+
+                _SectionHeader(title: '고급 설정', icon: Icons.settings),
                 _AdvancedSettingsMenu(),
-                
-                _SectionHeader(
-                  title: '편집 모드',
-                  icon: Icons.edit,
-                ),
+
+                _SectionHeader(title: '편집 모드', icon: Icons.edit),
                 _EditModeTile(
                   isEnabled: controller.settings.editModeEnabled,
                   canEnable: controller.isEnabled,
+                  selectedModelName: controller.selectedModel?.name,
                   onChanged: controller.setEditMode,
                 ),
-                
-                _SectionHeader(
-                  title: '🎮 상호작용 테스트',
-                  icon: Icons.touch_app,
-                ),
+
+                _SectionHeader(title: '🎮 상호작용 테스트', icon: Icons.touch_app),
                 _InteractionTestTile(
                   hasOverlayPermission: _hasOverlayPermission,
                 ),
@@ -354,7 +331,7 @@ class _Live2DSettingsScreenContentState
   ) async {
     final folderPath = controller.folderPath;
     if (folderPath == null) return;
-    
+
     final storageService = Live2DStorageService();
     final rootPath = await storageService.getModelRootPath() ?? folderPath;
     final scanner = ModelScannerService();
@@ -402,11 +379,7 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
+          Icon(icon, size: 18, color: theme.colorScheme.primary),
           const SizedBox(width: 8),
           Text(
             title,
@@ -416,10 +389,7 @@ class _SectionHeader extends StatelessWidget {
               letterSpacing: 0.5,
             ),
           ),
-          if (trailing != null) ...[
-            const Spacer(),
-            trailing!,
-          ],
+          if (trailing != null) ...[const Spacer(), trailing!],
         ],
       ),
     );
@@ -444,12 +414,11 @@ class _EmptyModelList extends StatelessWidget {
     );
   }
 }
+
 class _InteractionTestTile extends StatefulWidget {
   final bool hasOverlayPermission;
 
-  const _InteractionTestTile({
-    required this.hasOverlayPermission,
-  });
+  const _InteractionTestTile({required this.hasOverlayPermission});
 
   @override
   State<_InteractionTestTile> createState() => _InteractionTestTileState();
@@ -478,16 +447,17 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
 
   void _startListening() async {
     if (_isListening) return;
-    
+
     final manager = InteractionManager();
     await manager.initialize();
-    
+
     _eventSubscription = manager.eventStream.listen((event) {
       if (mounted) {
         setState(() {
-          _receivedEvents.insert(0, 
+          _receivedEvents.insert(
+            0,
             '${DateTime.now().toString().substring(11, 19)} - ${event.type.name}'
-            '${event.position != null ? " (${event.position!.dx.toInt()}, ${event.position!.dy.toInt()})" : ""}'
+            '${event.position != null ? " (${event.position!.dx.toInt()}, ${event.position!.dy.toInt()})" : ""}',
           );
           if (_receivedEvents.length > 20) {
             _receivedEvents.removeLast();
@@ -495,7 +465,7 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
         });
       }
     });
-    
+
     setState(() => _isListening = true);
     live2dLog.info('InteractionTest', '이벤트 수신 시작');
   }
@@ -539,10 +509,7 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.gamepad,
-                  color: theme.colorScheme.secondary,
-                ),
+                Icon(Icons.gamepad, color: theme.colorScheme.secondary),
                 const SizedBox(width: 8),
                 Text(
                   '상호작용 시스템 테스트',
@@ -560,12 +527,12 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             Row(
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: canTest 
+                    onPressed: canTest
                         ? (_isListening ? _stopListening : _startListening)
                         : null,
                     icon: Icon(_isListening ? Icons.stop : Icons.play_arrow),
@@ -580,9 +547,9 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             Text(
               '외부 트리거 테스트',
               style: theme.textTheme.labelMedium?.copyWith(
@@ -609,9 +576,9 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             Text(
               '수신된 이벤트 (${_receivedEvents.length})',
               style: theme.textTheme.labelMedium?.copyWith(
@@ -629,7 +596,7 @@ class _InteractionTestTileState extends State<_InteractionTestTile> {
               child: _receivedEvents.isEmpty
                   ? Center(
                       child: Text(
-                        _isListening 
+                        _isListening
                             ? '오버레이에서 터치/제스처를 수행하세요...'
                             : '이벤트 수신을 시작하세요',
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -679,7 +646,7 @@ class _AdvancedSettingsMenu extends StatelessWidget {
             );
           },
         ),
-        
+
         ListTile(
           leading: const Icon(Icons.touch_app),
           title: const Text('제스처 설정'),
@@ -688,13 +655,11 @@ class _AdvancedSettingsMenu extends StatelessWidget {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => const GestureSettingsScreen(),
-              ),
+              MaterialPageRoute(builder: (_) => const GestureSettingsScreen()),
             );
           },
         ),
-        
+
         ListTile(
           leading: const Icon(Icons.auto_awesome),
           title: const Text('자동 동작 설정'),
@@ -709,7 +674,7 @@ class _AdvancedSettingsMenu extends StatelessWidget {
             );
           },
         ),
-        
+
         ListTile(
           leading: const Icon(Icons.display_settings),
           title: const Text('디스플레이 설정'),
@@ -718,8 +683,20 @@ class _AdvancedSettingsMenu extends StatelessWidget {
           onTap: () {
             Navigator.push(
               context,
+              MaterialPageRoute(builder: (_) => const DisplaySettingsScreen()),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.account_tree),
+          title: const Text('Lua/Regex 파이프라인 (시안)'),
+          subtitle: const Text('스크립트/정규식/Live2D 지시어 UX 프로토타입'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
               MaterialPageRoute(
-                builder: (_) => const DisplaySettingsScreen(),
+                builder: (_) => const Live2DPipelinePrototypeScreen(),
               ),
             );
           },
@@ -809,10 +786,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '터치스루 모드',
-                        style: theme.textTheme.titleMedium,
-                      ),
+                      Text('터치스루 모드', style: theme.textTheme.titleMedium),
                       Text(
                         'ON: 앱 외부에서 터치 통과 + 반투명, 앱 내부에서 드래그 가능',
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -856,10 +830,7 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '배경 시 투명도',
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    child: Text('배경 시 투명도', style: theme.textTheme.bodyMedium),
                   ),
                   SizedBox(
                     width: 80,
@@ -923,11 +894,13 @@ class _TouchThroughTileState extends State<_TouchThroughTile> {
 class _EditModeTile extends StatelessWidget {
   final bool isEnabled;
   final bool canEnable;
+  final String? selectedModelName;
   final ValueChanged<bool> onChanged;
 
   const _EditModeTile({
     required this.isEnabled,
     required this.canEnable,
+    required this.selectedModelName,
     required this.onChanged,
   });
 
@@ -971,13 +944,57 @@ class _EditModeTile extends StatelessWidget {
                 ),
               ],
             ),
-            
+
+            if (isEnabled) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(
+                    alpha: 0.4,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.radio_button_checked,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        selectedModelName != null
+                            ? '편집 모드 ON · 모델: $selectedModelName'
+                            : '편집 모드 ON · 모델을 선택하면 저장/초기화가 활성화됩니다',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             if (!canEnable) ...[
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.info_outline, size: 14,
-                      color: theme.colorScheme.onSurfaceVariant),
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
@@ -990,7 +1007,7 @@ class _EditModeTile extends StatelessWidget {
                 ],
               ),
             ],
-            
+
             if (isEnabled) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),
@@ -1015,18 +1032,53 @@ class _EditModeControlPanel extends StatelessWidget {
     final controller = context.watch<Live2DController>();
     final settings = controller.settings;
     final theme = Theme.of(context);
+    final hasSelectedModel = controller.selectedModel != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.edit_attributes, size: 20, color: theme.colorScheme.primary),
+            Icon(
+              Icons.edit_attributes,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
             const SizedBox(width: 8),
-            Text('편집 모드 활성', style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            )),
+            Text(
+              '편집 모드 활성',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '편집 제스처 가이드',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '핀치: 모델 크기 · 드래그: 위치 · 모서리 드래그: 컨테이너 크기',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         _buildToggleTile(
@@ -1042,9 +1094,12 @@ class _EditModeControlPanel extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        Text('캐릭터 상대 크기', style: theme.textTheme.bodyMedium?.copyWith(
-          fontWeight: FontWeight.w500,
-        )),
+        Text(
+          '캐릭터 상대 크기',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         const SizedBox(height: 4),
         Row(
           children: [
@@ -1070,14 +1125,89 @@ class _EditModeControlPanel extends StatelessWidget {
         ),
 
         const SizedBox(height: 12),
+        _buildDimensionSlider(
+          theme: theme,
+          title: '컨테이너 너비',
+          value: settings.overlayWidth.clamp(120, 1920).toDouble(),
+          min: 120,
+          max: 1920,
+          onChanged: (value) {
+            controller.setOverlaySize(value.round(), settings.overlayHeight);
+          },
+        ),
+        const SizedBox(height: 8),
+        _buildDimensionSlider(
+          theme: theme,
+          title: '컨테이너 높이',
+          value: settings.overlayHeight.clamp(160, 2160).toDouble(),
+          min: 160,
+          max: 2160,
+          onChanged: (value) {
+            controller.setOverlaySize(settings.overlayWidth, value.round());
+          },
+        ),
+
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(Icons.tune, size: 20, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              '모델 오프셋',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              'X:${settings.characterOffsetX.toStringAsFixed(0)} / '
+              'Y:${settings.characterOffsetY.toStringAsFixed(0)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        _buildOffsetSlider(
+          label: 'X',
+          value: settings.characterOffsetX.clamp(-400.0, 400.0),
+          onChanged: (value) {
+            controller.setCharacterOffset(value, settings.characterOffsetY);
+          },
+        ),
+        _buildOffsetSlider(
+          label: 'Y',
+          value: settings.characterOffsetY.clamp(-400.0, 400.0),
+          onChanged: (value) {
+            controller.setCharacterOffset(settings.characterOffsetX, value);
+          },
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => controller.setCharacterOffset(0, 0),
+            icon: const Icon(Icons.center_focus_strong, size: 18),
+            label: const Text('오프셋 초기화'),
+          ),
+        ),
+
+        const SizedBox(height: 12),
 
         Row(
           children: [
-            Icon(Icons.rotate_right, size: 20, color: theme.colorScheme.primary),
+            Icon(
+              Icons.rotate_right,
+              size: 20,
+              color: theme.colorScheme.primary,
+            ),
             const SizedBox(width: 8),
-            Text('캐릭터 회전', style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            )),
+            Text(
+              '캐릭터 회전',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const Spacer(),
             SizedBox(
               width: 80,
@@ -1097,30 +1227,43 @@ class _EditModeControlPanel extends StatelessWidget {
           children: [
             Icon(Icons.save, size: 20, color: theme.colorScheme.primary),
             const SizedBox(width: 8),
-            Text('레이아웃 저장', style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            )),
+            Text(
+              '레이아웃 저장',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const Spacer(),
             TextButton.icon(
-              onPressed: controller.selectedModel == null
+              onPressed: !hasSelectedModel
                   ? null
                   : () => controller.saveDisplayConfigForModel(
-                        controller.selectedModel!.id,
-                      ),
+                      controller.selectedModel!.id,
+                    ),
               icon: const Icon(Icons.save, size: 18),
               label: const Text('저장'),
             ),
             TextButton.icon(
-              onPressed: controller.selectedModel == null
+              onPressed: !hasSelectedModel
                   ? null
                   : () => controller.resetDisplayConfigForModel(
-                        controller.selectedModel!.id,
-                      ),
+                      controller.selectedModel!.id,
+                    ),
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('초기화'),
             ),
           ],
         ),
+        if (!hasSelectedModel)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '모델을 선택하면 현재 편집값을 모델별로 저장/초기화할 수 있습니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
 
         const SizedBox(height: 16),
         const Divider(height: 1),
@@ -1130,9 +1273,12 @@ class _EditModeControlPanel extends StatelessWidget {
           children: [
             Icon(Icons.bookmark, size: 20, color: theme.colorScheme.primary),
             const SizedBox(width: 8),
-            Text('디스플레이 프리셋', style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            )),
+            Text(
+              '디스플레이 프리셋',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _showSavePresetDialog(context, controller),
@@ -1160,6 +1306,68 @@ class _EditModeControlPanel extends StatelessWidget {
     );
   }
 
+  Widget _buildDimensionSlider({
+    required ThemeData theme,
+    required String title,
+    required double value,
+    required double min,
+    required double max,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${value.round()}px',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          divisions: ((max - min) / 10).round(),
+          label: '${value.round()}px',
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOffsetSlider({
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Row(
+      children: [
+        SizedBox(width: 22, child: Text(label, textAlign: TextAlign.center)),
+        Expanded(
+          child: Slider(
+            value: value.clamp(-400.0, 400.0),
+            min: -400,
+            max: 400,
+            divisions: 160,
+            label: value.toStringAsFixed(0),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildToggleTile({
     required ThemeData theme,
     required IconData icon,
@@ -1170,14 +1378,30 @@ class _EditModeControlPanel extends StatelessWidget {
   }) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: value ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+        Icon(
+          icon,
+          size: 20,
+          color: value
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-              Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -1186,7 +1410,10 @@ class _EditModeControlPanel extends StatelessWidget {
     );
   }
 
-  void _showSavePresetDialog(BuildContext context, Live2DController controller) {
+  void _showSavePresetDialog(
+    BuildContext context,
+    Live2DController controller,
+  ) {
     final nameController = TextEditingController();
     showDialog(
       context: context,
@@ -1202,16 +1429,19 @@ class _EditModeControlPanel extends StatelessWidget {
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소'),
+          ),
           FilledButton(
             onPressed: () {
               final name = nameController.text.trim();
               if (name.isNotEmpty) {
                 controller.savePreset(name);
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('프리셋 "$name" 저장됨')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('프리셋 "$name" 저장됨')));
               }
             },
             child: const Text('저장'),
@@ -1334,13 +1564,23 @@ class _PresetsDialogState extends State<_PresetsDialog> {
                       ),
                       isThreeLine: preset.linkedModelFolder != null,
                       trailing: PopupMenuButton<String>(
-                        onSelected: (action) => _handlePresetAction(action, preset),
+                        onSelected: (action) =>
+                            _handlePresetAction(action, preset),
                         itemBuilder: (_) => [
-                          const PopupMenuItem(value: 'load', child: Text('불러오기')),
+                          const PopupMenuItem(
+                            value: 'load',
+                            child: Text('불러오기'),
+                          ),
                           const PopupMenuItem(value: 'link', child: Text('링크')),
                           if (preset.linkedModelFolder != null)
-                            const PopupMenuItem(value: 'unlink', child: Text('링크 해제')),
-                          const PopupMenuItem(value: 'delete', child: Text('삭제')),
+                            const PopupMenuItem(
+                              value: 'unlink',
+                              child: Text('링크 해제'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Text('삭제'),
+                          ),
                         ],
                       ),
                     ),
@@ -1363,9 +1603,9 @@ class _PresetsDialogState extends State<_PresetsDialog> {
         await widget.controller.loadPreset(preset);
         if (mounted) {
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('프리셋 "${preset.name}" 적용됨')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('프리셋 "${preset.name}" 적용됨')));
         }
         break;
       case 'delete':
@@ -1384,7 +1624,7 @@ class _PresetsDialogState extends State<_PresetsDialog> {
 
   void _showModelLinkDialog(DisplayPreset preset) {
     final models = widget.controller.models;
-    
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1411,7 +1651,11 @@ class _PresetsDialogState extends State<_PresetsDialog> {
                         Navigator.pop(ctx);
                         setState(() {});
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('"${preset.name}" → ${model.name} 링크됨')),
+                          SnackBar(
+                            content: Text(
+                              '"${preset.name}" → ${model.name} 링크됨',
+                            ),
+                          ),
                         );
                       },
                     );
@@ -1419,7 +1663,10 @@ class _PresetsDialogState extends State<_PresetsDialog> {
                 ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소'),
+          ),
         ],
       ),
     );

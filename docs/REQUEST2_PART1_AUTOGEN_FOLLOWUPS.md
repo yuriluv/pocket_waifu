@@ -12,6 +12,7 @@
 - [ ] `FOLLOWUP-P1-CONFLICT-SPLIT-001` (bolt): Live2D 저장/복원 충돌 항목 분리 구현 후 개별 커밋/검증 로그 첨부.
 - [ ] `DEV-P1-IMPL-LUA-002` + `DEV-P1-IMPL-REGEX-003` + `DEV-P1-IMPL-LIVE2D-004` 3개 lane 병렬 유지(Part1 최우선).
 - [ ] `PART2-IMPL-LOCK-001` 유지: Part1 완료 증빙(G1~G5 + main push) 전 Part2 구현 금지.
+- [ ] `FOLLOWUP-P1-DES-PROTO-BIND-001` (luna): Lua/Regex/Directive 시안 UI를 런타임 저장소/실행 파이프라인에 연결하고 실사용 검증 증빙 추가.
 
 ## Triage Notes Applied This Cycle
 
