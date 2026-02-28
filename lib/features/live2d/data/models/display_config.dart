@@ -5,7 +5,7 @@
 import 'dart:math';
 
 class Live2DDisplayConfig {
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final String modelId;
   final String? modelPath;
@@ -94,6 +94,14 @@ class Live2DDisplayConfig {
         'schemaVersion': schemaVersion,
         'modelId': modelId,
         'modelPath': modelPath,
+        // Canonical keys required by Part1 contract.
+        'containerWidth': containerWidthDp,
+        'containerHeight': containerHeightDp,
+        'containerX': containerXRatio,
+        'containerY': containerYRatio,
+        'modelOffsetX': modelOffsetXDp,
+        'modelOffsetY': modelOffsetYDp,
+        // Backward-compatible keys used by existing app code.
         'containerWidthDp': containerWidthDp,
         'containerHeightDp': containerHeightDp,
         'containerXRatio': containerXRatio,
@@ -111,26 +119,63 @@ class Live2DDisplayConfig {
       };
 
   factory Live2DDisplayConfig.fromJson(Map<String, dynamic> json) {
+    final containerWidthDp = _readDouble(
+      json,
+      const ['containerWidthDp', 'containerWidth', 'overlayWidth'],
+    );
+    final containerHeightDp = _readDouble(
+      json,
+      const ['containerHeightDp', 'containerHeight', 'overlayHeight'],
+    );
+    final modelOffsetXDp = _readDouble(
+      json,
+      const ['modelOffsetXDp', 'modelOffsetX', 'characterOffsetX'],
+    );
+    final modelOffsetYDp = _readDouble(
+      json,
+      const ['modelOffsetYDp', 'modelOffsetY', 'characterOffsetY'],
+    );
+    final modelOffsetXRatio = json.containsKey('modelOffsetXRatio')
+        ? _signedRatio(
+            _readDouble(json, const ['modelOffsetXRatio']),
+            fallback: 0.0,
+          )
+        : _deriveSignedRatio(modelOffsetXDp, containerWidthDp);
+    final modelOffsetYRatio = json.containsKey('modelOffsetYRatio')
+        ? _signedRatio(
+            _readDouble(json, const ['modelOffsetYRatio']),
+            fallback: 0.0,
+          )
+        : _deriveSignedRatio(modelOffsetYDp, containerHeightDp);
+
     return Live2DDisplayConfig(
       schemaVersion: (json['schemaVersion'] as int?) ?? 0,
       modelId: json['modelId'] as String? ?? '',
       modelPath: json['modelPath'] as String?,
-      containerWidthDp: (json['containerWidthDp'] as num?)?.toDouble() ?? 0.0,
-      containerHeightDp: (json['containerHeightDp'] as num?)?.toDouble() ?? 0.0,
-      containerXRatio: (json['containerXRatio'] as num?)?.toDouble() ?? 0.0,
-      containerYRatio: (json['containerYRatio'] as num?)?.toDouble() ?? 0.0,
-      containerWidthRatio:
-          (json['containerWidthRatio'] as num?)?.toDouble() ?? 0.0,
-      containerHeightRatio:
-          (json['containerHeightRatio'] as num?)?.toDouble() ?? 0.0,
+      containerWidthDp: containerWidthDp,
+      containerHeightDp: containerHeightDp,
+      containerXRatio: _ratio(
+        _readDouble(json, const ['containerXRatio', 'containerX', 'positionX']),
+        fallback: 0.5,
+      ),
+      containerYRatio: _ratio(
+        _readDouble(json, const ['containerYRatio', 'containerY', 'positionY']),
+        fallback: 0.5,
+      ),
+      containerWidthRatio: _ratio(
+        _readDouble(json, const ['containerWidthRatio']),
+        fallback: 0.0,
+      ),
+      containerHeightRatio: _ratio(
+        _readDouble(json, const ['containerHeightRatio']),
+        fallback: 0.0,
+      ),
       modelScaleX: (json['modelScaleX'] as num?)?.toDouble() ?? 1.0,
       modelScaleY: (json['modelScaleY'] as num?)?.toDouble() ?? 1.0,
-      modelOffsetXRatio:
-          (json['modelOffsetXRatio'] as num?)?.toDouble() ?? 0.0,
-      modelOffsetYRatio:
-          (json['modelOffsetYRatio'] as num?)?.toDouble() ?? 0.0,
-      modelOffsetXDp: (json['modelOffsetXDp'] as num?)?.toDouble() ?? 0.0,
-      modelOffsetYDp: (json['modelOffsetYDp'] as num?)?.toDouble() ?? 0.0,
+      modelOffsetXRatio: modelOffsetXRatio,
+      modelOffsetYRatio: modelOffsetYRatio,
+      modelOffsetXDp: modelOffsetXDp,
+      modelOffsetYDp: modelOffsetYDp,
       relativeScaleRatio:
           (json['relativeScaleRatio'] as num?)?.toDouble() ?? 1.0,
       rotationDeg: (json['rotationDeg'] as int?) ?? 0,
@@ -144,11 +189,53 @@ class Live2DDisplayConfig {
       return false;
     }
     if (!_ratioOk(containerXRatio) || !_ratioOk(containerYRatio)) return false;
+    if (!relativeScaleRatio.isFinite || relativeScaleRatio <= 0) return false;
     return true;
   }
 
   static bool _ratioOk(double value) {
     return value.isFinite && value >= 0.0 && value <= 1.0;
+  }
+
+  static double _readDouble(
+    Map<String, dynamic> source,
+    List<String> keys, {
+    double defaultValue = 0.0,
+  }) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value is num) {
+        return value.toDouble();
+      }
+      if (value is String) {
+        final parsed = double.tryParse(value);
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+    }
+    return defaultValue;
+  }
+
+  static double _ratio(double value, {double fallback = 0.0}) {
+    if (!value.isFinite) {
+      return fallback;
+    }
+    return value.clamp(0.0, 1.0).toDouble();
+  }
+
+  static double _signedRatio(double value, {double fallback = 0.0}) {
+    if (!value.isFinite) {
+      return fallback;
+    }
+    return value.clamp(-1.0, 1.0).toDouble();
+  }
+
+  static double _deriveSignedRatio(double absoluteDp, double containerDp) {
+    if (!absoluteDp.isFinite || !containerDp.isFinite || containerDp.abs() < 0.001) {
+      return 0.0;
+    }
+    return (absoluteDp / containerDp).clamp(-1.0, 1.0).toDouble();
   }
 
   static Live2DDisplayConfig fallbackFor(String modelId) {
@@ -230,18 +317,47 @@ class Live2DDisplayConfig {
   Live2DDisplayConfig normalizeWithScreen(
       int screenWidthPx, int screenHeightPx, double density) {
     final safeDensity = density <= 0 ? 1.0 : density;
-    final widthPx = max(1.0, containerWidthRatio * screenWidthPx.toDouble());
+    final safeScreenWidth = max(1, screenWidthPx);
+    final safeScreenHeight = max(1, screenHeightPx);
+
+    final normalizedWidthRatio = containerWidthRatio > 0
+        ? _ratio(containerWidthRatio, fallback: 0.3)
+        : _ratio(
+            (containerWidthDp * safeDensity) / safeScreenWidth.toDouble(),
+            fallback: 0.3,
+          );
+    final normalizedHeightRatio = containerHeightRatio > 0
+        ? _ratio(containerHeightRatio, fallback: 0.4)
+        : _ratio(
+            (containerHeightDp * safeDensity) / safeScreenHeight.toDouble(),
+            fallback: 0.4,
+          );
+
+    final widthPx = max(1.0, normalizedWidthRatio * safeScreenWidth.toDouble());
     final heightPx =
-        max(1.0, containerHeightRatio * screenHeightPx.toDouble());
+        max(1.0, normalizedHeightRatio * safeScreenHeight.toDouble());
+    final normalizedOffsetXRatio = modelOffsetXRatio.abs() > 0
+        ? _signedRatio(modelOffsetXRatio, fallback: 0.0)
+        : _deriveSignedRatio(modelOffsetXDp, containerWidthDp);
+    final normalizedOffsetYRatio = modelOffsetYRatio.abs() > 0
+        ? _signedRatio(modelOffsetYRatio, fallback: 0.0)
+        : _deriveSignedRatio(modelOffsetYDp, containerHeightDp);
+
     return copyWith(
       containerWidthDp: widthPx / safeDensity,
       containerHeightDp: heightPx / safeDensity,
-      containerXRatio: containerXRatio.clamp(0.0, 1.0),
-      containerYRatio: containerYRatio.clamp(0.0, 1.0),
+      containerWidthRatio: normalizedWidthRatio,
+      containerHeightRatio: normalizedHeightRatio,
+      containerXRatio: _ratio(containerXRatio, fallback: 0.5),
+      containerYRatio: _ratio(containerYRatio, fallback: 0.5),
+      modelOffsetXRatio: normalizedOffsetXRatio,
+      modelOffsetYRatio: normalizedOffsetYRatio,
       modelOffsetXDp:
-          (modelOffsetXRatio * widthPx).clamp(-widthPx, widthPx) / safeDensity,
+          (normalizedOffsetXRatio * widthPx).clamp(-widthPx, widthPx) /
+              safeDensity,
       modelOffsetYDp:
-          (modelOffsetYRatio * heightPx).clamp(-heightPx, heightPx) / safeDensity,
+          (normalizedOffsetYRatio * heightPx).clamp(-heightPx, heightPx) /
+              safeDensity,
     );
   }
 }

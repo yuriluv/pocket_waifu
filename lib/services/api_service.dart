@@ -2,6 +2,7 @@
 // ============================================================================
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -14,10 +15,53 @@ import '../models/prompt_block.dart';
 import '../services/prompt_builder.dart';
 import '../services/release_log_service.dart';
 
+class ApiCancelledException implements Exception {
+  const ApiCancelledException([this.message = '요청이 취소되었습니다.']);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class ApiRequestHandle {
+  final http.Client _client = http.Client();
+  final Completer<void> _cancelled = Completer<void>();
+  bool _isCancelled = false;
+  bool _isClosed = false;
+
+  bool get isCancelled => _isCancelled;
+  http.Client get client => _client;
+  Future<void> get cancelled => _cancelled.future;
+
+  void cancel() {
+    if (_isCancelled) return;
+    _isCancelled = true;
+    if (!_cancelled.isCompleted) {
+      _cancelled.complete();
+    }
+    close();
+  }
+
+  void close() {
+    if (_isClosed) return;
+    _isClosed = true;
+    _client.close();
+  }
+
+  void throwIfCancelled() {
+    if (_isCancelled) {
+      throw const ApiCancelledException();
+    }
+  }
+}
+
 class ApiService {
   final PromptBuilder _promptBuilder = PromptBuilder();
 
   static const String _anthropicVersion = '2023-06-01';
+
+  ApiRequestHandle createRequestHandle() => ApiRequestHandle();
 
   ///
   ///
@@ -25,7 +69,10 @@ class ApiService {
     required ApiConfig apiConfig,
     required List<Map<String, String>> messages,
     required AppSettings settings,
+    ApiRequestHandle? requestHandle,
   }) async {
+    requestHandle?.throwIfCancelled();
+
     debugPrint('╔════════════════════════════════════════════════════════════');
     debugPrint('║ === API 호출 디버그 (v2.0.1) ===');
     debugPrint('║ Config ID: ${apiConfig.id}');
@@ -53,12 +100,14 @@ class ApiService {
         apiConfig: apiConfig,
         messages: messages,
         settings: settings,
+        requestHandle: requestHandle,
       );
     } else {
       return await _sendToOpenAICompatible(
         apiConfig: apiConfig,
         messages: messages,
         settings: settings,
+        requestHandle: requestHandle,
       );
     }
   }
@@ -67,7 +116,10 @@ class ApiService {
     required ApiConfig apiConfig,
     required List<Map<String, String>> messages,
     required AppSettings settings,
+    ApiRequestHandle? requestHandle,
   }) async {
+    requestHandle?.throwIfCancelled();
+
     final Map<String, dynamic> requestBody = {
       'model': apiConfig.modelName,
       'messages': messages,
@@ -101,11 +153,16 @@ class ApiService {
       },
     );
 
+    final client = requestHandle?.client ?? http.Client();
+
     try {
-      final response = await http.post(
-        Uri.parse(apiConfig.baseUrl),
-        headers: headers,
-        body: jsonEncode(requestBody),
+      final response = await _awaitWithCancellation(
+        request: client.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        ),
+        requestHandle: requestHandle,
       );
 
       debugPrint('>>> Response Status: ${response.statusCode}');
@@ -138,6 +195,8 @@ class ApiService {
         );
         throw Exception('API 오류 (${response.statusCode}): $errorMessage');
       }
+    } on ApiCancelledException {
+      rethrow;
     } catch (e) {
       debugPrint('>>> Exception: $e');
       await ReleaseLogService.instance.error(
@@ -152,6 +211,12 @@ class ApiService {
       );
       if (e is Exception) rethrow;
       throw Exception('API 요청 실패: $e');
+    } finally {
+      if (requestHandle == null) {
+        client.close();
+      } else {
+        requestHandle.close();
+      }
     }
   }
 
@@ -159,7 +224,10 @@ class ApiService {
     required ApiConfig apiConfig,
     required List<Map<String, String>> messages,
     required AppSettings settings,
+    ApiRequestHandle? requestHandle,
   }) async {
+    requestHandle?.throwIfCancelled();
+
     String? systemMessage;
     final List<Map<String, String>> chatMessages = [];
 
@@ -215,11 +283,16 @@ class ApiService {
       },
     );
 
+    final client = requestHandle?.client ?? http.Client();
+
     try {
-      final response = await http.post(
-        Uri.parse(apiConfig.baseUrl),
-        headers: headers,
-        body: jsonEncode(requestBody),
+      final response = await _awaitWithCancellation(
+        request: client.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        ),
+        requestHandle: requestHandle,
       );
 
       debugPrint('>>> Response Status: ${response.statusCode}');
@@ -247,6 +320,8 @@ class ApiService {
           'Anthropic API 오류 (${response.statusCode}): $errorMessage',
         );
       }
+    } on ApiCancelledException {
+      rethrow;
     } catch (e) {
       debugPrint('>>> Exception: $e');
       await ReleaseLogService.instance.error(
@@ -261,6 +336,12 @@ class ApiService {
       );
       if (e is Exception) rethrow;
       throw Exception('Anthropic API 요청 실패: $e');
+    } finally {
+      if (requestHandle == null) {
+        client.close();
+      } else {
+        requestHandle.close();
+      }
     }
   }
 
@@ -276,6 +357,27 @@ class ApiService {
     return input.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  Future<T> _awaitWithCancellation<T>({
+    required Future<T> request,
+    ApiRequestHandle? requestHandle,
+  }) async {
+    if (requestHandle == null) {
+      return request;
+    }
+
+    requestHandle.throwIfCancelled();
+
+    final response = await Future.any<T>([
+      request,
+      requestHandle.cancelled.then<T>((_) {
+        throw const ApiCancelledException();
+      }),
+    ]);
+
+    requestHandle.throwIfCancelled();
+    return response;
+  }
+
   ///
   Future<String> sendMessageWithBlocks({
     required ApiConfig? apiConfig,
@@ -284,6 +386,7 @@ class ApiService {
     required String currentInput,
     required AppSettings settings,
     int pastMessageCount = 10,
+    ApiRequestHandle? requestHandle,
   }) async {
     if (apiConfig == null) {
       return await _sendMessageWithBlocksLegacy(
@@ -292,6 +395,7 @@ class ApiService {
         currentInput: currentInput,
         settings: settings,
         pastMessageCount: pastMessageCount,
+        requestHandle: requestHandle,
       );
     }
 
@@ -315,6 +419,7 @@ class ApiService {
       apiConfig: apiConfig,
       messages: formattedMessages,
       settings: settings,
+      requestHandle: requestHandle,
     );
   }
 
@@ -411,6 +516,7 @@ class ApiService {
   Future<String> sendMessage({
     required List<Message> messages,
     required AppSettings settings,
+    ApiRequestHandle? requestHandle,
   }) async {
     final apiConfig = _createLegacyApiConfig(settings);
 
@@ -422,6 +528,7 @@ class ApiService {
       apiConfig: apiConfig,
       messages: formattedMessages,
       settings: settings,
+      requestHandle: requestHandle,
     );
   }
 
@@ -431,6 +538,7 @@ class ApiService {
     required String currentInput,
     required AppSettings settings,
     int pastMessageCount = 10,
+    ApiRequestHandle? requestHandle,
   }) async {
     final apiConfig = _createLegacyApiConfig(settings);
 
@@ -464,6 +572,7 @@ class ApiService {
       apiConfig: apiConfig,
       messages: formattedMessages,
       settings: settings,
+      requestHandle: requestHandle,
     );
   }
 
