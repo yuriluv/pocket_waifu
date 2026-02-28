@@ -20,3 +20,4 @@ FOLLOWUP-P1-CONFLICT-SPLIT-001	implementation	dev	in_progress	bolt	0	0	code	2026
 DES-P1-EDITMODE-UX-005	implementation	design	done	luna	0	0	none	2026-02-28T06:17:01Z	main
 DES-P1-LUA-REGEX-PROTO-006	implementation	design	done	luna	0	0	none	2026-02-28T06:17:01Z	main
 FOLLOWUP-P1-DES-PROTO-BIND-001	planning_ops	design	pending	luna	0	0	procedure	2026-02-28T06:17:01Z	main
+FOLLOWUP-P1-OPS-PUSH-RETRY-002	planning_ops	ops	pending	atlas	0	0	env	2026-02-28T06:19:31Z	main
