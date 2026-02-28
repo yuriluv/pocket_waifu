@@ -42,15 +42,24 @@ class _ChatScreenState extends State<ChatScreen>
 
   AppLifecycleState? _lastLifecycleState;
 
+  bool _wasKeyboardVisible = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _wasKeyboardVisible = _isKeyboardVisible();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _linkProviders();
       _captureCurrentSessionId();
       _syncProactiveEnvironment();
     });
+  }
+
+  bool _isKeyboardVisible() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return false;
+    return views.first.viewInsets.bottom > 0;
   }
 
   void _linkProviders() {
@@ -96,6 +105,22 @@ class _ChatScreenState extends State<ChatScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lastLifecycleState = state;
     _syncProactiveEnvironment();
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+
+    final isKeyboardVisible = _isKeyboardVisible();
+    if (_wasKeyboardVisible && !isKeyboardVisible) {
+      _shouldRestoreFocusAfterDrawerClose = false;
+      if (_inputFocusNode.hasFocus) {
+        _inputFocusNode.unfocus();
+        debugPrint('>>> v2.0.7: Keyboard dismissed - input focus cleared');
+      }
+    }
+
+    _wasKeyboardVisible = isKeyboardVisible;
   }
 
   Future<void> _syncProactiveEnvironment() async {

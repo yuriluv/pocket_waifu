@@ -65,6 +65,12 @@ class ApiService {
     'max_completion_tokens',
     'max_output_tokens',
   };
+  static const Set<String> _runtimeControlledParamKeys = {
+    'temperature',
+    'top_p',
+    'frequency_penalty',
+    'presence_penalty',
+  };
 
   ApiRequestHandle createRequestHandle() => ApiRequestHandle();
 
@@ -380,7 +386,9 @@ class ApiService {
     required List<Map<String, String>> messages,
     required AppSettings settings,
   }) {
+    // Keep preset-specific extras, but never let them overwrite runtime sliders.
     final Map<String, dynamic> requestBody = {
+      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
       'model': apiConfig.modelName,
       'messages': messages,
       'temperature': settings.temperature,
@@ -388,8 +396,6 @@ class ApiService {
       'frequency_penalty': settings.frequencyPenalty,
       'presence_penalty': settings.presencePenalty,
     };
-
-    requestBody.addAll(_withoutTokenLimitParams(apiConfig.additionalParams));
 
     final tokenKey = _preferredTokenLimitKey(
       apiConfig: apiConfig,
@@ -405,22 +411,27 @@ class ApiService {
     required List<Map<String, String>> chatMessages,
     required AppSettings settings,
   }) {
+    // Anthropic also follows runtime settings first for shared parameters.
     final Map<String, dynamic> requestBody = {
+      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
       'model': apiConfig.modelName,
       'temperature': settings.temperature,
       'top_p': settings.topP,
       'messages': chatMessages,
     };
-
-    requestBody.addAll(_withoutTokenLimitParams(apiConfig.additionalParams));
     requestBody['max_tokens'] = settings.maxTokens;
 
     return requestBody;
   }
 
-  Map<String, dynamic> _withoutTokenLimitParams(Map<String, dynamic> source) {
+  Map<String, dynamic> _withoutRuntimeControlledParams(
+    Map<String, dynamic> source,
+  ) {
     final cloned = Map<String, dynamic>.from(source);
     for (final key in _tokenLimitKeys) {
+      cloned.remove(key);
+    }
+    for (final key in _runtimeControlledParamKeys) {
       cloned.remove(key);
     }
     return cloned;
