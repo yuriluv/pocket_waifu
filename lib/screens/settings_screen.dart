@@ -2,7 +2,6 @@
 // ============================================================================
 // ============================================================================
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -86,11 +85,7 @@ class _ApiPresetsTab extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                size: 18,
-                color: colorScheme.primary,
-              ),
+              Icon(Icons.info_outline, size: 18, color: colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

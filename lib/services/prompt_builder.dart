@@ -159,6 +159,11 @@ class PromptBuilder {
       promptParts.add('[예시 대화]\n$exampleDialogue');
     }
 
+    if (settings.live2dPromptInjectionEnabled &&
+        settings.live2dSystemPromptTemplate.trim().isNotEmpty) {
+      promptParts.add(settings.live2dSystemPromptTemplate.trim());
+    }
+
     // Note: systemPrompt from AppSettings is deprecated.
     // All prompt configuration should use the Prompt Blocks system.
 

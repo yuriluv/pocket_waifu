@@ -12,6 +12,8 @@ import '../models/api_config.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
 import '../models/prompt_block.dart';
+import '../features/lua/services/lua_scripting_service.dart';
+import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/prompt_builder.dart';
 import '../services/release_log_service.dart';
 
@@ -58,6 +60,8 @@ class ApiRequestHandle {
 
 class ApiService {
   final PromptBuilder _promptBuilder = PromptBuilder();
+  final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
+  final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
 
   static const String _anthropicVersion = '2023-06-01';
   static const Set<String> _tokenLimitKeys = {
@@ -82,6 +86,8 @@ class ApiService {
     required AppSettings settings,
     ApiRequestHandle? requestHandle,
   }) async {
+    final transformedMessages = await _applyPromptLifecycle(messages, settings);
+
     requestHandle?.throwIfCancelled();
 
     debugPrint('============================================================');
@@ -94,7 +100,7 @@ class ApiService {
       'API Key (first 10): ${apiConfig.apiKey.substring(0, min(10, apiConfig.apiKey.length))}...',
     );
     debugPrint('Format: ${apiConfig.format.name}');
-    debugPrint('Messages count: ${messages.length}');
+    debugPrint('Messages count: ${transformedMessages.length}');
     debugPrint('============================================================');
 
     if (apiConfig.apiKey.isEmpty) {
@@ -109,18 +115,47 @@ class ApiService {
     if (isAnthropic) {
       return await _sendToAnthropic(
         apiConfig: apiConfig,
-        messages: messages,
+        messages: transformedMessages,
         settings: settings,
         requestHandle: requestHandle,
       );
     } else {
       return await _sendToOpenAICompatible(
         apiConfig: apiConfig,
-        messages: messages,
+        messages: transformedMessages,
         settings: settings,
         requestHandle: requestHandle,
       );
     }
+  }
+
+  Future<List<Map<String, String>>> _applyPromptLifecycle(
+    List<Map<String, String>> messages,
+    AppSettings settings,
+  ) async {
+    final List<Map<String, String>> transformed = [];
+    final context = const LuaHookContext();
+    for (final message in messages) {
+      final role = message['role'] ?? 'user';
+      final original = message['content'] ?? '';
+
+      var content = original;
+      if (settings.runRegexBeforeLua) {
+        content = await _regexPipeline.applyPromptInjection(content);
+        content = await _luaScriptingService.onPromptBuild(content, context);
+      } else {
+        content = await _luaScriptingService.onPromptBuild(content, context);
+        content = await _regexPipeline.applyPromptInjection(content);
+      }
+
+      transformed.add({'role': role, 'content': content});
+    }
+
+    if (!settings.live2dPromptInjectionEnabled) {
+      return transformed;
+    }
+
+    return transformed;
   }
 
   Future<String> _sendToOpenAICompatible({
@@ -272,7 +307,10 @@ class ApiService {
     }
 
     if (chatMessages.isNotEmpty && chatMessages.first['role'] == 'assistant') {
-      chatMessages.insert(0, {'role': 'user', 'content': '(conversation start)'});
+      chatMessages.insert(0, {
+        'role': 'user',
+        'content': '(conversation start)',
+      });
     }
 
     final Map<String, dynamic> requestBody = _buildAnthropicRequestBody(
@@ -598,11 +636,7 @@ class ApiService {
           chatMessages: [
             {'role': 'user', 'content': 'test'},
           ],
-          settings: AppSettings(
-            maxTokens: 10,
-            temperature: 0.0,
-            topP: 1.0,
-          ),
+          settings: AppSettings(maxTokens: 10, temperature: 0.0, topP: 1.0),
         );
 
         final response = await http.post(
@@ -651,7 +685,11 @@ class ApiService {
           if (suggestedKey != null &&
               !requestBody.containsKey(suggestedKey) &&
               _tokenLimitKeys.contains(suggestedKey)) {
-            final retryBody = _replaceTokenLimitKey(requestBody, suggestedKey, 10);
+            final retryBody = _replaceTokenLimitKey(
+              requestBody,
+              suggestedKey,
+              10,
+            );
             response = await http.post(
               Uri.parse(apiConfig.baseUrl),
               headers: headers,

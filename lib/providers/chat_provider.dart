@@ -5,6 +5,10 @@ import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
+import '../features/live2d/data/services/live2d_native_bridge.dart';
+import '../features/live2d_llm/services/live2d_directive_service.dart';
+import '../features/lua/services/lua_scripting_service.dart';
+import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/api_service.dart';
 import '../services/global_runtime_registry.dart';
 import '../services/prompt_builder.dart';
@@ -16,6 +20,11 @@ class ChatProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final PromptBuilder _promptBuilder = PromptBuilder();
   final Uuid _uuid = const Uuid();
+  final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
+  final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
+  final Live2DDirectiveService _directiveService =
+      Live2DDirectiveService.instance;
+  final Live2DNativeBridge _live2dBridge = Live2DNativeBridge();
 
   ChatSessionProvider? _sessionProvider;
 
@@ -85,6 +94,15 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
+    final preparedInput = await _prepareUserInput(
+      userMessage.trim(),
+      settings: settings,
+      sessionId: sessionId,
+      characterId: character.id,
+      characterName: character.name,
+      userName: userName,
+    );
+
     await sessionProvider.runSerialized(() async {
       _errorMessage = null;
       sessionProvider.addMessageToSession(
@@ -92,7 +110,7 @@ class ChatProvider extends ChangeNotifier {
         _createMessage(
           sessionId: sessionId,
           role: MessageRole.user,
-          content: userMessage.trim(),
+          content: preparedInput,
         ),
       );
       notifyListeners();
@@ -100,8 +118,9 @@ class ChatProvider extends ChangeNotifier {
       _setLoading(true);
 
       final requestHandle = _apiService.createRequestHandle();
-      final cancelListener =
-          GlobalRuntimeRegistry.instance.registerCancelable(requestHandle.cancel);
+      final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
+        requestHandle.cancel,
+      );
 
       try {
         final response = await _requestAssistantResponse(
@@ -113,12 +132,21 @@ class ChatProvider extends ChangeNotifier {
           requestHandle: requestHandle,
         );
 
+        final processedResponse = await _prepareAssistantOutput(
+          response,
+          settings: settings,
+          sessionId: sessionId,
+          characterId: character.id,
+          characterName: character.name,
+          userName: userName,
+        );
+
         sessionProvider.addMessageToSession(
           sessionId,
           _createMessage(
             sessionId: sessionId,
             role: MessageRole.assistant,
-            content: response,
+            content: processedResponse,
           ),
         );
       } catch (e) {
@@ -135,6 +163,125 @@ class ChatProvider extends ChangeNotifier {
     });
   }
 
+  Future<String> _prepareUserInput(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onUserMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onUserMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+    return output;
+  }
+
+  Future<String> _prepareAssistantOutput(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onAssistantMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onAssistantMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    final directiveResult = await _directiveService.processAssistantOutput(
+      output,
+      parsingEnabled: settings.live2dDirectiveParsingEnabled,
+    );
+    output = directiveResult.cleanedText;
+
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onDisplayRender(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onDisplayRender(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    return output;
+  }
+
   Future<String> _requestAssistantResponse({
     required String sessionId,
     required Character character,
@@ -146,12 +293,14 @@ class ChatProvider extends ChangeNotifier {
     final sessionProvider = _sessionProvider!;
     final chatHistory = sessionProvider.getMessagesForSession(sessionId);
 
-    final apiMessages = _promptBuilder.buildMessages(
+    var apiMessages = _promptBuilder.buildMessages(
       character: character,
       settings: settings,
       chatHistory: chatHistory,
       userName: userName,
     );
+
+    apiMessages = await _injectLive2DCapabilities(apiMessages, settings);
 
     if (apiConfig == null) {
       return _apiService.sendMessage(
@@ -171,6 +320,64 @@ class ChatProvider extends ChangeNotifier {
       settings: settings,
       requestHandle: requestHandle,
     );
+  }
+
+  Future<List<Message>> _injectLive2DCapabilities(
+    List<Message> messages,
+    AppSettings settings,
+  ) async {
+    if (!settings.live2dPromptInjectionEnabled) {
+      return messages;
+    }
+
+    final modelInfo = await _live2dBridge.getModelInfo();
+    final params = (modelInfo['parameters'] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .toList();
+    final expressions = (modelInfo['expressions'] as List<dynamic>? ?? const [])
+        .map((item) => item.toString())
+        .toList();
+
+    final motions = <String>[];
+    final motionGroups = await _live2dBridge.getMotionGroups();
+    for (final group in motionGroups) {
+      final names = await _live2dBridge.getMotionNames(group);
+      if (names.isEmpty) {
+        final count = await _live2dBridge.getMotionCount(group);
+        for (var i = 0; i < count; i++) {
+          motions.add('$group[$i]');
+        }
+      } else {
+        for (var i = 0; i < names.length; i++) {
+          motions.add('$group[$i]:${names[i]}');
+        }
+      }
+    }
+
+    final capability = [
+      '[Live2D Capability]',
+      'Parameters: ${params.isEmpty ? '(none)' : params.join(', ')}',
+      'Motions: ${motions.isEmpty ? '(none)' : motions.join(', ')}',
+      'Expressions: ${expressions.isEmpty ? '(none)' : expressions.join(', ')}',
+      'Use <live2d> blocks only for visible animation cues.',
+    ].join('\n');
+
+    final index = messages.indexWhere(
+      (message) => message.role == MessageRole.system,
+    );
+    if (index == -1) {
+      return [
+        Message(role: MessageRole.system, content: capability),
+        ...messages,
+      ];
+    }
+
+    final system = messages[index];
+    final updated = List<Message>.from(messages);
+    updated[index] = system.copyWith(
+      content: '${system.content}\n\n$capability',
+    );
+    return updated;
   }
 
   void deleteMessage(String messageId, {String? targetSessionId}) {
@@ -304,5 +511,11 @@ class ChatProvider extends ChangeNotifier {
   void _setError(String message) {
     _errorMessage = message;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _luaScriptingService.onUnload(const LuaHookContext());
+    super.dispose();
   }
 }

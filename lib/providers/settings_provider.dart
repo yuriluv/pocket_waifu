@@ -210,7 +210,6 @@ class SettingsProvider extends ChangeNotifier {
     saveSettings();
   }
 
-
   void setApiProvider(ApiProvider provider) {
     updateSettings(_settings.copyWith(apiProvider: provider));
   }
@@ -255,6 +254,21 @@ class SettingsProvider extends ChangeNotifier {
     updateSettings(_settings.copyWith(systemPrompt: prompt));
   }
 
+  void setLive2DDirectiveParsingEnabled(bool enabled) {
+    updateSettings(_settings.copyWith(live2dDirectiveParsingEnabled: enabled));
+  }
+
+  void setLive2DPromptInjectionEnabled(bool enabled) {
+    updateSettings(_settings.copyWith(live2dPromptInjectionEnabled: enabled));
+  }
+
+  void setRunRegexBeforeLua(bool enabled) {
+    updateSettings(_settings.copyWith(runRegexBeforeLua: enabled));
+  }
+
+  void setLive2DSystemPromptTemplate(String template) {
+    updateSettings(_settings.copyWith(live2dSystemPromptTemplate: template));
+  }
 
   void setCharacterName(String name) {
     updateCharacter(_character.copyWith(name: name));

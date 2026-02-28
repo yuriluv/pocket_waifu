@@ -6,10 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_session_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/settings_provider.dart';
+import '../providers/global_runtime_provider.dart';
 import 'prompt_editor_screen.dart';
 import 'chat_list_screen.dart';
 import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
+import 'notification_settings_screen.dart';
+import 'regex_lua_management_screen.dart';
 import '../features/live2d/live2d_module.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import 'prompt_preview_screen.dart';
@@ -22,11 +26,27 @@ class MenuDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final chatSessionProvider = Provider.of<ChatSessionProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final settingsProvider = Provider.of<SettingsProvider>(context);
+    final globalRuntimeProvider = Provider.of<GlobalRuntimeProvider>(context);
 
     return Drawer(
       child: Column(
         children: [
-          _DrawerHeader(themeProvider: themeProvider),
+          _DrawerHeader(
+            themeProvider: themeProvider,
+            characterName: settingsProvider.character.name,
+            onEditCharacterName: () =>
+                _showCharacterNameDialog(context, settingsProvider),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: _GlobalRuntimeToggleTile(
+              isEnabled: globalRuntimeProvider.isEnabled,
+              isLoading: globalRuntimeProvider.isLoading,
+              onChanged: globalRuntimeProvider.setEnabled,
+            ),
+          ),
 
           Expanded(
             child: ListView(
@@ -73,6 +93,37 @@ class MenuDrawer extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const SettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                _DrawerMenuItem(
+                  icon: Icons.notifications,
+                  title: '알림 설정',
+                  subtitle: '알림/프로액티브 응답 설정',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const NotificationSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                _DrawerMenuItem(
+                  icon: Icons.rule_folder,
+                  title: 'Regex / Lua 관리',
+                  subtitle: '규칙·스크립트 CRUD 및 Live2D-LLM 옵션',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RegexLuaManagementScreen(),
                       ),
                     );
                   },
@@ -203,6 +254,61 @@ class MenuDrawer extends StatelessWidget {
     );
   }
 
+  void _showCharacterNameDialog(
+    BuildContext context,
+    SettingsProvider settingsProvider,
+  ) {
+    final controller = TextEditingController(
+      text: settingsProvider.character.name,
+    );
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('캐릭터 이름 변경'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: '캐릭터 이름',
+            ),
+            onSubmitted: (_) => _saveCharacterName(
+              dialogContext,
+              settingsProvider,
+              controller.text,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: () => _saveCharacterName(
+                dialogContext,
+                settingsProvider,
+                controller.text,
+              ),
+              child: const Text('저장'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _saveCharacterName(
+    BuildContext dialogContext,
+    SettingsProvider settingsProvider,
+    String raw,
+  ) {
+    final name = raw.trim();
+    if (name.isEmpty) return;
+    settingsProvider.setCharacterName(name);
+    Navigator.pop(dialogContext);
+  }
+
   void _showAboutDialog(BuildContext context) {
     showAboutDialog(
       context: context,
@@ -228,8 +334,14 @@ class MenuDrawer extends StatelessWidget {
 
 class _DrawerHeader extends StatelessWidget {
   final ThemeProvider themeProvider;
+  final String characterName;
+  final VoidCallback onEditCharacterName;
 
-  const _DrawerHeader({required this.themeProvider});
+  const _DrawerHeader({
+    required this.themeProvider,
+    required this.characterName,
+    required this.onEditCharacterName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -258,13 +370,33 @@ class _DrawerHeader extends StatelessWidget {
             child: const Icon(Icons.favorite, color: Colors.white, size: 32),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Pocket Waifu',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: onEditCharacterName,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text(
+                      characterName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: onEditCharacterName,
+                icon: const Icon(Icons.edit, color: Colors.white),
+                tooltip: '캐릭터 이름 편집',
+              ),
+            ],
           ),
           Text(
             'AI 캐릭터와 대화하세요',
@@ -274,6 +406,69 @@ class _DrawerHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GlobalRuntimeToggleTile extends StatelessWidget {
+  final bool isEnabled;
+  final bool isLoading;
+  final ValueChanged<bool> onChanged;
+
+  const _GlobalRuntimeToggleTile({
+    required this.isEnabled,
+    required this.isLoading,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final statusColor = isEnabled ? Colors.green : colorScheme.error;
+    final statusText = isEnabled ? 'ON' : 'OFF';
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: isLoading ? null : () => onChanged(!isEnabled),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                isEnabled ? Icons.power : Icons.power_off,
+                color: statusColor,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  '전체 기능 On/Off',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (isLoading)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else ...[
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Switch(value: isEnabled, onChanged: onChanged),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

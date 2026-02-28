@@ -27,8 +27,6 @@ import 'services/global_runtime_registry.dart';
 
 import 'screens/chat_screen.dart';
 
-
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -91,7 +89,14 @@ class PocketWaifuApp extends StatelessWidget {
 
         ChangeNotifierProvider(create: (_) => NotificationSettingsProvider()),
 
-        ChangeNotifierProvider(create: (_) => PromptPresetProvider()),
+        ChangeNotifierProxyProvider<PromptBlockProvider, PromptPresetProvider>(
+          create: (_) => PromptPresetProvider(),
+          update: (_, promptBlockProvider, promptPresetProvider) {
+            final provider = promptPresetProvider ?? PromptPresetProvider();
+            provider.syncFromPromptPresets(promptBlockProvider.presets);
+            return provider;
+          },
+        ),
 
         Provider(
           create: (_) {
@@ -103,47 +108,74 @@ class PocketWaifuApp extends StatelessWidget {
               GlobalRuntimeRegistry.instance.unregister(handler),
         ),
 
-        ProxyProvider5<SettingsProvider, PromptBlockProvider,
-            ChatSessionProvider, NotificationSettingsProvider,
-            GlobalRuntimeProvider, NotificationCoordinator>(
+        ProxyProvider5<
+          SettingsProvider,
+          PromptBlockProvider,
+          ChatSessionProvider,
+          NotificationSettingsProvider,
+          GlobalRuntimeProvider,
+          NotificationCoordinator
+        >(
           create: (_) =>
               NotificationCoordinator(bridge: NotificationBridge.instance),
-          update: (context, settings, prompt, sessions, notificationSettings,
-              globalRuntime, coordinator) {
-            final instance = coordinator ??
-                NotificationCoordinator(bridge: NotificationBridge.instance);
-            notificationSettings.rebindApiPresets(settings.apiConfigs);
-            notificationSettings.rebindPromptPresets(
-              context.read<PromptPresetProvider>().presets,
-            );
-            instance.attach(
-              settingsProvider: settings,
-              promptBlockProvider: prompt,
-              sessionProvider: sessions,
-              notificationSettingsProvider: notificationSettings,
-              globalRuntimeProvider: globalRuntime,
-            );
-            return instance;
-          },
+          update:
+              (
+                context,
+                settings,
+                prompt,
+                sessions,
+                notificationSettings,
+                globalRuntime,
+                coordinator,
+              ) {
+                final instance =
+                    coordinator ??
+                    NotificationCoordinator(
+                      bridge: NotificationBridge.instance,
+                    );
+                notificationSettings.rebindApiPresets(settings.apiConfigs);
+                notificationSettings.rebindPromptPresets(
+                  context.read<PromptPresetProvider>().presets,
+                );
+                instance.attach(
+                  settingsProvider: settings,
+                  promptBlockProvider: prompt,
+                  sessionProvider: sessions,
+                  notificationSettingsProvider: notificationSettings,
+                  globalRuntimeProvider: globalRuntime,
+                );
+                return instance;
+              },
           dispose: (_, coordinator) => coordinator.dispose(),
         ),
 
-        ProxyProvider4<NotificationCoordinator, GlobalRuntimeProvider,
-            NotificationSettingsProvider, SettingsProvider,
-            ProactiveResponseService>(
+        ProxyProvider4<
+          NotificationCoordinator,
+          GlobalRuntimeProvider,
+          NotificationSettingsProvider,
+          SettingsProvider,
+          ProactiveResponseService
+        >(
           create: (context) =>
               ProactiveResponseService(context.read<NotificationCoordinator>()),
-          update: (_, coordinator, globalRuntime, notificationSettings,
-              settingsProvider, service) {
-            final instance =
-                service ?? ProactiveResponseService(coordinator);
-            instance.attach(
-              globalRuntimeProvider: globalRuntime,
-              notificationSettingsProvider: notificationSettings,
-              settingsProvider: settingsProvider,
-            );
-            return instance;
-          },
+          update:
+              (
+                _,
+                coordinator,
+                globalRuntime,
+                notificationSettings,
+                settingsProvider,
+                service,
+              ) {
+                final instance =
+                    service ?? ProactiveResponseService(coordinator);
+                instance.attach(
+                  globalRuntimeProvider: globalRuntime,
+                  notificationSettingsProvider: notificationSettings,
+                  settingsProvider: settingsProvider,
+                );
+                return instance;
+              },
         ),
       ],
       child: const _AppWithTheme(),

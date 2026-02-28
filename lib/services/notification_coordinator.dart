@@ -3,6 +3,10 @@ import 'package:flutter/foundation.dart';
 
 import '../models/api_config.dart';
 import '../models/message.dart';
+import '../models/settings.dart';
+import '../features/live2d_llm/services/live2d_directive_service.dart';
+import '../features/lua/services/lua_scripting_service.dart';
+import '../features/regex/services/regex_pipeline_service.dart';
 import '../providers/chat_session_provider.dart';
 import '../providers/global_runtime_provider.dart';
 import '../providers/notification_settings_provider.dart';
@@ -14,15 +18,19 @@ import '../services/live2d_quick_toggle_service.dart';
 import '../services/notification_bridge.dart';
 
 enum NotificationRequestOrigin { reply, proactive }
+
 enum NotificationRequestResult { completed, cancelled, failed }
 
 class NotificationCoordinator implements GlobalRuntimeListener {
-  NotificationCoordinator({
-    required NotificationBridge bridge,
-  }) : _bridge = bridge;
+  NotificationCoordinator({required NotificationBridge bridge})
+    : _bridge = bridge;
 
   final NotificationBridge _bridge;
   final ApiService _apiService = ApiService();
+  final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
+  final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
+  final Live2DDirectiveService _directiveService =
+      Live2DDirectiveService.instance;
 
   SettingsProvider? _settingsProvider;
   PromptBlockProvider? _promptBlockProvider;
@@ -132,7 +140,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     final sessionProvider = _sessionProvider;
     final settingsProvider = _settingsProvider;
     final promptProvider = _promptBlockProvider;
-    final notificationSettings = _notificationSettingsProvider?.notificationSettings;
+    final notificationSettings =
+        _notificationSettingsProvider?.notificationSettings;
 
     if (sessionProvider == null ||
         settingsProvider == null ||
@@ -142,7 +151,15 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     }
 
     final resolvedSessionId = sessionId ?? sessionProvider.activeSessionId;
-    if (resolvedSessionId == null) return;
+    if (resolvedSessionId == null) {
+      await _bridge.updatePersistentNotification(
+        title: settingsProvider.character.name,
+        message: '활성 세션이 없습니다. 앱에서 채팅 세션을 생성하세요.',
+        isError: true,
+        ongoing: notificationSettings.persistentEnabled,
+      );
+      return;
+    }
 
     final title = settingsProvider.character.name;
     await _bridge.updatePersistentNotification(
@@ -154,9 +171,18 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     );
 
     await sessionProvider.runSerialized(() async {
+      final preparedInput = await _prepareUserInput(
+        message,
+        settings: settingsProvider.settings,
+        sessionId: resolvedSessionId,
+        characterId: settingsProvider.character.id,
+        characterName: settingsProvider.character.name,
+        userName: settingsProvider.userName,
+      );
+
       sessionProvider.addMessageToSession(
         resolvedSessionId,
-        Message(role: MessageRole.user, content: message),
+        Message(role: MessageRole.user, content: preparedInput),
       );
 
       final apiConfig = _resolveApiConfig(notificationSettings.apiPresetId);
@@ -164,27 +190,37 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       final requestHandle = _apiService.createRequestHandle();
       _activeRequest = requestHandle;
       _activeOrigin = NotificationRequestOrigin.reply;
-      final cancelListener =
-          GlobalRuntimeRegistry.instance.registerCancelable(requestHandle.cancel);
+      final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
+        requestHandle.cancel,
+      );
 
       try {
         final response = await _sendWithPromptBlocks(
           promptProvider: promptProvider,
           sessionProvider: sessionProvider,
           sessionId: resolvedSessionId,
-          currentInput: message,
+          currentInput: preparedInput,
           apiConfig: apiConfig,
           requestHandle: requestHandle,
         );
 
+        final processedResponse = await _prepareAssistantOutput(
+          response,
+          settings: settingsProvider.settings,
+          sessionId: resolvedSessionId,
+          characterId: settingsProvider.character.id,
+          characterName: settingsProvider.character.name,
+          userName: settingsProvider.userName,
+        );
+
         sessionProvider.addMessageToSession(
           resolvedSessionId,
-          Message(role: MessageRole.assistant, content: response),
+          Message(role: MessageRole.assistant, content: processedResponse),
         );
 
         await _bridge.updatePersistentNotification(
           title: title,
-          message: response,
+          message: processedResponse,
           ongoing: notificationSettings.persistentEnabled,
           sessionId: resolvedSessionId,
         );
@@ -192,7 +228,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         if (notificationSettings.outputAsNewNotification) {
           await _bridge.showHeadsUpNotification(
             title: title,
-            message: response,
+            message: processedResponse,
             sessionId: resolvedSessionId,
           );
         }
@@ -224,7 +260,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     final sessionProvider = _sessionProvider;
     final settingsProvider = _settingsProvider;
     final promptProvider = _promptBlockProvider;
-    final notificationSettings = _notificationSettingsProvider?.notificationSettings;
+    final notificationSettings =
+        _notificationSettingsProvider?.notificationSettings;
 
     if (sessionProvider == null ||
         settingsProvider == null ||
@@ -239,8 +276,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       final requestHandle = _apiService.createRequestHandle();
       _activeRequest = requestHandle;
       _activeOrigin = NotificationRequestOrigin.proactive;
-      final cancelListener =
-          GlobalRuntimeRegistry.instance.registerCancelable(requestHandle.cancel);
+      final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
+        requestHandle.cancel,
+      );
 
       try {
         final response = await _sendWithPromptBlocks(
@@ -253,14 +291,23 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           skipInputBlock: skipInputBlock,
         );
 
+        final processedResponse = await _prepareAssistantOutput(
+          response,
+          settings: settingsProvider.settings,
+          sessionId: sessionId,
+          characterId: settingsProvider.character.id,
+          characterName: settingsProvider.character.name,
+          userName: settingsProvider.userName,
+        );
+
         sessionProvider.addMessageToSession(
           sessionId,
-          Message(role: MessageRole.assistant, content: response),
+          Message(role: MessageRole.assistant, content: processedResponse),
         );
 
         await _bridge.updatePersistentNotification(
           title: title,
-          message: response,
+          message: processedResponse,
           ongoing: notificationSettings.persistentEnabled,
           sessionId: sessionId,
         );
@@ -268,7 +315,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         if (notificationSettings.outputAsNewNotification) {
           await _bridge.showHeadsUpNotification(
             title: title,
-            message: response,
+            message: processedResponse,
             sessionId: sessionId,
           );
         }
@@ -295,6 +342,125 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     });
   }
 
+  Future<String> _prepareUserInput(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onUserMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onUserMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+    return output;
+  }
+
+  Future<String> _prepareAssistantOutput(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onAssistantMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onAssistantMessage(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    final directiveResult = await _directiveService.processAssistantOutput(
+      output,
+      parsingEnabled: settings.live2dDirectiveParsingEnabled,
+    );
+    output = directiveResult.cleanedText;
+
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      output = await _luaScriptingService.onDisplayRender(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+    } else {
+      output = await _luaScriptingService.onDisplayRender(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+        ),
+      );
+      output = await _regexPipeline.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    return output;
+  }
+
   ApiConfig? _resolveApiConfig(String? presetId) {
     final settingsProvider = _settingsProvider;
     if (settingsProvider == null) return null;
@@ -317,8 +483,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     bool skipInputBlock = false,
   }) async {
     final messages = sessionProvider.getMessagesForSession(sessionId);
-    final resolvedConfig =
-        apiConfig ?? _settingsProvider?.activeApiConfig;
+    final resolvedConfig = apiConfig ?? _settingsProvider?.activeApiConfig;
     if (resolvedConfig == null) {
       throw Exception('API 프리셋을 설정해주세요.');
     }

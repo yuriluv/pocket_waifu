@@ -24,6 +24,10 @@ class AppSettings {
   final double presencePenalty;
 
   final String systemPrompt;
+  final bool live2dDirectiveParsingEnabled;
+  final bool live2dPromptInjectionEnabled;
+  final bool runRegexBeforeLua;
+  final String live2dSystemPromptTemplate;
 
   AppSettings({
     this.apiProvider = ApiProvider.openai,
@@ -39,6 +43,11 @@ class AppSettings {
     this.frequencyPenalty = 0.0,
     this.presencePenalty = 0.0,
     this.systemPrompt = '',
+    this.live2dDirectiveParsingEnabled = true,
+    this.live2dPromptInjectionEnabled = true,
+    this.runRegexBeforeLua = true,
+    this.live2dSystemPromptTemplate =
+        '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
   });
 
   String get currentApiKey {
@@ -89,6 +98,10 @@ class AppSettings {
       'frequencyPenalty': frequencyPenalty,
       'presencePenalty': presencePenalty,
       'systemPrompt': systemPrompt,
+      'live2dDirectiveParsingEnabled': live2dDirectiveParsingEnabled,
+      'live2dPromptInjectionEnabled': live2dPromptInjectionEnabled,
+      'runRegexBeforeLua': runRegexBeforeLua,
+      'live2dSystemPromptTemplate': live2dSystemPromptTemplate,
     };
   }
 
@@ -119,6 +132,13 @@ class AppSettings {
       frequencyPenalty: (map['frequencyPenalty'] ?? 0.0).toDouble(),
       presencePenalty: (map['presencePenalty'] ?? 0.0).toDouble(),
       systemPrompt: map['systemPrompt'] ?? '',
+      live2dDirectiveParsingEnabled:
+          map['live2dDirectiveParsingEnabled'] ?? true,
+      live2dPromptInjectionEnabled: map['live2dPromptInjectionEnabled'] ?? true,
+      runRegexBeforeLua: map['runRegexBeforeLua'] ?? true,
+      live2dSystemPromptTemplate:
+          map['live2dSystemPromptTemplate'] ??
+          '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
     );
   }
 
@@ -136,6 +156,10 @@ class AppSettings {
     double? frequencyPenalty,
     double? presencePenalty,
     String? systemPrompt,
+    bool? live2dDirectiveParsingEnabled,
+    bool? live2dPromptInjectionEnabled,
+    bool? runRegexBeforeLua,
+    String? live2dSystemPromptTemplate,
   }) {
     return AppSettings(
       apiProvider: apiProvider ?? this.apiProvider,
@@ -151,6 +175,13 @@ class AppSettings {
       frequencyPenalty: frequencyPenalty ?? this.frequencyPenalty,
       presencePenalty: presencePenalty ?? this.presencePenalty,
       systemPrompt: systemPrompt ?? this.systemPrompt,
+      live2dDirectiveParsingEnabled:
+          live2dDirectiveParsingEnabled ?? this.live2dDirectiveParsingEnabled,
+      live2dPromptInjectionEnabled:
+          live2dPromptInjectionEnabled ?? this.live2dPromptInjectionEnabled,
+      runRegexBeforeLua: runRegexBeforeLua ?? this.runRegexBeforeLua,
+      live2dSystemPromptTemplate:
+          live2dSystemPromptTemplate ?? this.live2dSystemPromptTemplate,
     );
   }
 }

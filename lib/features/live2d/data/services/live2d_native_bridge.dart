@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import '../../domain/entities/interaction_event.dart';
 import 'live2d_log_service.dart';
 
-/// 
+///
 class Live2DNativeBridge {
   static final Live2DNativeBridge _instance = Live2DNativeBridge._internal();
   factory Live2DNativeBridge() => _instance;
@@ -17,64 +17,64 @@ class Live2DNativeBridge {
   static const String _tag = 'NativeBridge';
 
   static const String _channelName = 'com.example.flutter_application_1/live2d';
-  static const String _eventChannelName = 'com.example.flutter_application_1/live2d/events';
-  
+  static const String _eventChannelName =
+      'com.example.flutter_application_1/live2d/events';
+
   final MethodChannel _methodChannel = const MethodChannel(_channelName);
   final EventChannel _eventChannel = const EventChannel(_eventChannelName);
-  
+
   StreamSubscription? _eventSubscription;
-  
+
   final List<InteractionHandler> _eventHandlers = [];
-  
+
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
 
   Stream<InteractionEvent> get eventStream =>
       _eventChannel.receiveBroadcastStream().map((event) {
-        if (event is! Map) return InteractionEvent.now(type: InteractionType.unknown);
+        if (event is! Map)
+          return InteractionEvent.now(type: InteractionType.unknown);
         return InteractionEvent.fromMap(Map<String, dynamic>.from(event));
       });
 
   // ============================================================================
   // ============================================================================
 
-  /// 
+  ///
   Future<void> initialize() async {
     if (_isInitialized) {
       live2dLog.warning(_tag, '이미 초기화됨');
       return;
     }
-    
+
     try {
       live2dLog.info(_tag, '네이티브 브릿지 초기화 시작');
-      
-      _eventSubscription = _eventChannel
-          .receiveBroadcastStream()
-          .listen(
-            _handleRawNativeEvent,
-            onError: (error) {
-              live2dLog.error(_tag, '이벤트 스트림 오류', error: error);
-            },
-          );
-      
+
+      _eventSubscription = _eventChannel.receiveBroadcastStream().listen(
+        _handleRawNativeEvent,
+        onError: (error) {
+          live2dLog.error(_tag, '이벤트 스트림 오류', error: error);
+        },
+      );
+
       _isInitialized = true;
       live2dLog.info(_tag, '네이티브 브릿지 초기화 완료');
     } catch (e, stack) {
       live2dLog.error(_tag, '초기화 실패', error: e, stackTrace: stack);
     }
   }
-  
+
   void _handleRawNativeEvent(dynamic event) {
     if (event is! Map) return;
-    
+
     final map = Map<String, dynamic>.from(event);
     final type = map['type'] as String?;
-    
+
     if (type == 'nativeLog') {
       live2dLog.addNativeLog(map);
       return;
     }
-    
+
     if (type == 'stateSync') {
       _handleStateSync(map);
       return;
@@ -83,7 +83,7 @@ class Live2DNativeBridge {
     if (_isNotificationContractEvent(type)) {
       _notificationContractCallback?.call(map);
     }
-    
+
     final interactionEvent = InteractionEvent.fromMap(map);
     _handleNativeEvent(interactionEvent);
   }
@@ -92,32 +92,35 @@ class Live2DNativeBridge {
     return type == 'notificationSessionSync' ||
         type == 'notificationTouchThroughToggled';
   }
-  
-  /// 
+
+  ///
   void _handleStateSync(Map<String, dynamic> data) {
     final isRunning = data['isRunning'] as bool? ?? false;
     final modelLoaded = data['modelLoaded'] as bool? ?? false;
     final uptimeMs = data['uptimeMs'] as int? ?? 0;
-    
+
     live2dLog.debug(
-      _tag, 
+      _tag,
       '상태 동기화 수신',
-      details: 'running=$isRunning, model=$modelLoaded, uptime=${uptimeMs ~/ 1000}s',
+      details:
+          'running=$isRunning, model=$modelLoaded, uptime=${uptimeMs ~/ 1000}s',
     );
-    
+
     _stateSyncCallback?.call(data);
   }
-  
+
   void Function(Map<String, dynamic>)? _stateSyncCallback;
   void Function(Map<String, dynamic>)? _notificationContractCallback;
-  
-  /// 
+
+  ///
   void setStateSyncCallback(void Function(Map<String, dynamic>)? callback) {
     _stateSyncCallback = callback;
   }
 
   /// Newcastle notification/session sync contract callback.
-  void setNotificationContractCallback(void Function(Map<String, dynamic>)? callback) {
+  void setNotificationContractCallback(
+    void Function(Map<String, dynamic>)? callback,
+  ) {
     _notificationContractCallback = callback;
   }
 
@@ -144,7 +147,7 @@ class Live2DNativeBridge {
 
   void _handleNativeEvent(InteractionEvent event) {
     live2dLog.debug(_tag, '이벤트 수신', details: event.toString());
-    
+
     for (final handler in _eventHandlers) {
       try {
         handler(event);
@@ -187,7 +190,9 @@ class Live2DNativeBridge {
 
   Future<bool> isOverlayVisible() async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('isOverlayVisible');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'isOverlayVisible',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'isOverlayVisible 실패', error: e);
@@ -202,7 +207,9 @@ class Live2DNativeBridge {
 
   Future<bool> hasOverlayPermission() async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('hasOverlayPermission');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'hasOverlayPermission',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'hasOverlayPermission 실패', error: e);
@@ -215,7 +222,9 @@ class Live2DNativeBridge {
   Future<bool> requestOverlayPermission() async {
     try {
       live2dLog.info(_tag, '오버레이 권한 요청');
-      final result = await _methodChannel.invokeMethod<bool>('requestOverlayPermission');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'requestOverlayPermission',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'requestOverlayPermission 실패', error: e);
@@ -227,7 +236,9 @@ class Live2DNativeBridge {
 
   Future<bool> hasStoragePermission() async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('hasStoragePermission');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'hasStoragePermission',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'hasStoragePermission 실패', error: e);
@@ -240,7 +251,9 @@ class Live2DNativeBridge {
   Future<bool> requestStoragePermission() async {
     try {
       live2dLog.info(_tag, '저장소 권한 요청');
-      final result = await _methodChannel.invokeMethod<bool>('requestStoragePermission');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'requestStoragePermission',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'requestStoragePermission 실패', error: e);
@@ -253,7 +266,7 @@ class Live2DNativeBridge {
   // ============================================================================
   // ============================================================================
 
-  /// 
+  ///
   Future<bool> loadModel(String modelPath) async {
     try {
       live2dLog.info(_tag, '모델 로드 요청', details: modelPath);
@@ -283,7 +296,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 
+  ///
   Future<bool> playMotion(String group, int index, {int priority = 2}) async {
     try {
       live2dLog.debug(_tag, '모션 재생', details: '$group[$index]');
@@ -318,7 +331,9 @@ class Live2DNativeBridge {
 
   Future<bool> setRandomExpression() async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setRandomExpression');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setRandomExpression',
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setRandomExpression 실패', error: e);
@@ -361,9 +376,10 @@ class Live2DNativeBridge {
 
   Future<bool> setTouchThroughEnabled(bool enabled) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setTouchThroughEnabled', {
-        'enabled': enabled,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setTouchThroughEnabled',
+        {'enabled': enabled},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setTouchThroughEnabled 실패', error: e);
@@ -375,9 +391,10 @@ class Live2DNativeBridge {
 
   Future<bool> setTouchThroughAlpha(int alpha) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setTouchThroughAlpha', {
-        'alpha': alpha,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setTouchThroughAlpha',
+        {'alpha': alpha},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setTouchThroughAlpha 실패', error: e);
@@ -389,9 +406,10 @@ class Live2DNativeBridge {
 
   Future<bool> setCharacterOpacity(double opacity) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setCharacterOpacity', {
-        'opacity': opacity,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setCharacterOpacity',
+        {'opacity': opacity},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setCharacterOpacity 실패', error: e);
@@ -401,12 +419,15 @@ class Live2DNativeBridge {
     }
   }
 
-  Future<bool> setNotificationResponse(String message, {String? sessionId}) async {
+  Future<bool> setNotificationResponse(
+    String message, {
+    String? sessionId,
+  }) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setNotificationResponse', {
-        'message': message,
-        if (sessionId != null) 'sessionId': sessionId,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setNotificationResponse',
+        {'message': message, if (sessionId != null) 'sessionId': sessionId},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setNotificationResponse 실패', error: e);
@@ -416,12 +437,15 @@ class Live2DNativeBridge {
     }
   }
 
-  Future<bool> setNotificationError(String errorMessage, {String? sessionId}) async {
+  Future<bool> setNotificationError(
+    String errorMessage, {
+    String? sessionId,
+  }) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setNotificationError', {
-        'error': errorMessage,
-        if (sessionId != null) 'sessionId': sessionId,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setNotificationError',
+        {'error': errorMessage, if (sessionId != null) 'sessionId': sessionId},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setNotificationError 실패', error: e);
@@ -447,9 +471,10 @@ class Live2DNativeBridge {
 
   Future<bool> setCharacterPinned(bool enabled) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setCharacterPinned', {
-        'enabled': enabled,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setCharacterPinned',
+        {'enabled': enabled},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setCharacterPinned 실패', error: e);
@@ -461,9 +486,10 @@ class Live2DNativeBridge {
 
   Future<bool> setRelativeScale(double scale) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setRelativeScale', {
-        'scale': scale,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setRelativeScale',
+        {'scale': scale},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setRelativeScale 실패', error: e);
@@ -475,10 +501,10 @@ class Live2DNativeBridge {
 
   Future<bool> setCharacterOffset(double x, double y) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setCharacterOffset', {
-        'x': x,
-        'y': y,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setCharacterOffset',
+        {'x': x, 'y': y},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setCharacterOffset 실패', error: e);
@@ -490,9 +516,10 @@ class Live2DNativeBridge {
 
   Future<bool> setCharacterRotation(int degrees) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setCharacterRotation', {
-        'degrees': degrees,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setCharacterRotation',
+        {'degrees': degrees},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setCharacterRotation 실패', error: e);
@@ -505,7 +532,8 @@ class Live2DNativeBridge {
   Future<Map<String, dynamic>> getDisplayState() async {
     try {
       final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
-          'getDisplayState');
+        'getDisplayState',
+      );
       if (result == null) return {};
       return Map<String, dynamic>.from(result);
     } on PlatformException catch (e) {
@@ -516,8 +544,11 @@ class Live2DNativeBridge {
     }
   }
 
-  Future<bool> setParameter(String paramId, double value,
-      {int durationMs = 0}) async {
+  Future<bool> setParameter(
+    String paramId,
+    double value, {
+    int durationMs = 200,
+  }) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setParameter', {
         'id': paramId,
@@ -549,8 +580,9 @@ class Live2DNativeBridge {
 
   Future<List<String>> getParameterIds() async {
     try {
-      final result =
-          await _methodChannel.invokeMethod<List<dynamic>>('getParameterIds');
+      final result = await _methodChannel.invokeMethod<List<dynamic>>(
+        'getParameterIds',
+      );
       return result?.cast<String>() ?? [];
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'getParameterIds 실패', error: e);
@@ -669,7 +701,9 @@ class Live2DNativeBridge {
 
   Future<List<Map<String, dynamic>>> getAccessories() async {
     try {
-      final result = await _methodChannel.invokeMethod<List<dynamic>>('getAccessories');
+      final result = await _methodChannel.invokeMethod<List<dynamic>>(
+        'getAccessories',
+      );
       if (result == null) return [];
       return result.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } on PlatformException catch (e) {
@@ -683,8 +717,11 @@ class Live2DNativeBridge {
   // ============================================================================
   // ============================================================================
 
-  /// 
-  Future<bool> sendSignal(String signalName, {Map<String, dynamic>? data}) async {
+  ///
+  Future<bool> sendSignal(
+    String signalName, {
+    Map<String, dynamic>? data,
+  }) async {
     try {
       live2dLog.debug(_tag, '신호 전송', details: signalName);
       final result = await _methodChannel.invokeMethod<bool>('sendSignal', {
@@ -705,7 +742,9 @@ class Live2DNativeBridge {
 
   Future<List<String>> getMotionGroups() async {
     try {
-      final result = await _methodChannel.invokeMethod<List<dynamic>>('getMotionGroups');
+      final result = await _methodChannel.invokeMethod<List<dynamic>>(
+        'getMotionGroups',
+      );
       return result?.cast<String>() ?? [];
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'getMotionGroups 실패', error: e);
@@ -731,9 +770,10 @@ class Live2DNativeBridge {
 
   Future<List<String>> getMotionNames(String group) async {
     try {
-      final result = await _methodChannel.invokeMethod<List<dynamic>>('getMotionNames', {
-        'group': group,
-      });
+      final result = await _methodChannel.invokeMethod<List<dynamic>>(
+        'getMotionNames',
+        {'group': group},
+      );
       return result?.cast<String>() ?? [];
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'getMotionNames 실패', error: e);
@@ -745,7 +785,9 @@ class Live2DNativeBridge {
 
   Future<List<String>> getExpressions() async {
     try {
-      final result = await _methodChannel.invokeMethod<List<dynamic>>('getExpressions');
+      final result = await _methodChannel.invokeMethod<List<dynamic>>(
+        'getExpressions',
+      );
       return result?.cast<String>() ?? [];
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'getExpressions 실패', error: e);
@@ -757,7 +799,9 @@ class Live2DNativeBridge {
 
   Future<Map<String, dynamic>> getModelInfo() async {
     try {
-      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getModelInfo');
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getModelInfo',
+      );
       if (result == null) return {};
       return Map<String, dynamic>.from(result);
     } on PlatformException catch (e) {
@@ -768,13 +812,14 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 
+  ///
   Future<Map<String, dynamic>> analyzeModel(String modelPath) async {
     try {
       live2dLog.debug(_tag, '모델 분석', details: modelPath);
-      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('analyzeModel', {
-        'path': modelPath,
-      });
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'analyzeModel',
+        {'path': modelPath},
+      );
       if (result == null) return {};
       return Map<String, dynamic>.from(result);
     } on PlatformException catch (e) {
@@ -787,7 +832,9 @@ class Live2DNativeBridge {
 
   Future<Map<String, int>> getOverlaySize() async {
     try {
-      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getOverlaySize');
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getOverlaySize',
+      );
       if (result == null) return {'width': 300, 'height': 400};
       return {
         'width': (result['width'] as int?) ?? 300,
@@ -820,9 +867,10 @@ class Live2DNativeBridge {
 
   Future<bool> setLowPowerMode(bool enabled) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('setLowPowerMode', {
-        'enabled': enabled,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'setLowPowerMode',
+        {'enabled': enabled},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setLowPowerMode 실패', error: e);
@@ -835,11 +883,13 @@ class Live2DNativeBridge {
   // ============================================================================
   // ============================================================================
 
-  /// 
+  ///
   Future<Map<String, dynamic>> getHealthStatus() async {
     try {
       live2dLog.debug(_tag, 'Health status 조회');
-      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>('getHealthStatus');
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getHealthStatus',
+      );
       if (result == null) return {'error': 'null response'};
       return Map<String, dynamic>.from(result);
     } on PlatformException catch (e) {
@@ -850,7 +900,7 @@ class Live2DNativeBridge {
     }
   }
 
-  /// 
+  ///
   Future<bool> forceReset() async {
     try {
       live2dLog.warning(_tag, '강제 재설정 요청');
