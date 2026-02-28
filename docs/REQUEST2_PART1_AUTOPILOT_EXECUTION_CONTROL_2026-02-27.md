@@ -94,3 +94,44 @@ Task schema:
 2. Run triage cycle now for all review-blocked Part1 tasks and reassign immediately.
 3. For each failed item, execute RCA -> fix -> rerun and stop at 2 retries before escalation.
 4. At cycle close, generate follow-up tasks for every open audit gap.
+
+## 11) Runner Collision Decision WBS (2026-02-28 08:17 UTC)
+
+### Stage 1 — Incident Framing and Containment (Planning/Ops)
+
+- **Problem statement:** request2 execution lane is blocked by runner startup failures (`spawnSync ... EAGAIN`, `spawn opencode EAGAIN`) and prior panic/segfault-style termination (`exit code: -11`).
+- **Reproduction conditions to lock:**
+  1. Parallel launch pressure (multiple opencode spawns in short interval).
+  2. OS process/thread/file-descriptor exhaustion window.
+  3. Prior orphaned process state causing immediate spawn rejection.
+- **Priority:** `P0` (global lane blocker; prevents Dev/QA task throughput).
+- **Containment rule:** while unresolved, enforce single active runner per owner/task lane and queue additional launches.
+- **Exit criteria:** one signed incident note with reproducible trigger class + containment control applied + owner/ETA.
+
+### Stage 2 — Decision Freeze and Work Split (Planning)
+
+- **Decision outputs (mandatory):**
+  1. Root-cause confidence level (`confirmed/probable/unknown`) for `env` vs `procedure` vs `code` path.
+  2. Retry budget and escalation gate (`max 2 reruns`, third fail escalates with named blocker owner).
+  3. Separation of execution tickets into independent Dev and QA tracks.
+- **Governance constraints:**
+  - Do not broadcast duplicated user/source wording.
+  - Do not start any Part2 implementation.
+  - Keep evidence attached per rerun attempt.
+- **Exit criteria:** decision log published and board rows created for Dev/QA execution tracks.
+
+### Stage 3 — Dev/QA Execution Tracks (Post-Decision)
+
+| Track | Owner | Scope | Must-Do Outputs | Completion Criteria |
+|---|---|---|---|---|
+| DEV-RUNNER-HARDEN | Dev (Aria lane) | launcher resilience for EAGAIN/panic window | backoff+jitter spawn retry policy, single-flight lock, panic-safe exit classification (`env/procedure`) | 30 sequential launches pass with zero unclassified crash; blocker status downgraded |
+| QA-RUNNER-STRESS | QA (Hawk lane) | deterministic reproduction + stability validation | stress matrix (`1/2/4` parallel launch profiles), evidence log, failure taxonomy verification | 2 consecutive stress cycles pass; no `EAGAIN` and no `exit -11` in captured logs |
+| OPS-RUNNER-GUARD | Ops (Atlas lane) | runtime guardrails and triage SLA | launch queue control, orphan cleanup checklist, 30-minute triage snapshots | no queue starvation over one full cycle; all failed runs ticketed with owner+ETA |
+
+### Stage Completion Definition
+
+`request2-2026-02-28T08:17Z` planning decision is considered complete only when:
+
+1. Stage 1 containment evidence exists.
+2. Stage 2 decision record is merged into planning docs and board.
+3. Stage 3 Dev/QA tracks are split and independently assignable.

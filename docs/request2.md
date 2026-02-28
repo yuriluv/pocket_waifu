@@ -332,3 +332,13 @@ Guidelines:
   - `artifacts/ops/request2_part1_evidence/review_inbox_cycle_20260228T072223Z.md`
   - `artifacts/ops/request2_part1_evidence/review_inbox_triage_20260228T072223Z.tsv`
   - `artifacts/ops/request2_part1_evidence/part2_block_watch_20260228T072223Z.log`
+
+### Decision Log (2026-02-28 08:17 UTC)
+- Issue: request2 runner lane blocked by repeated spawn failures (`spawnSync ... EAGAIN`, `spawn opencode EAGAIN`) with latest failed run history including `exit code: -11`.
+- Decision: Part1 운영 오케스트레이션 WBS를 3단계로 재정의 (`Stage 1 Incident/Containment -> Stage 2 Decision Freeze -> Stage 3 Dev/QA Split`)하고 Part2 선행 구현 금지를 재확인.
+- Priority/Policy: classify as `P0 env/procedure blocker`; apply single-runner containment and `RCA -> fix -> rerun` (max 2 retries) before escalation.
+- Split tasks created:
+  - Dev track: runner hardening (spawn backoff, single-flight guard, panic-safe classification)
+  - QA track: runner stress matrix (`1/2/4` parallel launch) and two-cycle stability sign-off
+  - Ops track: queue guard + orphan cleanup + 30-minute triage evidence
+- Completion criteria fixed: no `EAGAIN` and no `exit -11` in two consecutive stress cycles; all failures mapped to `code/env/data/procedure` with owner+ETA.

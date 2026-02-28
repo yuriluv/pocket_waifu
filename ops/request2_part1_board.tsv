@@ -1,6 +1,6 @@
 task_id	stage	team	status	owner	review_wait_minutes	retry_count	failure_class	last_update_utc	branch
 OPS-P1-PLAN-001	planning_ops	ops	in_progress	atlas	0	0	none	2026-02-28T07:22:23Z	main
-PLAN-P1-DECOMP-001	planning_ops	planning	in_progress	sage	0	0	none	2026-02-28T07:22:23Z	main
+PLAN-P1-DECOMP-001	planning_ops	planning	done	sage	0	0	none	2026-02-28T08:17:00Z	main
 OPS-P1-RESULT-001	planning_ops	ops	cancelled	atlas	0	0	procedure	2026-02-28T06:03:00Z	main
 PART2-IMPL-LOCK-001	part2_implementation	dev	blocked	aria	0	0	procedure	2026-02-28T07:22:23Z	main
 DEV-P1-IMPL-001	implementation	dev	cancelled	ops-fastlane	0	0	procedure	2026-02-28T06:03:00Z	main
@@ -21,3 +21,7 @@ DES-P1-EDITMODE-UX-005	implementation	design	done	luna	0	0	none	2026-02-28T06:17
 DES-P1-LUA-REGEX-PROTO-006	implementation	design	done	luna	0	0	none	2026-02-28T06:17:01Z	main
 FOLLOWUP-P1-DES-PROTO-BIND-001	planning_ops	design	cancelled	luna	0	0	procedure	2026-02-28T07:22:23Z	main
 FOLLOWUP-P1-OPS-PUSH-RETRY-002	planning_ops	ops	in_progress	atlas	0	0	env	2026-02-28T07:22:23Z	main
+DEC-P1-RUNNER-EAGAIN-001	decision	planning	done	sage	0	0	env	2026-02-28T08:17:00Z	main
+OPS-P1-RUNNER-CONTAIN-002	planning_ops	ops	in_progress	atlas	0	0	env	2026-02-28T08:17:00Z	main
+DEV-P1-RUNNER-HARDEN-005	implementation	dev	in_progress	aria	0	0	env	2026-02-28T08:17:00Z	main
+QA-P1-RUNNER-STRESS-004	qa	qa	pending	hawk	0	0	env	2026-02-28T08:17:00Z	main
