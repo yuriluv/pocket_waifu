@@ -225,6 +225,14 @@ class Live2DGLSurfaceView : GLSurfaceView {
             queueEvent { r.setLowPowerMode(enabled) }
         }
     }
+
+    /**
+     */
+    fun setParameterValue(paramId: String, value: Float, durationMs: Int) {
+        renderer?.let { r ->
+            queueEvent { r.setParameterValue(paramId, value, durationMs) }
+        }
+    }
     
     /**
      */

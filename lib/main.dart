@@ -93,22 +93,6 @@ class PocketWaifuApp extends StatelessWidget {
 
         ChangeNotifierProvider(create: (_) => PromptPresetProvider()),
 
-        ProxyProvider2<SettingsProvider, NotificationSettingsProvider,
-            NotificationSettingsProvider>(
-          update: (_, settingsProvider, notificationSettings, __) {
-            notificationSettings.rebindApiPresets(settingsProvider.apiConfigs);
-            return notificationSettings;
-          },
-        ),
-
-        ProxyProvider2<PromptPresetProvider, NotificationSettingsProvider,
-            NotificationSettingsProvider>(
-          update: (_, promptPresets, notificationSettings, __) {
-            notificationSettings.rebindPromptPresets(promptPresets.presets);
-            return notificationSettings;
-          },
-        ),
-
         Provider(
           create: (_) {
             final handler = Live2DGlobalRuntimeHandler();
@@ -124,16 +108,22 @@ class PocketWaifuApp extends StatelessWidget {
             GlobalRuntimeProvider, NotificationCoordinator>(
           create: (_) =>
               NotificationCoordinator(bridge: NotificationBridge.instance),
-          update: (_, settings, prompt, sessions, notificationSettings,
+          update: (context, settings, prompt, sessions, notificationSettings,
               globalRuntime, coordinator) {
-            coordinator.attach(
+            final instance = coordinator ??
+                NotificationCoordinator(bridge: NotificationBridge.instance);
+            notificationSettings.rebindApiPresets(settings.apiConfigs);
+            notificationSettings.rebindPromptPresets(
+              context.read<PromptPresetProvider>().presets,
+            );
+            instance.attach(
               settingsProvider: settings,
               promptBlockProvider: prompt,
               sessionProvider: sessions,
               notificationSettingsProvider: notificationSettings,
               globalRuntimeProvider: globalRuntime,
             );
-            return coordinator;
+            return instance;
           },
           dispose: (_, coordinator) => coordinator.dispose(),
         ),

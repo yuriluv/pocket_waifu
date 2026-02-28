@@ -77,7 +77,7 @@ object NotificationHelper {
             .build()
 
         val replyAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_launcher_foreground,
+            R.mipmap.ic_launcher,
             "Reply",
             replyPendingIntent
         )
@@ -97,7 +97,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val cancelAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_launcher_foreground,
+            R.mipmap.ic_launcher,
             "Cancel",
             cancelPendingIntent
         ).build()
@@ -114,7 +114,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val touchAction = NotificationCompat.Action.Builder(
-            R.drawable.ic_launcher_foreground,
+            R.mipmap.ic_launcher,
             "Touch-Through",
             touchPendingIntent
         ).build()
@@ -126,7 +126,7 @@ object NotificationHelper {
         }
 
         return NotificationCompat.Builder(context, NotificationConstants.CHANNEL_PERSISTENT)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(statusText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
@@ -157,7 +157,7 @@ object NotificationHelper {
         )
 
         return NotificationCompat.Builder(context, NotificationConstants.CHANNEL_HEADS_UP)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))

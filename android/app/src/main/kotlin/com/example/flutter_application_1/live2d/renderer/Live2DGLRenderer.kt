@@ -588,6 +588,13 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         frameTimeMs = 1000L / targetFps
         Live2DLogger.Renderer.d("저전력 모드", if (enabled) "활성화 (${LOW_POWER_FPS}fps)" else "비활성화 (${DEFAULT_FPS}fps)")
     }
+
+    /**
+     */
+    fun setParameterValue(paramId: String, value: Float, durationMs: Int) {
+        Live2DLogger.Renderer.d("파라미터 설정", "$paramId = $value ($durationMs ms)")
+        // live2DModel?.setParameterValue(paramId, value, durationMs)
+    }
     
     /**
      */

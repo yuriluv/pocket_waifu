@@ -21,6 +21,7 @@ class PromptBuilder {
     required List<PromptBlock> blocks,
     required List<Message> pastMessages,
     required String currentInput,
+    bool skipInputBlock = false,
   }) {
     final enabledBlocks = blocks.where((block) => block.isActive).toList()
       ..sort((a, b) => a.order.compareTo(b.order));
@@ -33,7 +34,9 @@ class PromptBuilder {
       if (block.type == PromptBlock.typePastMemory) {
         content = _buildPastMemoryXml(pastMessages, block);
       } else if (block.type == PromptBlock.typeInput) {
-        content = currentInput;
+        if (!skipInputBlock) {
+          content = currentInput;
+        }
       } else if (block.type == PromptBlock.typePrompt) {
         content = block.content;
       } else {
@@ -92,6 +95,7 @@ class PromptBuilder {
     required String currentInput,
     bool hasFirstSystemPrompt = true,
     bool requiresAlternateRole = true,
+    bool skipInputBlock = false,
   }) {
     // Kept for API compatibility with existing call sites.
     final _ = requiresAlternateRole;
@@ -100,6 +104,7 @@ class PromptBuilder {
       blocks: blocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
+      skipInputBlock: skipInputBlock,
     );
 
     if (prompt.isEmpty) {

@@ -42,4 +42,7 @@ object Live2DNativeBridge {
     external fun nativeDraw(mvp: FloatArray)
 
     external fun nativeReleaseModel()
+
+    fun nativeGetParameterValue(paramId: String): Float = 0f
+    fun nativeGetParameterIds(): Array<String> = emptyArray()
 }

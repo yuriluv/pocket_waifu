@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -386,6 +388,7 @@ class PromptBlockProvider extends ChangeNotifier {
     String currentInput, {
     bool hasFirstSystemPrompt = true,
     bool requiresAlternateRole = true,
+    bool skipInputBlock = false,
   }) {
     return _promptBuilder.buildMessagesForApi(
       blocks: _workingBlocks,
@@ -393,27 +396,134 @@ class PromptBlockProvider extends ChangeNotifier {
       currentInput: currentInput,
       hasFirstSystemPrompt: hasFirstSystemPrompt,
       requiresAlternateRole: requiresAlternateRole,
+      skipInputBlock: skipInputBlock,
     );
   }
 
   Future<(bool, String?)> exportPresetToFile(PromptPreset preset) async {
     try {
-      final filePath = await FilePicker.platform.saveFile(
-        dialogTitle: '프롬프트 프리셋 저장',
-        fileName: '${preset.name}.json',
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
-      if (filePath == null) {
-        return (false, '저장이 취소되었습니다.');
+      final String exportFileName = _sanitizeExportFileName('${preset.name}.json');
+      final PromptPreset exportPreset = _buildExportPreset(preset);
+      final String jsonString = jsonEncode(exportPreset.toExternalMap());
+
+      String? filePath;
+      Object? pickerError;
+      try {
+        filePath = await FilePicker.platform.saveFile(
+          dialogTitle: '프롬프트 프리셋 저장',
+          fileName: exportFileName,
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+          bytes: utf8.encode(jsonString),
+        );
+      } catch (e) {
+        pickerError = e;
       }
+
+      if (filePath == null) {
+        if (pickerError == null) {
+          return (false, '저장이 취소되었습니다.');
+        }
+        filePath = await _resolveFallbackExportPath(exportFileName);
+      }
+
+      if (filePath == null) {
+        return (false, '저장 경로를 찾을 수 없습니다.');
+      }
+
+      if (kIsWeb) {
+        return (true, '브라우저 다운로드를 확인하세요.');
+      }
+
+      final parent = Directory(p.dirname(filePath));
+      if (!await parent.exists()) {
+        await parent.create(recursive: true);
+      }
+
       final file = File(filePath);
-      final jsonString = jsonEncode(preset.toExternalMap());
       await file.writeAsString(jsonString);
-      return (true, null);
+      return (true, '저장 위치: $filePath');
     } catch (e) {
       return (false, '저장 실패: $e');
     }
+  }
+
+  PromptPreset _buildExportPreset(PromptPreset preset) {
+    final bool isActive = preset.id == _activePresetId;
+    final sourceBlocks = isActive ? _workingBlocks : preset.blocks;
+    return preset.copyWith(blocks: _normalizeBlocks(_cloneBlocks(sourceBlocks)));
+  }
+
+  Future<String?> _resolveFallbackExportPath(String fileName) async {
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      return p.join(docsDir.path, fileName);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _sanitizeExportFileName(String fileName) {
+    final sanitized = fileName
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (sanitized.isEmpty || sanitized == '.json') {
+      return 'prompt_preset.json';
+    }
+
+    return sanitized.toLowerCase().endsWith('.json')
+        ? sanitized
+        : '$sanitized.json';
+  }
+
+  bool _parseBool(dynamic value, {required bool defaultValue}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+      if (normalized == 'true' || normalized == '1') {
+        return true;
+      }
+      if (normalized == 'false' || normalized == '0') {
+        return false;
+      }
+    }
+    return defaultValue;
+  }
+
+  String _parseRange(dynamic value, {required String defaultValue}) {
+    if (value == null) return defaultValue;
+    final parsed = int.tryParse(value.toString().trim());
+    if (parsed == null || parsed < 1) {
+      return defaultValue;
+    }
+    return parsed.toString();
+  }
+
+  String _normalizeImportedType(dynamic rawType) {
+    final value = rawType?.toString().trim().toLowerCase() ?? '';
+    return switch (value) {
+      'prompt' => PromptBlock.typePrompt,
+      'input' || 'user_input' => PromptBlock.typeInput,
+      'pastmemory' || 'past_memory' || 'past-memory' =>
+        PromptBlock.typePastMemory,
+      _ => value,
+    };
+  }
+
+  Future<String> _readPickedFileAsString(PlatformFile file) async {
+    if (file.bytes != null) {
+      return utf8.decode(file.bytes!, allowMalformed: true);
+    }
+
+    if (file.path == null) {
+      throw const FormatException('파일을 읽을 수 없습니다.');
+    }
+
+    final bytes = await File(file.path!).readAsBytes();
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   Future<(bool, String?)> importPresetFromFile({String? overrideName}) async {
@@ -428,14 +538,7 @@ class PromptBlockProvider extends ChangeNotifier {
       }
 
       final file = result.files.single;
-      String rawJson;
-      if (file.bytes != null) {
-        rawJson = utf8.decode(file.bytes!);
-      } else if (file.path != null) {
-        rawJson = await File(file.path!).readAsString();
-      } else {
-        return (false, '파일을 읽을 수 없습니다.');
-      }
+      final rawJson = await _readPickedFileAsString(file);
 
       final decoded = jsonDecode(rawJson);
       final (preset, error) = _parseImportedPreset(decoded, overrideName);
@@ -475,8 +578,9 @@ class PromptBlockProvider extends ChangeNotifier {
     }
 
     if (decoded is Map) {
-      final name = decoded['name']?.toString() ?? overrideName ?? 'Imported Preset';
-      final blocksRaw = decoded['blocks'];
+      final map = Map<String, dynamic>.from(decoded);
+      final name = map['name']?.toString() ?? overrideName ?? 'Imported Preset';
+      final blocksRaw = map['blocks'];
       if (blocksRaw is! List) {
         return (null, 'blocks 필드가 없습니다.');
       }
@@ -500,19 +604,21 @@ class PromptBlockProvider extends ChangeNotifier {
     final blocks = <PromptBlock>[];
     for (final raw in rawBlocks) {
       if (raw is! Map) continue;
-      final type = raw['type']?.toString() ?? PromptBlock.typePrompt;
+      final map = Map<String, dynamic>.from(raw);
+      final type = _normalizeImportedType(map['type']);
       if (!PromptBlock.isRecognizedType(type)) {
         continue;
       }
-      final title = raw['title']?.toString() ?? 'Prompt';
-      final isActive = raw['isActive'] ?? true;
+      final title =
+          map['title']?.toString() ?? map['name']?.toString() ?? 'Prompt';
+      final isActive = _parseBool(map['isActive'], defaultValue: true);
       if (type == PromptBlock.typePastMemory) {
         blocks.add(
           PromptBlock.pastMemory(
             title: title,
-            range: raw['range']?.toString() ?? '1',
-            userHeader: raw['userHeader']?.toString() ?? 'user',
-            charHeader: raw['charHeader']?.toString() ?? 'char',
+            range: _parseRange(map['range'], defaultValue: '1'),
+            userHeader: map['userHeader']?.toString() ?? 'user',
+            charHeader: map['charHeader']?.toString() ?? 'char',
             isActive: isActive,
           ),
         );
@@ -527,7 +633,7 @@ class PromptBlockProvider extends ChangeNotifier {
         blocks.add(
           PromptBlock.prompt(
             title: title,
-            content: raw['content']?.toString() ?? '',
+            content: map['content']?.toString() ?? '',
             isActive: isActive,
           ),
         );

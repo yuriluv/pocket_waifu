@@ -16,7 +16,7 @@ import '../services/prompt_builder.dart';
 import '../services/release_log_service.dart';
 
 class ApiCancelledException implements Exception {
-  const ApiCancelledException([this.message = '요청이 취소되었습니다.']);
+  const ApiCancelledException([this.message = 'Request was cancelled.']);
 
   final String message;
 
@@ -60,6 +60,11 @@ class ApiService {
   final PromptBuilder _promptBuilder = PromptBuilder();
 
   static const String _anthropicVersion = '2023-06-01';
+  static const Set<String> _tokenLimitKeys = {
+    'max_tokens',
+    'max_completion_tokens',
+    'max_output_tokens',
+  };
 
   ApiRequestHandle createRequestHandle() => ApiRequestHandle();
 
@@ -73,21 +78,21 @@ class ApiService {
   }) async {
     requestHandle?.throwIfCancelled();
 
-    debugPrint('╔════════════════════════════════════════════════════════════');
-    debugPrint('║ === API 호출 디버그 (v2.0.1) ===');
-    debugPrint('║ Config ID: ${apiConfig.id}');
-    debugPrint('║ Config Name: ${apiConfig.name}');
-    debugPrint('║ Base URL: ${apiConfig.baseUrl}');
-    debugPrint('║ Model: ${apiConfig.modelName}');
+    debugPrint('============================================================');
+    debugPrint('=== API Request Debug (v2.0.1) ===');
+    debugPrint('Config ID: ${apiConfig.id}');
+    debugPrint('Config Name: ${apiConfig.name}');
+    debugPrint('Base URL: ${apiConfig.baseUrl}');
+    debugPrint('Model: ${apiConfig.modelName}');
     debugPrint(
-      '║ API Key (앞 10자): ${apiConfig.apiKey.substring(0, min(10, apiConfig.apiKey.length))}...',
+      'API Key (first 10): ${apiConfig.apiKey.substring(0, min(10, apiConfig.apiKey.length))}...',
     );
-    debugPrint('║ Format: ${apiConfig.format.name}');
-    debugPrint('║ Messages count: ${messages.length}');
-    debugPrint('╚════════════════════════════════════════════════════════════');
+    debugPrint('Format: ${apiConfig.format.name}');
+    debugPrint('Messages count: ${messages.length}');
+    debugPrint('============================================================');
 
     if (apiConfig.apiKey.isEmpty) {
-      throw Exception('API 키가 설정되지 않았습니다. 설정에서 API 프리셋을 확인해주세요.');
+      throw Exception('API key is not set. Please check the API preset.');
     }
 
     final bool isAnthropic =
@@ -120,17 +125,11 @@ class ApiService {
   }) async {
     requestHandle?.throwIfCancelled();
 
-    final Map<String, dynamic> requestBody = {
-      'model': apiConfig.modelName,
-      'messages': messages,
-      'temperature': settings.temperature,
-      'top_p': settings.topP,
-      'max_tokens': settings.maxTokens,
-      'frequency_penalty': settings.frequencyPenalty,
-      'presence_penalty': settings.presencePenalty,
-    };
-
-    requestBody.addAll(apiConfig.additionalParams);
+    final Map<String, dynamic> requestBody = _buildOpenAICompatibleRequestBody(
+      apiConfig: apiConfig,
+      messages: messages,
+      settings: settings,
+    );
 
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
@@ -139,7 +138,7 @@ class ApiService {
 
     headers.addAll(apiConfig.customHeaders);
 
-    debugPrint('>>> OpenAI Compatible API 요청');
+    debugPrint('>>> OpenAI Compatible API request');
     debugPrint('>>> URL: ${apiConfig.baseUrl}');
     debugPrint('>>> Headers: ${headers.keys.join(', ')}');
 
@@ -172,15 +171,38 @@ class ApiService {
         final String content = data['choices'][0]['message']['content'];
         return content.trim();
       } else {
-        String errorMessage = '알 수 없는 오류';
-        try {
-          final Map<String, dynamic> errorData = jsonDecode(response.body);
-          errorMessage =
-              errorData['error']?['message'] ??
-              errorData['message'] ??
-              response.body;
-        } catch (_) {
-          errorMessage = response.body;
+        String errorMessage = _extractErrorMessage(response.body);
+        if (response.statusCode == 400) {
+          final suggestedKey = _extractSuggestedTokenKey(errorMessage);
+          if (suggestedKey != null &&
+              !requestBody.containsKey(suggestedKey) &&
+              _tokenLimitKeys.contains(suggestedKey)) {
+            final retryBody = _replaceTokenLimitKey(
+              requestBody,
+              suggestedKey,
+              settings.maxTokens,
+            );
+            debugPrint(
+              '>>> Retrying with token parameter: $suggestedKey (compatibility fallback)',
+            );
+
+            final retryResponse = await _awaitWithCancellation(
+              request: client.post(
+                Uri.parse(apiConfig.baseUrl),
+                headers: headers,
+                body: jsonEncode(retryBody),
+              ),
+              requestHandle: requestHandle,
+            );
+
+            if (retryResponse.statusCode == 200) {
+              final Map<String, dynamic> data = jsonDecode(retryResponse.body);
+              final String content = data['choices'][0]['message']['content'];
+              return content.trim();
+            }
+
+            errorMessage = _extractErrorMessage(retryResponse.body);
+          }
         }
         debugPrint('>>> API Error: $errorMessage');
         await ReleaseLogService.instance.warning(
@@ -193,7 +215,7 @@ class ApiService {
             'reason': _safeReason(errorMessage),
           },
         );
-        throw Exception('API 오류 (${response.statusCode}): $errorMessage');
+        throw Exception('API error (${response.statusCode}): $errorMessage');
       }
     } on ApiCancelledException {
       rethrow;
@@ -210,7 +232,7 @@ class ApiService {
         },
       );
       if (e is Exception) rethrow;
-      throw Exception('API 요청 실패: $e');
+      throw Exception('API request failed: $e');
     } finally {
       if (requestHandle == null) {
         client.close();
@@ -244,22 +266,18 @@ class ApiService {
     }
 
     if (chatMessages.isNotEmpty && chatMessages.first['role'] == 'assistant') {
-      chatMessages.insert(0, {'role': 'user', 'content': '(대화 시작)'});
+      chatMessages.insert(0, {'role': 'user', 'content': '(conversation start)'});
     }
 
-    final Map<String, dynamic> requestBody = {
-      'model': apiConfig.modelName,
-      'max_tokens': settings.maxTokens,
-      'temperature': settings.temperature,
-      'top_p': settings.topP,
-      'messages': chatMessages,
-    };
+    final Map<String, dynamic> requestBody = _buildAnthropicRequestBody(
+      apiConfig: apiConfig,
+      chatMessages: chatMessages,
+      settings: settings,
+    );
 
     if (systemMessage != null && systemMessage.isNotEmpty) {
       requestBody['system'] = systemMessage;
     }
-
-    requestBody.addAll(apiConfig.additionalParams);
 
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
@@ -269,7 +287,7 @@ class ApiService {
 
     headers.addAll(apiConfig.customHeaders);
 
-    debugPrint('>>> Anthropic API 요청');
+    debugPrint('>>> Anthropic API request');
     debugPrint('>>> URL: ${apiConfig.baseUrl}');
     debugPrint('>>> Model: ${apiConfig.modelName}');
 
@@ -304,7 +322,7 @@ class ApiService {
       } else {
         final Map<String, dynamic> errorData = jsonDecode(response.body);
         final String errorMessage =
-            errorData['error']?['message'] ?? '알 수 없는 오류';
+            errorData['error']?['message'] ?? 'Unknown error';
         debugPrint('>>> Anthropic Error: $errorMessage');
         await ReleaseLogService.instance.warning(
           'api_response',
@@ -317,7 +335,7 @@ class ApiService {
           },
         );
         throw Exception(
-          'Anthropic API 오류 (${response.statusCode}): $errorMessage',
+          'Anthropic API error (${response.statusCode}): $errorMessage',
         );
       }
     } on ApiCancelledException {
@@ -335,7 +353,7 @@ class ApiService {
         },
       );
       if (e is Exception) rethrow;
-      throw Exception('Anthropic API 요청 실패: $e');
+      throw Exception('Anthropic API request failed: $e');
     } finally {
       if (requestHandle == null) {
         client.close();
@@ -355,6 +373,117 @@ class ApiService {
 
   String _safeReason(String input) {
     return input.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Map<String, dynamic> _buildOpenAICompatibleRequestBody({
+    required ApiConfig apiConfig,
+    required List<Map<String, String>> messages,
+    required AppSettings settings,
+  }) {
+    final Map<String, dynamic> requestBody = {
+      'model': apiConfig.modelName,
+      'messages': messages,
+      'temperature': settings.temperature,
+      'top_p': settings.topP,
+      'frequency_penalty': settings.frequencyPenalty,
+      'presence_penalty': settings.presencePenalty,
+    };
+
+    requestBody.addAll(_withoutTokenLimitParams(apiConfig.additionalParams));
+
+    final tokenKey = _preferredTokenLimitKey(
+      apiConfig: apiConfig,
+      isAnthropic: false,
+    );
+    requestBody[tokenKey] = settings.maxTokens;
+
+    return requestBody;
+  }
+
+  Map<String, dynamic> _buildAnthropicRequestBody({
+    required ApiConfig apiConfig,
+    required List<Map<String, String>> chatMessages,
+    required AppSettings settings,
+  }) {
+    final Map<String, dynamic> requestBody = {
+      'model': apiConfig.modelName,
+      'temperature': settings.temperature,
+      'top_p': settings.topP,
+      'messages': chatMessages,
+    };
+
+    requestBody.addAll(_withoutTokenLimitParams(apiConfig.additionalParams));
+    requestBody['max_tokens'] = settings.maxTokens;
+
+    return requestBody;
+  }
+
+  Map<String, dynamic> _withoutTokenLimitParams(Map<String, dynamic> source) {
+    final cloned = Map<String, dynamic>.from(source);
+    for (final key in _tokenLimitKeys) {
+      cloned.remove(key);
+    }
+    return cloned;
+  }
+
+  String _preferredTokenLimitKey({
+    required ApiConfig apiConfig,
+    required bool isAnthropic,
+  }) {
+    if (isAnthropic) {
+      return 'max_tokens';
+    }
+
+    if (apiConfig.useMaxOutputTokens) {
+      return 'max_output_tokens';
+    }
+
+    final additional = apiConfig.additionalParams;
+    if (additional.containsKey('max_completion_tokens')) {
+      return 'max_completion_tokens';
+    }
+    if (additional.containsKey('max_output_tokens')) {
+      return 'max_output_tokens';
+    }
+    return 'max_tokens';
+  }
+
+  String _extractErrorMessage(String responseBody) {
+    try {
+      final Map<String, dynamic> errorData = jsonDecode(responseBody);
+      return errorData['error']?['message'] ??
+          errorData['message'] ??
+          responseBody;
+    } catch (_) {
+      return responseBody;
+    }
+  }
+
+  String? _extractSuggestedTokenKey(String errorMessage) {
+    final lower = errorMessage.toLowerCase();
+    if (lower.contains('max_completion_tokens')) {
+      return 'max_completion_tokens';
+    }
+    if (lower.contains('max_output_tokens')) {
+      return 'max_output_tokens';
+    }
+    if (lower.contains('max_tokens')) {
+      return 'max_tokens';
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _replaceTokenLimitKey(
+    Map<String, dynamic> original,
+    String tokenKey,
+    int tokenValue,
+  ) {
+    final next = Map<String, dynamic>.from(original);
+    for (final key in _tokenLimitKeys) {
+      next.remove(key);
+    }
+    next[tokenKey] = tokenValue;
+    return next;
   }
 
   Future<T> _awaitWithCancellation<T>({
@@ -425,19 +554,19 @@ class ApiService {
 
   ///
   Future<(bool, String)> testConnection(ApiConfig apiConfig) async {
-    debugPrint('╔════════════════════════════════════════════════════════════');
-    debugPrint('║ === API 연결 테스트 시작 ===');
-    debugPrint('║ Config: ${apiConfig.name}');
-    debugPrint('║ URL: ${apiConfig.baseUrl}');
-    debugPrint('║ Model: ${apiConfig.modelName}');
-    debugPrint('╚════════════════════════════════════════════════════════════');
+    debugPrint('============================================================');
+    debugPrint('=== API connection test start ===');
+    debugPrint('Config: ${apiConfig.name}');
+    debugPrint('URL: ${apiConfig.baseUrl}');
+    debugPrint('Model: ${apiConfig.modelName}');
+    debugPrint('============================================================');
 
     if (apiConfig.apiKey.isEmpty) {
-      return (false, 'API 키가 설정되지 않았습니다.');
+      return (false, 'API key is not set.');
     }
 
     if (apiConfig.baseUrl.isEmpty) {
-      return (false, 'Base URL이 설정되지 않았습니다.');
+      return (false, 'Base URL is not set.');
     }
 
     try {
@@ -453,20 +582,26 @@ class ApiService {
           ...apiConfig.customHeaders,
         };
 
+        final requestBody = _buildAnthropicRequestBody(
+          apiConfig: apiConfig,
+          chatMessages: [
+            {'role': 'user', 'content': 'test'},
+          ],
+          settings: AppSettings(
+            maxTokens: 10,
+            temperature: 0.0,
+            topP: 1.0,
+          ),
+        );
+
         final response = await http.post(
           Uri.parse(apiConfig.baseUrl),
           headers: headers,
-          body: jsonEncode({
-            'model': apiConfig.modelName,
-            'max_tokens': 10,
-            'messages': [
-              {'role': 'user', 'content': 'test'},
-            ],
-          }),
+          body: jsonEncode(requestBody),
         );
 
         if (response.statusCode == 200) {
-          return (true, '연결 성공! (Anthropic)');
+          return (true, 'Connection successful! (Anthropic)');
         } else {
           final errorData = jsonDecode(response.body);
           final errorMsg = errorData['error']?['message'] ?? response.body;
@@ -479,20 +614,43 @@ class ApiService {
           ...apiConfig.customHeaders,
         };
 
-        final response = await http.post(
-          Uri.parse(apiConfig.baseUrl),
-          headers: headers,
-          body: jsonEncode({
-            'model': apiConfig.modelName,
-            'messages': [
-              {'role': 'user', 'content': 'test'},
-            ],
-            'max_tokens': 10,
-          }),
+        final requestBody = _buildOpenAICompatibleRequestBody(
+          apiConfig: apiConfig,
+          messages: [
+            {'role': 'user', 'content': 'test'},
+          ],
+          settings: AppSettings(
+            maxTokens: 10,
+            temperature: 0.0,
+            topP: 1.0,
+            frequencyPenalty: 0.0,
+            presencePenalty: 0.0,
+          ),
         );
 
+        var response = await http.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        );
+
+        if (response.statusCode == 400) {
+          final errorMsg = _extractErrorMessage(response.body);
+          final suggestedKey = _extractSuggestedTokenKey(errorMsg);
+          if (suggestedKey != null &&
+              !requestBody.containsKey(suggestedKey) &&
+              _tokenLimitKeys.contains(suggestedKey)) {
+            final retryBody = _replaceTokenLimitKey(requestBody, suggestedKey, 10);
+            response = await http.post(
+              Uri.parse(apiConfig.baseUrl),
+              headers: headers,
+              body: jsonEncode(retryBody),
+            );
+          }
+        }
+
         if (response.statusCode == 200) {
-          return (true, '연결 성공!');
+          return (true, 'Connection successful!');
         } else {
           String errorMsg = response.body;
           try {
@@ -503,8 +661,8 @@ class ApiService {
         }
       }
     } catch (e) {
-      debugPrint('>>> 연결 테스트 오류: $e');
-      return (false, '연결 오류: $e');
+      debugPrint('>>> Connection test error: $e');
+      return (false, 'Connection error: $e');
     }
   }
 

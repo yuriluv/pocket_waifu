@@ -2,7 +2,6 @@
 // ============================================================================
 // ============================================================================
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -35,7 +34,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   final FocusNode _inputFocusNode = FocusNode();
 
-  bool _isInputActive = false;
+  bool _shouldRestoreFocusAfterDrawerClose = false;
 
   bool _isProviderLinked = false;
 
@@ -351,9 +350,7 @@ class _ChatScreenState extends State<ChatScreen>
       onPopInvokedWithResult: (didPop, result) {
         if (_inputFocusNode.hasFocus) {
           _inputFocusNode.unfocus();
-          setState(() {
-            _isInputActive = false;
-          });
+          _shouldRestoreFocusAfterDrawerClose = false;
           debugPrint('>>> v2.0.6: Back pressed - input deactivated');
         }
       },
@@ -361,23 +358,25 @@ class _ChatScreenState extends State<ChatScreen>
         drawer: const MenuDrawer(),
         onDrawerChanged: (isOpened) {
           if (isOpened) {
+            _shouldRestoreFocusAfterDrawerClose = _inputFocusNode.hasFocus;
             if (_inputFocusNode.hasFocus) {
               _inputFocusNode.unfocus();
               debugPrint(
-                '>>> v2.0.6: Drawer opened - unfocused (isInputActive=$_isInputActive)',
+                '>>> v2.0.6: Drawer opened - unfocused (restore=$_shouldRestoreFocusAfterDrawerClose)',
               );
             }
           } else {
-            if (_isInputActive) {
+            if (_shouldRestoreFocusAfterDrawerClose) {
+              _shouldRestoreFocusAfterDrawerClose = false;
               Future.delayed(const Duration(milliseconds: 100), () {
-                if (mounted && _isInputActive) {
+                if (mounted && !_inputFocusNode.hasFocus) {
                   _inputFocusNode.requestFocus();
                   debugPrint('>>> v2.0.6: Drawer closed - focus restored');
                 }
               });
             } else {
               debugPrint(
-                '>>> v2.0.6: Drawer closed - focus NOT restored (isInputActive=false)',
+                '>>> v2.0.6: Drawer closed - focus NOT restored (restore=false)',
               );
             }
           }
@@ -496,14 +495,6 @@ class _ChatScreenState extends State<ChatScreen>
               focusNode: _inputFocusNode,
               onSend: _sendMessage,
               isLoading: chatProvider.isLoading,
-              onTap: () {
-                if (!_isInputActive) {
-                  setState(() {
-                    _isInputActive = true;
-                  });
-                  debugPrint('>>> v2.0.6: Input tapped - isInputActive=true');
-                }
-              },
             ),
           ],
         ),
@@ -645,14 +636,12 @@ class _MessageInput extends StatelessWidget {
   final FocusNode focusNode;
   final VoidCallback onSend;
   final bool isLoading;
-  final VoidCallback? onTap;
 
   const _MessageInput({
     required this.controller,
     required this.focusNode,
     required this.onSend,
     required this.isLoading,
-    this.onTap,
   });
 
   @override
@@ -663,7 +652,7 @@ class _MessageInput extends StatelessWidget {
         color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -691,7 +680,6 @@ class _MessageInput extends StatelessWidget {
                 ),
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => onSend(),
-                onTap: onTap,
                 maxLines: null,
                 keyboardType: TextInputType.multiline,
               ),

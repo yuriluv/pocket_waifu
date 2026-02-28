@@ -73,7 +73,7 @@ class ApiConfig {
        createdAt = createdAt ?? DateTime.now();
 
   static Map<String, dynamic> _defaultParams() {
-    return {'temperature': 0.9, 'max_tokens': 1024, 'top_p': 1.0};
+    return {'temperature': 0.9, 'top_p': 1.0};
   }
 
   bool get hasApiKey => apiKey.isNotEmpty;
@@ -126,7 +126,7 @@ class ApiConfig {
 
     return ApiConfig(
       id: map['id'],
-      name: map['name'] ?? '새 API 설정',
+      name: map['name'] ?? 'New API Config',
       baseUrl: map['baseUrl'] ?? '',
       apiKey: map['apiKey'] ?? '',
       modelName: map['modelName'] ?? '',
@@ -229,7 +229,6 @@ class ApiConfig {
       },
       additionalParams: {
         'temperature': 0.9,
-        'max_tokens': 2048,
         'top_p': 1.0,
         'stream': false,
       },
@@ -250,7 +249,6 @@ class ApiConfig {
       customHeaders: {},
       additionalParams: {
         'temperature': 0.9,
-        'max_tokens': 1024,
         'top_p': 1.0,
         'frequency_penalty': 0.0,
         'presence_penalty': 0.0,
@@ -270,7 +268,7 @@ class ApiConfig {
       apiKey: '',
       modelName: 'claude-3-5-sonnet-20241022',
       customHeaders: {'anthropic-version': '2023-06-01'},
-      additionalParams: {'temperature': 0.9, 'max_tokens': 1024},
+      additionalParams: {'temperature': 0.9},
       isDefault: true,
       format: ApiFormat.anthropic,
       hasFirstSystemPrompt: false,
@@ -289,7 +287,7 @@ class ApiConfig {
         'HTTP-Referer': 'https://pocket-waifu.app',
         'X-Title': 'Pocket Waifu',
       },
-      additionalParams: {'temperature': 0.9, 'max_tokens': 1024},
+      additionalParams: {'temperature': 0.9},
       isDefault: true,
       format: ApiFormat.openRouter,
       hasFirstSystemPrompt: true,
@@ -308,7 +306,7 @@ class ApiConfig {
   }) {
     return ApiConfig(
       id: id,
-      name: name ?? '커스텀 API',
+      name: name ?? 'Custom API',
       baseUrl: baseUrl ?? 'https://api.openai.com/v1/chat/completions',
       apiKey: apiKey ?? '',
       modelName: modelName ?? 'gpt-4o',

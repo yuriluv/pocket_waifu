@@ -618,12 +618,12 @@ class _PresetBar extends StatelessWidget {
     } else if (action == _PresetMenuAction.export) {
       final preset = provider.activePreset;
       if (preset == null) return;
-      final (success, error) = await provider.exportPresetToFile(preset);
+      final (success, message) = await provider.exportPresetToFile(preset);
       if (!context.mounted) return;
       if (success) {
-        context.showInfoSnackBar('프리셋을 내보냈습니다.');
+        context.showInfoSnackBar(message ?? '프리셋을 내보냈습니다.');
       } else {
-        context.showErrorSnackBar(error ?? '내보내기 실패');
+        context.showErrorSnackBar(message ?? '내보내기 실패');
       }
     } else if (action == _PresetMenuAction.import) {
       final (success, error) = await provider.importPresetFromFile();
