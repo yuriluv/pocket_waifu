@@ -1,6 +1,12 @@
 # Part 2 Iteration Loop (Baseline)
 
-This loop is the default execution path for Part 2 changes. It is intended to keep scope tight and to preserve stability while Part 1 is still in progress.
+This loop is the default execution path for Part 2 changes only after Part 1 is fully complete.
+
+## Entry Guard (Hard)
+
+- Do not start any new Part2 work while Part1 is in progress.
+- Required gate state before Part2 start: `G1=Pass`, `G2=Pass`, `G3=Pass`, `G4=Pass`, `G5=Pass`.
+- If any Part1 gate regresses to fail, immediately pause Part2 and return to Part1 recovery.
 
 ## Loop
 
