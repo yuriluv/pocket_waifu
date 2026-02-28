@@ -1,0 +1,16 @@
+task_id	stage	team	status	owner	review_wait_minutes	retry_count	failure_class	last_update_utc	branch
+OPS-P1-PLAN-001	planning_ops	ops	in_progress	atlas	537	0	none	2026-02-27T21:03:00Z	main
+PLAN-P1-DECOMP-001	planning_ops	planning	in_progress	sage	537	0	none	2026-02-27T21:03:00Z	main
+OPS-P1-RESULT-001	planning_ops	ops	in_progress	atlas	537	0	none	2026-02-27T21:03:00Z	main
+PART2-IMPL-LOCK-001	part2_implementation	dev	blocked	aria	537	0	none	2026-02-27T21:03:00Z	main
+DEV-P1-IMPL-001	implementation	dev	cancelled	ops-fastlane	499	0	procedure	2026-02-27T21:40:45Z	main
+DEV-P1-IMPL-LUA-002	implementation	dev	in_progress	aria	0	0	code	2026-02-28T06:00:00Z	main
+DEV-P1-IMPL-REGEX-003	implementation	dev	in_progress	ops-fastlane	0	0	code	2026-02-28T06:00:00Z	main
+QA-P1-VERIFY-001	qa	qa	blocked	hawk	499	2	env	2026-02-27T21:40:45Z	main
+QA-P1-VERIFY-FLUTTER-002	qa	qa	in_progress	qa-backup	0	0	env	2026-02-28T06:00:00Z	main
+QA-P1-VERIFY-REGRESSION-003	qa	qa	in_progress	raven	0	0	code	2026-02-28T06:00:00Z	main
+OPS-P1-ENV-001	planning_ops	ops	in_progress	atlas	176	0	env	2026-02-28T03:04:00Z	main
+OPS-P1-MAIN-SYNC-001	planning_ops	ops	in_progress	sage	176	0	procedure	2026-02-28T03:04:00Z	main
+DEC-P1-ENV-PROVISION-001	decision	ops	in_progress	atlas	0	0	env	2026-02-28T06:00:00Z	main
+DEC-P1-MAINLINE-STRATEGY-001	decision	planning	in_progress	sage	0	0	procedure	2026-02-28T06:00:00Z	main
+DEC-P1-QA-GATE-WAIVER-001	decision	qa	pending	hawk	0	0	procedure	2026-02-28T06:00:00Z	main
