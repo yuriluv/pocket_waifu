@@ -8,6 +8,8 @@ This loop is the default execution path for Part 2 changes only after Part 1 is 
 - Required gate state before Part2 start: `G1=Pass`, `G2=Pass`, `G3=Pass`, `G4=Pass`, `G5=Pass`.
 - If any Part1 gate regresses to fail, immediately pause Part2 and return to Part1 recovery.
 
+Hard lock: while Part 1 is not fully completed and verified, Part 2 runtime implementation changes are blocked. Only preparation artifacts (planning docs, instrumentation specs, and checklists) are allowed.
+
 ## Loop
 
 1. Profile
