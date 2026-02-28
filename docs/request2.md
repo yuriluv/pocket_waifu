@@ -317,3 +317,9 @@ Guidelines:
 | 2 | **Prioritized Enhancement Backlog** | Create a prioritized list of identified enhancements, categorized by: (a) critical (blocks core functionality), (b) high (significantly improves usability), (c) medium (nice-to-have improvement), (d) low (cosmetic or minor convenience). |
 | 3 | **Implementation** | Implement enhancements starting from the highest priority. Each enhancement must follow the standard process: specification → implementation → testing → integration. |
 | 4 | **Regression Prevention** | Every new feature or modification must be verified not to regress existing functionality. Where automated testing is feasible, add test cases. |
+
+
+### Decision Log (2026-02-28 06:09 UTC)
+- Backlog sweeper detected pending timeout decision: `fef3086f-da31-4a5e-a127-39037cbe0c05`.
+- Action: created planning decision task `d26764d0-9bbd-4506-a9ea-42ebfae1c34a` (assigned to Yuri) to finalize resume/cancel based on active lane capacity and reflect outcome in docs.
+- Context: maintained >=2 active lanes (`in_progress`) while pruning stale duplicate review backlog items.
