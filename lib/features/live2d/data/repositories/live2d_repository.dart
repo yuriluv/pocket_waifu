@@ -105,9 +105,20 @@ class Live2DRepository {
     }
   }
 
-  Live2DModelInfo? getModelByPath(String relativePath) {
+  Live2DModelInfo? getModelByLegacyId(String legacyId) {
     try {
-      return _cachedModels.firstWhere((m) => m.relativePath == relativePath);
+      return _cachedModels.firstWhere((m) => m.legacyId == legacyId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Live2DModelInfo? getModelByPath(String relativePath) {
+    final normalizedPath = relativePath.replaceAll('\\', '/');
+    try {
+      return _cachedModels.firstWhere(
+        (m) => m.normalizedRelativePath == normalizedPath,
+      );
     } catch (e) {
       return null;
     }

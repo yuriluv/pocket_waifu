@@ -53,8 +53,25 @@ class Live2DController extends ChangeNotifier {
   bool get hasModels => _repository.hasModels;
 
   Live2DModelInfo? get selectedModel {
-    if (_settings.selectedModelId == null) return null;
-    return _repository.getModelById(_settings.selectedModelId!);
+    final selectedModelId = _settings.selectedModelId;
+    if (selectedModelId != null) {
+      final byId = _repository.getModelById(selectedModelId);
+      if (byId != null) {
+        return byId;
+      }
+
+      final byLegacyId = _repository.getModelByLegacyId(selectedModelId);
+      if (byLegacyId != null) {
+        return byLegacyId;
+      }
+    }
+
+    final selectedModelPath = _settings.selectedModelPath;
+    if (selectedModelPath != null) {
+      return _repository.getModelByPath(selectedModelPath);
+    }
+
+    return null;
   }
 
   bool get hasFolderSelected => _storageService.hasFolderSelected;
@@ -100,12 +117,20 @@ class Live2DController extends ChangeNotifier {
         } else {
           await _scanModels();
           
-          if (_settings.selectedModelId != null) {
-            final model = _repository.getModelById(_settings.selectedModelId!);
+          if (_settings.selectedModelId != null || _settings.selectedModelPath != null) {
+            final model = selectedModel;
             if (model == null) {
               _settings = _settings.copyWith(clearSelectedModel: true);
               await _settings.save();
               live2dLog.warning(_tag, '선택된 모델이 더 이상 존재하지 않아 초기화됨');
+            } else if (_settings.selectedModelId != model.id ||
+                _settings.selectedModelPath != model.relativePath) {
+              _settings = _settings.copyWith(
+                selectedModelId: model.id,
+                selectedModelPath: model.relativePath,
+              );
+              await _settings.save();
+              live2dLog.info(_tag, '선택 모델 식별자 마이그레이션 완료', details: model.id);
             }
           }
         }
@@ -193,10 +218,17 @@ class Live2DController extends ChangeNotifier {
     
     await _scanModels();
     
-    if (_settings.selectedModelId != null) {
-      final model = _repository.getModelById(_settings.selectedModelId!);
+    if (_settings.selectedModelId != null || _settings.selectedModelPath != null) {
+      final model = selectedModel;
       if (model == null) {
         _settings = _settings.copyWith(clearSelectedModel: true);
+        await _settings.save();
+      } else if (_settings.selectedModelId != model.id ||
+          _settings.selectedModelPath != model.relativePath) {
+        _settings = _settings.copyWith(
+          selectedModelId: model.id,
+          selectedModelPath: model.relativePath,
+        );
         await _settings.save();
       }
     }
@@ -218,9 +250,10 @@ class Live2DController extends ChangeNotifier {
     live2dLog.info(_tag, '모델 선택됨', details: model?.name ?? 'none');
 
     if (model != null) {
-      final folderName = model.relativePath.split('/').first;
       final linkedPreset = await DisplayPresetManager.findLinkedPresetForModel(
-        folderName, model.id,
+        model.linkFolderKey,
+        model.id,
+        legacyModelId: model.legacyId,
       );
       if (linkedPreset != null) {
         live2dLog.info(_tag, '링크된 프리셋 적용', details: linkedPreset.name);
@@ -480,8 +513,9 @@ class Live2DController extends ChangeNotifier {
   Future<void> linkPresetToModel(String presetId, String modelFolder, String? modelId) async {
     final index = _presets.indexWhere((p) => p.id == presetId);
     if (index < 0) return;
+    final normalizedFolder = modelFolder.replaceAll('\\', '/');
     final updated = _presets[index].copyWith(
-      linkedModelFolder: modelFolder,
+      linkedModelFolder: normalizedFolder,
       linkedModelId: modelId,
     );
     await DisplayPresetManager.update(updated);
