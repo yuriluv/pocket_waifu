@@ -12,15 +12,6 @@ class NotificationActionReceiver : BroadcastReceiver() {
             NotificationConstants.ACTION_REPLY -> {
                 val replyText = getReplyMessage(intent)
                 if (!replyText.isNullOrBlank()) {
-                    NotificationHelper.notifyPersistent(
-                        context,
-                        intent.getStringExtra(NotificationConstants.EXTRA_TITLE) ?: "Pocket Waifu",
-                        "Responding...",
-                        true,
-                        true,
-                        false,
-                        sessionId
-                    )
                     NotificationActionStore.enqueueAction(
                         context,
                         mapOf(

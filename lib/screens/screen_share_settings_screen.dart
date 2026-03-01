@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/screen_share_settings.dart';
+import '../providers/global_runtime_provider.dart';
 import '../providers/screen_share_provider.dart';
 
 class ScreenShareSettingsScreen extends StatelessWidget {
@@ -10,6 +11,8 @@ class ScreenShareSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<ScreenShareProvider>();
+    final globalRuntimeProvider = context.watch<GlobalRuntimeProvider>();
+    final masterEnabled = globalRuntimeProvider.isEnabled;
     final settings = provider.settings;
 
     return Scaffold(
@@ -17,6 +20,24 @@ class ScreenShareSettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (!masterEnabled)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'All features are paused. Toggle Master Switch to resume.',
+              ),
+            ),
+          Opacity(
+            opacity: masterEnabled ? 1 : 0.4,
+            child: IgnorePointer(
+              ignoring: !masterEnabled,
+              child: Column(
+                children: [
           _SectionCard(
             title: 'Permission Status',
             child: ListTile(
@@ -103,6 +124,10 @@ class ScreenShareSettingsScreen extends StatelessWidget {
             child: const Text(
               'Screen sharing allows the AI to analyze screenshots. '
               'Nothing is captured unless you trigger capture.',
+            ),
+          ),
+                ],
+              ),
             ),
           ),
         ],

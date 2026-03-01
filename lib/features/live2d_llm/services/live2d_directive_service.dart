@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../live2d/data/services/live2d_native_bridge.dart';
 import '../models/live2d_emotion_preset.dart';
+import 'live2d_command_queue.dart';
 
 class Live2DDirectiveResult {
   const Live2DDirectiveResult({
@@ -21,6 +22,7 @@ class Live2DDirectiveService {
   static final Live2DDirectiveService instance = Live2DDirectiveService._();
 
   final Live2DNativeBridge _bridge = Live2DNativeBridge();
+  final Live2DCommandQueue _queue = Live2DCommandQueue.instance;
 
   final Map<String, Live2DEmotionPreset> _defaultEmotions = {
     'happy': const Live2DEmotionPreset(
@@ -71,21 +73,35 @@ class Live2DDirectiveService {
     final errors = <String>[];
     final regex = RegExp(r'<live2d>([\s\S]*?)</live2d>', caseSensitive: false);
     final matches = regex.allMatches(text).toList();
+    final inlineMatches = _inlineDirectiveRegex.allMatches(text).toList();
 
-    if (matches.isEmpty) {
-      return Live2DDirectiveResult(cleanedText: text, errors: const []);
+    if (matches.isEmpty && inlineMatches.isEmpty) {
+      return Live2DDirectiveResult(cleanedText: text, errors: errors);
     }
 
     for (final match in matches) {
       final block = match.group(1) ?? '';
       try {
-        await _executeDirectiveBlock(block);
+        await _queue.enqueue(() => _executeDirectiveBlock(block));
       } catch (e) {
         errors.add(e.toString());
       }
     }
 
-    final cleaned = text.replaceAll(regex, '').trim();
+    for (final match in inlineMatches) {
+      final tag = (match.group(1) ?? '').toLowerCase();
+      final attrs = _parseInlineAttributes(match.group(2) ?? '');
+      try {
+        await _queue.enqueue(() => _executeSingleDirective(tag, attrs));
+      } catch (e) {
+        errors.add(e.toString());
+      }
+    }
+
+    final cleaned = text
+        .replaceAll(regex, '')
+        .replaceAll(_inlineDirectiveRegex, '')
+        .trim();
     return Live2DDirectiveResult(cleanedText: cleaned, errors: errors);
   }
 
@@ -120,7 +136,13 @@ class Live2DDirectiveService {
 
   void resetStreamBuffer() {
     _streamBuffer = '';
+    _queue.reset();
   }
+
+  static final RegExp _inlineDirectiveRegex = RegExp(
+    r'\[(param|motion|expression|emotion):([^\]]+)\]',
+    caseSensitive: false,
+  );
 
   Future<void> _executeDirectiveBlock(String block) async {
     final commandRegex = RegExp(
@@ -131,27 +153,34 @@ class Live2DDirectiveService {
     for (final match in matches) {
       final tag = match.group(1)?.toLowerCase();
       final attrs = _parseAttributes(match.group(2) ?? '');
-      final delay = int.tryParse(attrs['delay'] ?? '') ?? 0;
-      if (delay > 0) {
-        await Future<void>.delayed(Duration(milliseconds: delay));
-      }
+      await _executeSingleDirective(tag, attrs);
+    }
+  }
 
-      switch (tag) {
-        case 'param':
-          await _runParam(attrs);
-          break;
-        case 'motion':
-          await _runMotion(attrs);
-          break;
-        case 'expression':
-          await _runExpression(attrs);
-          break;
-        case 'emotion':
-          await _runEmotion(attrs);
-          break;
-        default:
-          break;
-      }
+  Future<void> _executeSingleDirective(
+    String? tag,
+    Map<String, String> attrs,
+  ) async {
+    final delay = int.tryParse(attrs['delay'] ?? '') ?? 0;
+    if (delay > 0) {
+      await Future<void>.delayed(Duration(milliseconds: delay));
+    }
+
+    switch (tag) {
+      case 'param':
+        await _runParam(attrs);
+        break;
+      case 'motion':
+        await _runMotion(attrs);
+        break;
+      case 'expression':
+        await _runExpression(attrs);
+        break;
+      case 'emotion':
+        await _runEmotion(attrs);
+        break;
+      default:
+        break;
     }
   }
 
@@ -163,6 +192,30 @@ class Live2DDirectiveService {
       final value = match.group(2);
       if (key != null && value != null) {
         out[key] = value;
+      }
+    }
+    return out;
+  }
+
+  Map<String, String> _parseInlineAttributes(String attrs) {
+    final out = <String, String>{};
+    final parts = attrs.split(',');
+    for (final part in parts) {
+      final index = part.indexOf('=');
+      if (index <= 0) {
+        continue;
+      }
+      final key = part.substring(0, index).trim();
+      final value = part.substring(index + 1).trim();
+      if (key.isNotEmpty && value.isNotEmpty) {
+        out[key] = value;
+      }
+    }
+
+    if (out.isEmpty) {
+      final first = attrs.trim();
+      if (first.isNotEmpty) {
+        out['name'] = first;
       }
     }
     return out;

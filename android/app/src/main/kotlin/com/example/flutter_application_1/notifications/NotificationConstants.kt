@@ -1,11 +1,8 @@
 package com.example.flutter_application_1.notifications
 
 object NotificationConstants {
-    const val CHANNEL_PERSISTENT = "newcastle_persistent"
-    const val CHANNEL_HEADS_UP = "newcastle_heads_up"
-
-    const val NOTIFICATION_ID_PERSISTENT = 4201
-    const val NOTIFICATION_ID_HEADS_UP_BASE = 5200
+    const val CHANNEL_PRE_RESPONSE = "newcastle_pre_response"
+    const val NOTIFICATION_ID_PRE_RESPONSE_BASE = 5200
 
     const val ACTION_REPLY = "com.example.flutter_application_1.notifications.REPLY"
     const val ACTION_TOUCH_THROUGH = "com.example.flutter_application_1.notifications.TOUCH_THROUGH"

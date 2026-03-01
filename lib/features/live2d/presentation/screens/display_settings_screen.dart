@@ -2,6 +2,8 @@
 // ============================================================================
 // ============================================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/models/live2d_settings.dart';
@@ -62,6 +64,17 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
         const SnackBar(content: Text('설정이 저장되었습니다')),
       );
     }
+  }
+
+  Future<void> _saveSettingsSilently() async {
+    final settings = await Live2DSettings.load();
+    final newSettings = settings.copyWith(
+      scale: _scale,
+      opacity: _opacity,
+      positionX: _positionX,
+      positionY: _positionY,
+    );
+    await newSettings.save();
   }
 
   Future<void> _applyScale(double value) async {
@@ -385,6 +398,14 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
               ],
             ),
     );
+  }
+
+  @override
+  void dispose() {
+    if (_hasChanges) {
+      unawaited(_saveSettingsSilently());
+    }
+    super.dispose();
   }
 }
 

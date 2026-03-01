@@ -97,14 +97,6 @@
                 android:value="Native Live2D character overlay using OpenGL" />
         </service>
 
-        <!-- ================================================================== -->
-        <!-- Notification Foreground Service -->
-        <!-- ================================================================== -->
-        <service
-            android:name=".notifications.NotificationForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <receiver
             android:name=".notifications.NotificationActionReceiver"
             android:exported="false" />

@@ -96,14 +96,6 @@ class NotificationSettingsProvider extends ChangeNotifier {
     return true;
   }
 
-  void setPersistentEnabled(bool enabled) {
-    _notificationSettings = _notificationSettings.copyWith(
-      persistentEnabled: false,
-    );
-    notifyListeners();
-    _save();
-  }
-
   void setOutputAsNewNotification(bool enabled) {
     _notificationSettings = _notificationSettings.copyWith(
       outputAsNewNotification: enabled,

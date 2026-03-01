@@ -11,9 +11,9 @@ import '../../data/repositories/live2d_repository.dart';
 import '../../data/services/live2d_log_service.dart';
 import '../../data/services/live2d_storage_service.dart';
 import '../../data/services/live2d_native_bridge.dart';
-import '../../data/services/interaction_manager.dart';
 import '../../data/services/display_config_store.dart';
 import '../../data/services/live2d_overlay_state_service.dart';
+import '../../data/services/gesture_motion_mapper.dart';
 import '../../../../services/global_runtime_registry.dart';
 
 enum Live2DControllerState { initial, loading, ready, error }
@@ -24,11 +24,11 @@ class Live2DController extends ChangeNotifier {
   final Live2DRepository _repository = Live2DRepository();
   final Live2DStorageService _storageService = Live2DStorageService();
   final Live2DNativeBridge _nativeBridge = Live2DNativeBridge();
-  final InteractionManager _interactionManager = InteractionManager();
   final Live2DDisplayConfigStore _displayConfigStore =
       Live2DDisplayConfigStore();
   final Live2DOverlayStateService _overlayStateService =
       Live2DOverlayStateService();
+  final GestureMotionMapper _gestureMotionMapper = GestureMotionMapper();
 
   Live2DControllerState _state = Live2DControllerState.initial;
   Live2DSettings _settings = Live2DSettings.defaults();
@@ -77,8 +77,6 @@ class Live2DController extends ChangeNotifier {
   bool get isOverlayVisible => _settings.isEnabled;
   bool get isEnabled => _settings.isEnabled;
 
-  InteractionManager get interactionManager => _interactionManager;
-
   Future<bool> get hasOverlayPermission => _nativeBridge.hasOverlayPermission();
   Future<bool> get hasStoragePermission => _nativeBridge.hasStoragePermission();
 
@@ -91,7 +89,6 @@ class Live2DController extends ChangeNotifier {
     try {
       await _nativeBridge.initialize();
 
-      _interactionManager.initialize();
       _overlayStateService.attach();
 
       _settings = await Live2DSettings.load();
@@ -100,6 +97,7 @@ class Live2DController extends ChangeNotifier {
       _storageService.restoreFromSettings(_settings);
 
       _nativeBridge.setStateSyncCallback(_handleNativeStateSync);
+      await _gestureMotionMapper.initialize();
 
       await _syncOverlayStateFromNative();
 
@@ -734,7 +732,7 @@ class Live2DController extends ChangeNotifier {
   @override
   void dispose() {
     _nativeBridge.setStateSyncCallback(null);
-    _interactionManager.dispose();
+    _gestureMotionMapper.dispose();
     _overlayStateService.detach();
     _nativeBridge.dispose();
     super.dispose();

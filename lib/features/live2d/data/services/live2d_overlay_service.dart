@@ -5,6 +5,7 @@
 
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../../services/global_runtime_registry.dart';
 import 'live2d_log_service.dart';
 import 'live2d_native_bridge.dart';
 
@@ -213,6 +214,11 @@ class Live2DOverlayService {
   // ============================================================================
 
   Future<bool> showOverlay() async {
+    if (!GlobalRuntimeRegistry.instance.isEnabled) {
+      live2dLog.debug(_tag, 'Master OFF: showOverlay skipped');
+      return false;
+    }
+
     if (await Permission.notification.isDenied) {
       live2dLog.info(_tag, '알림 권한 요청 중...');
       final status = await Permission.notification.request();

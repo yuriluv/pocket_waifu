@@ -121,6 +121,7 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
 
       _setLoading(true);
+      _directiveService.resetStreamBuffer();
 
       final requestHandle = _apiService.createRequestHandle();
       final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(

@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/prompt_preset_reference.dart';
+import '../providers/global_runtime_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../providers/prompt_preset_provider.dart';
 import '../providers/settings_provider.dart';
@@ -39,6 +40,8 @@ class _NotificationSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final settingsProvider = context.watch<NotificationSettingsProvider>();
+    final globalRuntimeProvider = context.watch<GlobalRuntimeProvider>();
+    final masterEnabled = globalRuntimeProvider.isEnabled;
     final notificationSettings = settingsProvider.notificationSettings;
     final proactiveSettings = settingsProvider.proactiveSettings;
     final apiConfigs = context.watch<SettingsProvider>().apiConfigs;
@@ -51,6 +54,24 @@ class _NotificationSettingsScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (!masterEnabled)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'All features are paused. Toggle Master Switch to resume.',
+              ),
+            ),
+          Opacity(
+            opacity: masterEnabled ? 1 : 0.4,
+            child: IgnorePointer(
+              ignoring: !masterEnabled,
+              child: Column(
+                children: [
           _SectionTitle(title: '알림'),
           SwitchListTile(
             title: const Text('알림 사용'),
@@ -128,6 +149,10 @@ class _NotificationSettingsScreenState
             value: proactiveSettings.apiPresetId,
             apiConfigs: apiConfigs,
             onChanged: settingsProvider.setProactiveApiPreset,
+          ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

@@ -1,6 +1,5 @@
 package com.example.flutter_application_1.notifications
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -18,39 +17,25 @@ object NotificationHelper {
         val notificationManager =
             context.getSystemService(NotificationManager::class.java) ?: return
 
-        val persistentChannel = NotificationChannel(
-            NotificationConstants.CHANNEL_PERSISTENT,
-            "Pocket Waifu 상태 알림",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "앱 상태 및 응답 표시"
-            setShowBadge(false)
-            enableVibration(false)
-            setSound(null, null)
-        }
-
-        val headsUpChannel = NotificationChannel(
-            NotificationConstants.CHANNEL_HEADS_UP,
-            "Pocket Waifu 응답 알림",
+        val preResponseChannel = NotificationChannel(
+            NotificationConstants.CHANNEL_PRE_RESPONSE,
+            "Pocket Waifu 선응답 알림",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "AI 응답 헤드업 알림"
+            description = "AI 선응답 및 상호작용 알림"
             enableVibration(true)
         }
 
-        notificationManager.createNotificationChannel(persistentChannel)
-        notificationManager.createNotificationChannel(headsUpChannel)
+        notificationManager.createNotificationChannel(preResponseChannel)
     }
 
-    fun buildPersistentNotification(
+    fun buildPreResponseNotification(
         context: Context,
         title: String,
         message: String,
-        ongoing: Boolean,
-        isLoading: Boolean,
         isError: Boolean,
         sessionId: String?
-    ): Notification {
+    ): android.app.Notification {
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -119,81 +104,38 @@ object NotificationHelper {
             touchPendingIntent
         ).build()
 
-        val statusText = when {
-            isLoading -> "Responding..."
-            isError -> "오류"
-            else -> message
-        }
+        val statusText = if (isError) "오류: $message" else message
 
-        return NotificationCompat.Builder(context, NotificationConstants.CHANNEL_PERSISTENT)
+        return NotificationCompat.Builder(context, NotificationConstants.CHANNEL_PRE_RESPONSE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(statusText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(statusText))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(openPendingIntent)
-            .setOngoing(ongoing)
-            .setAutoCancel(false)
-            .setOnlyAlertOnce(true)
+            .setAutoCancel(true)
             .addAction(replyAction)
             .addAction(cancelAction)
             .addAction(touchAction)
             .build()
     }
 
-    fun buildHeadsUpNotification(
+    fun notifyPreResponse(
         context: Context,
         title: String,
         message: String,
-        sessionId: String?
-    ): Notification {
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            context,
-            4,
-            openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        return NotificationCompat.Builder(context, NotificationConstants.CHANNEL_HEADS_UP)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setContentIntent(openPendingIntent)
-            .setAutoCancel(true)
-            .build()
-    }
-
-    fun notifyPersistent(
-        context: Context,
-        title: String,
-        message: String,
-        ongoing: Boolean,
-        isLoading: Boolean,
         isError: Boolean,
         sessionId: String?
     ) {
         val notificationManager =
             context.getSystemService(NotificationManager::class.java) ?: return
-        val notification = buildPersistentNotification(
-            context, title, message, ongoing, isLoading, isError, sessionId
-        )
-        notificationManager.notify(
-            NotificationConstants.NOTIFICATION_ID_PERSISTENT,
-            notification
-        )
-    }
-
-    fun notifyHeadsUp(context: Context, title: String, message: String, sessionId: String?) {
-        val notificationManager =
-            context.getSystemService(NotificationManager::class.java) ?: return
-        val id = NotificationConstants.NOTIFICATION_ID_HEADS_UP_BASE +
+        val id = NotificationConstants.NOTIFICATION_ID_PRE_RESPONSE_BASE +
             (System.currentTimeMillis() % 1000).toInt()
-        notificationManager.notify(id, buildHeadsUpNotification(context, title, message, sessionId))
+        notificationManager.notify(
+            id,
+            buildPreResponseNotification(context, title, message, isError, sessionId)
+        )
     }
 
     fun clearAll(context: Context) {

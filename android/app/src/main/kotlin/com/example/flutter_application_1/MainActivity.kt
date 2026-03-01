@@ -1,14 +1,23 @@
 package com.example.flutter_application_1
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -21,11 +30,10 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.io.InputStream
+import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import com.example.flutter_application_1.live2d.Live2DPlugin
 import com.example.flutter_application_1.notifications.NotificationActionStore
-import com.example.flutter_application_1.notifications.NotificationConstants
-import com.example.flutter_application_1.notifications.NotificationForegroundService
 import com.example.flutter_application_1.notifications.NotificationHelper
 
 /**
@@ -38,8 +46,10 @@ class MainActivity : FlutterActivity() {
         private const val TAG = "MainActivity"
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
         private const val NOTIFICATION_CHANNEL = "com.example.flutter_application_1/notifications"
+        private const val SCREEN_CAPTURE_CHANNEL = "com.pocketwaifu/screen_capture"
         private const val ENGINE_ID = "main_engine"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
+        private const val REQUEST_SCREEN_CAPTURE_PERMISSION = 1002
         
         private const val SERVER_PORT = 8080
         private const val SERVER_HOST = "localhost"
@@ -50,11 +60,20 @@ class MainActivity : FlutterActivity() {
     
     private var modelRootPath: String? = null
     private val localServer = Live2DLocalServer.getInstance()
+    private var mediaProjectionManager: MediaProjectionManager? = null
+    private var mediaProjection: MediaProjection? = null
+    private var projectionResultCode: Int? = null
+    private var projectionResultData: Intent? = null
+    private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingCaptureResult: MethodChannel.Result? = null
     
     val serverUrl: String get() = "http://$SERVER_HOST:$SERVER_PORT"
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        mediaProjectionManager =
+            getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -176,45 +195,18 @@ class MainActivity : FlutterActivity() {
                         NotificationHelper.createChannels(this)
                         result.success(true)
                     }
-                    "startForegroundService" -> {
-                        val title = call.argument<String>("title") ?: "Pocket Waifu"
-                        val message = call.argument<String>("message") ?: "대기 중"
-                        val ongoing = call.argument<Boolean>("ongoing") ?: true
-                        val sessionId = call.argument<String>("sessionId")
-                        val intent = Intent(this, NotificationForegroundService::class.java).apply {
-                            putExtra(NotificationConstants.EXTRA_TITLE, title)
-                            putExtra(NotificationConstants.EXTRA_MESSAGE, message)
-                            putExtra(NotificationConstants.EXTRA_ONGOING, ongoing)
-                            putExtra(NotificationConstants.EXTRA_SESSION_ID, sessionId)
-                        }
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
-                        result.success(true)
-                    }
-                    "stopForegroundService" -> {
-                        stopService(Intent(this, NotificationForegroundService::class.java))
-                        result.success(true)
-                    }
-                    "updatePersistentNotification" -> {
+                    "showPreResponseNotification" -> {
                         val title = call.argument<String>("title") ?: "Pocket Waifu"
                         val message = call.argument<String>("message") ?: ""
-                        val isLoading = call.argument<Boolean>("isLoading") ?: false
                         val isError = call.argument<Boolean>("isError") ?: false
-                        val ongoing = call.argument<Boolean>("ongoing") ?: true
                         val sessionId = call.argument<String>("sessionId")
-                        NotificationHelper.notifyPersistent(
-                            this, title, message, ongoing, isLoading, isError, sessionId
+                        NotificationHelper.notifyPreResponse(
+                            this,
+                            title,
+                            message,
+                            isError,
+                            sessionId
                         )
-                        result.success(true)
-                    }
-                    "showHeadsUpNotification" -> {
-                        val title = call.argument<String>("title") ?: "Pocket Waifu"
-                        val message = call.argument<String>("message") ?: ""
-                        val sessionId = call.argument<String>("sessionId")
-                        NotificationHelper.notifyHeadsUp(this, title, message, sessionId)
                         result.success(true)
                     }
                     "clearAllNotifications" -> {
@@ -231,6 +223,216 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CAPTURE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestPermission" -> {
+                        requestScreenCapturePermission(result)
+                    }
+                    "hasPermission" -> {
+                        result.success(hasScreenCapturePermission())
+                    }
+                    "captureScreen" -> {
+                        if (hasScreenCapturePermission()) {
+                            captureScreenWithPermission(result)
+                        } else {
+                            pendingCaptureResult = result
+                            launchScreenCapturePermissionRequest()
+                        }
+                    }
+                    "release" -> {
+                        releaseProjection()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun hasScreenCapturePermission(): Boolean {
+        return projectionResultCode == Activity.RESULT_OK && projectionResultData != null
+    }
+
+    private fun requestScreenCapturePermission(result: MethodChannel.Result) {
+        if (hasScreenCapturePermission()) {
+            result.success(true)
+            return
+        }
+        pendingPermissionResult = result
+        launchScreenCapturePermissionRequest()
+    }
+
+    private fun launchScreenCapturePermissionRequest() {
+        val manager = mediaProjectionManager
+        if (manager == null) {
+            pendingPermissionResult?.error(
+                "UNAVAILABLE",
+                "MediaProjectionManager is unavailable",
+                null
+            )
+            pendingPermissionResult = null
+            pendingCaptureResult?.error(
+                "UNAVAILABLE",
+                "MediaProjectionManager is unavailable",
+                null
+            )
+            pendingCaptureResult = null
+            return
+        }
+        startActivityForResult(
+            manager.createScreenCaptureIntent(),
+            REQUEST_SCREEN_CAPTURE_PERMISSION
+        )
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_SCREEN_CAPTURE_PERMISSION) {
+            return
+        }
+
+        val ok = resultCode == Activity.RESULT_OK && data != null
+        if (ok) {
+            projectionResultCode = resultCode
+            projectionResultData = data
+            pendingPermissionResult?.success(true)
+            pendingPermissionResult = null
+
+            val captureResult = pendingCaptureResult
+            pendingCaptureResult = null
+            if (captureResult != null) {
+                captureScreenWithPermission(captureResult)
+            }
+            return
+        }
+
+        pendingPermissionResult?.success(false)
+        pendingPermissionResult = null
+        pendingCaptureResult?.error(
+            "PERMISSION_DENIED",
+            "Screen capture permission denied",
+            null
+        )
+        pendingCaptureResult = null
+    }
+
+    private fun captureScreenWithPermission(result: MethodChannel.Result) {
+        val code = projectionResultCode
+        val data = projectionResultData
+        val manager = mediaProjectionManager
+        if (code == null || data == null || manager == null) {
+            result.error("PERMISSION_REQUIRED", "Screen capture permission required", null)
+            return
+        }
+
+        Thread {
+            var imageReader: ImageReader? = null
+            var virtualDisplay: VirtualDisplay? = null
+            try {
+                if (mediaProjection == null) {
+                    mediaProjection = manager.getMediaProjection(code, data)
+                }
+                val projection = mediaProjection
+                if (projection == null) {
+                    runOnUiThread {
+                        result.error("PROJECTION_ERROR", "Failed to create MediaProjection", null)
+                    }
+                    return@Thread
+                }
+
+                val metrics = resources.displayMetrics
+                val width = metrics.widthPixels
+                val height = metrics.heightPixels
+                val density = metrics.densityDpi
+
+                imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+                virtualDisplay = projection.createVirtualDisplay(
+                    "flutter_screen_capture",
+                    width,
+                    height,
+                    density,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    imageReader.surface,
+                    null,
+                    null
+                )
+
+                var image = imageReader.acquireLatestImage()
+                var retryCount = 0
+                while (image == null && retryCount < 20) {
+                    Thread.sleep(50)
+                    image = imageReader.acquireLatestImage()
+                    retryCount += 1
+                }
+
+                if (image == null) {
+                    runOnUiThread {
+                        result.error("CAPTURE_FAILED", "Failed to acquire image buffer", null)
+                    }
+                    return@Thread
+                }
+
+                val captured = image
+                try {
+                    val plane = captured.planes[0]
+                    val buffer = plane.buffer
+                    val pixelStride = plane.pixelStride
+                    val rowStride = plane.rowStride
+                    val rowPadding = rowStride - pixelStride * width
+
+                    val bitmap = Bitmap.createBitmap(
+                        width + rowPadding / pixelStride,
+                        height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bitmap.copyPixelsFromBuffer(buffer)
+
+                    val cropped = Bitmap.createBitmap(bitmap, 0, 0, width, height)
+                    val stream = ByteArrayOutputStream()
+                    try {
+                        cropped.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                        val bytes = stream.toByteArray()
+                        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+                        runOnUiThread {
+                            result.success(
+                                mapOf(
+                                    "base64Data" to base64,
+                                    "mimeType" to "image/png",
+                                    "width" to width,
+                                    "height" to height
+                                )
+                            )
+                        }
+                    } finally {
+                        stream.close()
+                        cropped.recycle()
+                        bitmap.recycle()
+                    }
+                } finally {
+                    captured.close()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    result.error(
+                        "CAPTURE_EXCEPTION",
+                        e.message ?: "Unknown capture exception",
+                        null
+                    )
+                }
+            } finally {
+                virtualDisplay?.release()
+                imageReader?.close()
+            }
+        }.start()
+    }
+
+    private fun releaseProjection() {
+        mediaProjection?.stop()
+        mediaProjection = null
+        projectionResultCode = null
+        projectionResultData = null
     }
     
     /**
@@ -324,6 +526,7 @@ class MainActivity : FlutterActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
+        releaseProjection()
         stopServer()
     }
 }

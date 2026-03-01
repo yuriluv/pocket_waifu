@@ -5,7 +5,9 @@
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import '../models/live2d_model_info.dart';
+import '../models/model3_data.dart';
 import '../services/live2d_log_service.dart';
+import '../services/model3_json_parser.dart';
 
 class Live2DRepository {
   static final Live2DRepository _instance = Live2DRepository._internal();
@@ -16,6 +18,7 @@ class Live2DRepository {
 
   List<Live2DModelInfo> _cachedModels = [];
   String? _lastScannedPath;
+  final Model3JsonParser _model3Parser = Model3JsonParser();
 
   // === Getter ===
   List<Live2DModelInfo> get models => List.unmodifiable(_cachedModels);
@@ -189,6 +192,10 @@ class Live2DRepository {
     }
 
     return result;
+  }
+
+  Future<Model3Data> getParsedModelData(String modelPath) async {
+    return _model3Parser.parseFile(modelPath);
   }
 
   void clearCache() {

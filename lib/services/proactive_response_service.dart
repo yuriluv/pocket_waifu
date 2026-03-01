@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/api_config.dart';
@@ -7,17 +8,18 @@ import '../providers/global_runtime_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/global_runtime_registry.dart';
-import '../services/proactive_config_parser.dart';
 import '../services/notification_coordinator.dart';
+import '../services/pre_response_timer.dart';
+import '../services/proactive_config_parser.dart';
 
 class ProactiveResponseService implements GlobalRuntimeListener {
-  ProactiveResponseService(this._notificationCoordinator);
+  ProactiveResponseService(this._notificationCoordinator) {
+    _timer = PreResponseTimer(onTimerFired: _trigger);
+  }
 
   final NotificationCoordinator _notificationCoordinator;
-
   final Random _random = Random();
-  Timer? _timer;
-  Duration? _currentInterval;
+  late PreResponseTimer _timer;
 
   bool _inFlight = false;
   bool _registered = false;
@@ -29,6 +31,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   bool _overlayOn = false;
   bool _screenLandscape = false;
   bool _screenOff = false;
+  bool _wasScreenOff = false;
 
   void attach({
     required GlobalRuntimeProvider globalRuntimeProvider,
@@ -38,13 +41,13 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     _globalRuntimeProvider = globalRuntimeProvider;
     _notificationSettingsProvider = notificationSettingsProvider;
     _settingsProvider = settingsProvider;
+
     if (!_registered) {
       GlobalRuntimeRegistry.instance.register(this);
       _registered = true;
     }
-    _notificationCoordinator.setOnUserReplyHandler(
-      cancelInFlightDueToUserReply,
-    );
+
+    _notificationCoordinator.setOnUserReplyHandler(cancelInFlightDueToUserReply);
     _maybeStart();
   }
 
@@ -56,14 +59,24 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     if (overlayOn != null) _overlayOn = overlayOn;
     if (screenLandscape != null) _screenLandscape = screenLandscape;
     if (screenOff != null) _screenOff = screenOff;
-    _maybeReschedule();
+
+    if (_screenOff != _wasScreenOff) {
+      if (_screenOff) {
+        _timer.pause();
+      } else {
+        _timer.resume();
+      }
+      _wasScreenOff = _screenOff;
+    }
+
+    _timer.recalculate(_currentEnvironmentState());
   }
 
   void cancelInFlightDueToUserReply() {
     if (_inFlight) {
       _notificationCoordinator.cancelProactiveInFlight();
       _inFlight = false;
-      _reschedule(useSameInterval: true);
+      _maybeStart();
     }
   }
 
@@ -78,103 +91,101 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       stop();
       return;
     }
-    _reschedule();
-  }
 
-  void _maybeReschedule() {
-    if (_timer == null) {
-      _maybeStart();
+    final parsed = _parseConfig(settings.scheduleText);
+    if (parsed == null) {
+      stop();
       return;
     }
-    _reschedule();
+
+    final timerConfig = _toTimerConfig(parsed);
+    if (timerConfig != null) {
+      _timer.start(
+        config: timerConfig,
+        environment: _currentEnvironmentState(),
+      );
+      if (_screenOff) {
+        _timer.pause();
+      }
+      return;
+    }
+
+    final fallbackInterval = _pickInterval(parsed);
+    if (fallbackInterval == null) {
+      stop();
+      return;
+    }
+
+    _timer.start(
+      config: PreResponseTimerConfig(
+        baseInterval: fallbackInterval,
+        deviationPercent: 0,
+        overlayBonus: Duration.zero,
+        overlayOffBonus: Duration.zero,
+        landscapeBonus: Duration.zero,
+      ),
+      environment: _currentEnvironmentState(),
+    );
+    if (_screenOff) {
+      _timer.pause();
+    }
   }
 
-  void _reschedule({bool useSameInterval = false}) {
-    _timer?.cancel();
-    final settings = _notificationSettingsProvider?.proactiveSettings;
-    if (settings == null || !settings.enabled) return;
-
-    ProactiveConfig config;
+  ProactiveConfig? _parseConfig(String scheduleText) {
     try {
-      config = ProactiveConfigParser.parse(settings.scheduleText);
+      return ProactiveConfigParser.parse(scheduleText);
     } catch (e) {
       debugPrint('Proactive schedule parse error: $e');
-      return;
+      return null;
+    }
+  }
+
+  PreResponseTimerConfig? _toTimerConfig(ProactiveConfig config) {
+    final base = config.baseInterval;
+    if (base == null || base <= Duration.zero) {
+      return null;
     }
 
-    final nextInterval = useSameInterval && _currentInterval != null
-        ? _currentInterval
-        : _pickInterval(config);
+    final adjustments = config.additiveAdjustments;
+    final overlayBonus = adjustments['overlayon'] ?? Duration.zero;
+    final overlayOffBonus = adjustments['overlayoff'] ?? Duration.zero;
+    final landscapeBonus = adjustments['screenlandscape'] ?? Duration.zero;
 
-    _currentInterval = nextInterval;
+    return PreResponseTimerConfig(
+      baseInterval: base,
+      deviationPercent: config.deviationPercent,
+      overlayBonus: overlayBonus,
+      overlayOffBonus: overlayOffBonus,
+      landscapeBonus: landscapeBonus,
+    );
+  }
 
-    if (_currentInterval == null) return;
-    _timer = Timer(_currentInterval!, _trigger);
+  TimerEnvironmentState _currentEnvironmentState() {
+    return TimerEnvironmentState(
+      overlayVisible: _overlayOn,
+      isLandscape: _screenLandscape,
+      screenOn: !_screenOff,
+    );
   }
 
   Duration? _pickInterval(ProactiveConfig config) {
     if (config.isAdditive) {
-      return _selectAdditiveInterval(config);
+      final timerConfig = _toTimerConfig(config);
+      if (timerConfig == null) return null;
+      var totalMs = timerConfig.baseInterval.inMilliseconds;
+      totalMs += _overlayOn
+          ? timerConfig.overlayBonus.inMilliseconds
+          : timerConfig.overlayOffBonus.inMilliseconds;
+      if (_screenLandscape) {
+        totalMs += timerConfig.landscapeBonus.inMilliseconds;
+      }
+      if (totalMs <= 0) return null;
+      return Duration(milliseconds: totalMs);
     }
 
     final range = _selectRange(config);
     if (range == null) return null;
     return range.pick(_random);
-  }
-
-  Duration? _selectAdditiveInterval(ProactiveConfig config) {
-    final base = config.baseInterval;
-    if (base == null) return null;
-
-    var totalMs = base.inMilliseconds;
-    final adjustments = config.additiveAdjustments;
-
-    if (_screenOff && adjustments.containsKey('screenoff')) {
-      final value = adjustments['screenoff'];
-      if (value == null) return null;
-      totalMs += value.inMilliseconds;
-    }
-
-    if (_screenLandscape && adjustments.containsKey('screenlandscape')) {
-      final value = adjustments['screenlandscape'];
-      if (value == null) return null;
-      totalMs += value.inMilliseconds;
-    }
-
-    if (_overlayOn && adjustments.containsKey('overlayon')) {
-      final value = adjustments['overlayon'];
-      if (value == null) return null;
-      totalMs += value.inMilliseconds;
-    }
-
-    if (!_overlayOn && adjustments.containsKey('overlayoff')) {
-      final value = adjustments['overlayoff'];
-      if (value == null) return null;
-      totalMs += value.inMilliseconds;
-    }
-
-    if (totalMs <= 0) {
-      debugPrint('Proactive additive schedule produced non-positive interval');
-      return null;
-    }
-
-    final deviation = config.deviationPercent.clamp(0, 100);
-    if (deviation > 0) {
-      final delta = (totalMs * deviation / 100).round();
-      if (delta > 0) {
-        final offset = _random.nextInt(delta * 2 + 1) - delta;
-        totalMs += offset;
-      }
-    }
-
-    if (totalMs <= 0) {
-      debugPrint(
-        'Proactive additive schedule variance produced non-positive interval',
-      );
-      return null;
-    }
-
-    return Duration(milliseconds: totalMs);
   }
 
   ProactiveDurationRange? _selectRange(ProactiveConfig config) {
@@ -222,9 +233,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
         apiConfig: apiConfig,
       );
       if (result == NotificationRequestResult.cancelled) {
-        _reschedule(useSameInterval: true);
-      } else {
-        _reschedule();
+        _maybeStart();
       }
     } finally {
       _inFlight = false;
@@ -244,8 +253,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   }
 
   void stop() {
-    _timer?.cancel();
-    _timer = null;
+    _timer.cancel();
   }
 
   @override

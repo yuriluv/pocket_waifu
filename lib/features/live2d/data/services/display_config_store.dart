@@ -3,7 +3,6 @@
 // ============================================================================
 
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/display_config.dart';
 import '../models/live2d_settings.dart';
@@ -21,6 +20,12 @@ class Live2DDisplayConfigStore {
 
   Map<String, Live2DDisplayConfig> _cache = {};
 
+  Future<void> _persistAll(Map<String, Live2DDisplayConfig> all) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(all.values.map((e) => e.toJson()).toList());
+    await prefs.setString(_prefsKey, jsonString);
+  }
+
   Future<Map<String, Live2DDisplayConfig>> _loadAll() async {
     if (_cache.isNotEmpty) return _cache;
     try {
@@ -29,15 +34,30 @@ class Live2DDisplayConfigStore {
       if (jsonString == null) return {};
       final decoded = jsonDecode(jsonString) as List<dynamic>;
       final result = <String, Live2DDisplayConfig>{};
+      var migrated = false;
       for (final item in decoded) {
-        if (item is Map<String, dynamic>) {
-          final config = Live2DDisplayConfig.fromJson(item);
+        if (item is Map) {
+          final config = Live2DDisplayConfig.fromJson(
+            Map<String, dynamic>.from(item),
+          );
           if (config.isValid) {
-            result[config.modelId] = config;
+            final upgraded = config.schemaVersion <
+                    Live2DDisplayConfig.currentSchemaVersion
+                ? config.copyWith(
+                    schemaVersion: Live2DDisplayConfig.currentSchemaVersion,
+                  )
+                : config;
+            if (!identical(upgraded, config)) {
+              migrated = true;
+            }
+            result[upgraded.modelId] = upgraded;
           }
         }
       }
       _cache = result;
+      if (migrated) {
+        await _persistAll(result);
+      }
     } catch (e) {
       live2dLog.error(_tag, '디스플레이 설정 로드 실패', error: e);
     }
@@ -52,11 +72,11 @@ class Live2DDisplayConfigStore {
   Future<bool> save(Live2DDisplayConfig config) async {
     try {
       final all = await _loadAll();
-      all[config.modelId] = config;
+      all[config.modelId] = config.copyWith(
+        schemaVersion: Live2DDisplayConfig.currentSchemaVersion,
+      );
       _cache = all;
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = jsonEncode(all.values.map((e) => e.toJson()).toList());
-      await prefs.setString(_prefsKey, jsonString);
+      await _persistAll(all);
       return true;
     } catch (e) {
       live2dLog.error(_tag, '디스플레이 설정 저장 실패', error: e);
@@ -69,9 +89,7 @@ class Live2DDisplayConfigStore {
       final all = await _loadAll();
       all.remove(modelId);
       _cache = all;
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = jsonEncode(all.values.map((e) => e.toJson()).toList());
-      await prefs.setString(_prefsKey, jsonString);
+      await _persistAll(all);
     } catch (e) {
       live2dLog.error(_tag, '디스플레이 설정 삭제 실패', error: e);
     }

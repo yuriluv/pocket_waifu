@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../providers/global_runtime_provider.dart';
 import '../../../../services/model_scanner_service.dart';
 import '../../../../utils/ui_feedback.dart';
 import '../../utils/folder_validator.dart';
@@ -16,15 +17,9 @@ import '../widgets/model_list_tile.dart';
 import '../widgets/size_slider_tile.dart';
 import '../widgets/overlay_toggle_tile.dart';
 import '../widgets/log_viewer_widget.dart';
-import '../../data/controllers/live2d_overlay_controller.dart';
 import '../../data/models/display_preset.dart';
-import '../../data/services/live2d_log_service.dart';
-import '../../data/services/interaction_manager.dart';
-import '../../domain/entities/interaction_event.dart';
-import 'gesture_settings_screen.dart';
-import 'auto_behavior_settings_screen.dart';
 import 'display_settings_screen.dart';
-import 'interaction_settings_screen.dart';
+import 'live2d_advanced_settings_screen.dart';
 import 'live2d_pipeline_prototype_screen.dart';
 import '../../../../widgets/empty_state_view.dart';
 
@@ -88,6 +83,7 @@ class _Live2DSettingsScreenContentState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final masterEnabled = context.watch<GlobalRuntimeProvider>().isEnabled;
 
     return Scaffold(
       appBar: AppBar(
@@ -169,6 +165,29 @@ class _Live2DSettingsScreenContentState
             },
             child: ListView(
               children: [
+                if (!masterEnabled)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'All features are paused. Toggle Master Switch to resume.',
+                      ),
+                    ),
+                  ),
+                Opacity(
+                  opacity: masterEnabled ? 1 : 0.4,
+                  child: IgnorePointer(
+                    ignoring: !masterEnabled,
+                    child: Column(
+                      children: [
                 const SizedBox(height: 8),
 
                 _SectionHeader(title: '권한', icon: Icons.security),
@@ -270,6 +289,10 @@ class _Live2DSettingsScreenContentState
                 ),
 
                 const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           );
@@ -410,261 +433,29 @@ class _EmptyModelList extends StatelessWidget {
   }
 }
 
-class _InteractionTestTile extends StatefulWidget {
-  final bool hasOverlayPermission;
-
-  const _InteractionTestTile({required this.hasOverlayPermission});
-
-  @override
-  State<_InteractionTestTile> createState() => _InteractionTestTileState();
-}
-
-class _InteractionTestTileState extends State<_InteractionTestTile> {
-  final List<String> _receivedEvents = [];
-  late final _overlayController = Live2DOverlayController();
-  StreamSubscription<InteractionEvent>? _eventSubscription;
-  bool _isListening = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _overlayController.initialize().then((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _stopListening();
-    _overlayController.dispose();
-    super.dispose();
-  }
-
-  void _startListening() async {
-    if (_isListening) return;
-
-    final manager = InteractionManager();
-    await manager.initialize();
-
-    _eventSubscription = manager.eventStream.listen((event) {
-      if (mounted) {
-        setState(() {
-          _receivedEvents.insert(
-            0,
-            '${DateTime.now().toString().substring(11, 19)} - ${event.type.name}'
-            '${event.position != null ? " (${event.position!.dx.toInt()}, ${event.position!.dy.toInt()})" : ""}',
-          );
-          if (_receivedEvents.length > 20) {
-            _receivedEvents.removeLast();
-          }
-        });
-      }
-    });
-
-    setState(() => _isListening = true);
-    live2dLog.info('InteractionTest', '이벤트 수신 시작');
-  }
-
-  void _stopListening() {
-    _eventSubscription?.cancel();
-    _eventSubscription = null;
-    if (mounted) {
-      setState(() => _isListening = false);
-    }
-    live2dLog.info('InteractionTest', '이벤트 수신 중지');
-  }
-
-  void _clearEvents() {
-    setState(() => _receivedEvents.clear());
-  }
-
-  Future<void> _testTriggerHappy() async {
-    final manager = InteractionManager();
-    await manager.triggerEmotion('happy');
-    live2dLog.info('InteractionTest', '감정 트리거: happy');
-  }
-
-  Future<void> _testTriggerMotion() async {
-    final manager = InteractionManager();
-    await manager.triggerMotion('tap');
-    live2dLog.info('InteractionTest', '모션 트리거: tap');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final canTest = widget.hasOverlayPermission;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.gamepad, color: theme.colorScheme.secondary),
-                const SizedBox(width: 8),
-                Text(
-                  '상호작용 시스템 테스트',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '오버레이를 표시한 후 터치/제스처를 수행하여 이벤트를 테스트합니다.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: canTest
-                        ? (_isListening ? _stopListening : _startListening)
-                        : null,
-                    icon: Icon(_isListening ? Icons.stop : Icons.play_arrow),
-                    label: Text(_isListening ? '이벤트 수신 중지' : '이벤트 수신 시작'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  onPressed: _receivedEvents.isNotEmpty ? _clearEvents : null,
-                  icon: const Icon(Icons.clear_all),
-                  tooltip: '이벤트 기록 삭제',
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              '외부 트리거 테스트',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: canTest ? _testTriggerHappy : null,
-                    icon: const Icon(Icons.mood, size: 18),
-                    label: const Text('Happy 표정'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: canTest ? _testTriggerMotion : null,
-                    icon: const Icon(Icons.animation, size: 18),
-                    label: const Text('Tap 모션'),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              '수신된 이벤트 (${_receivedEvents.length})',
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 150,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _receivedEvents.isEmpty
-                  ? Center(
-                      child: Text(
-                        _isListening
-                            ? '오버레이에서 터치/제스처를 수행하세요...'
-                            : '이벤트 수신을 시작하세요',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _receivedEvents.length,
-                      itemBuilder: (context, index) {
-                        return Text(
-                          _receivedEvents[index],
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ============================================================================
 // ============================================================================
 
 class _AdvancedSettingsMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final selectedModelPath =
+        context.watch<Live2DController>().selectedModel?.modelFilePath;
+
     return Column(
       children: [
         ListTile(
           leading: const Icon(Icons.sports_esports),
-          title: const Text('상호작용 설정'),
-          subtitle: const Text('모션 파라미터, 제스처 매핑, 자동 동작'),
+          title: const Text('고급 상호작용 설정'),
+          subtitle: const Text('Auto Motion · Gesture Mapping · Interaction Test · Motion/Parameters'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => const InteractionSettingsScreen(),
-              ),
-            );
-          },
-        ),
-
-        ListTile(
-          leading: const Icon(Icons.touch_app),
-          title: const Text('제스처 설정'),
-          subtitle: const Text('제스처별 모션/표정 매핑'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const GestureSettingsScreen()),
-            );
-          },
-        ),
-
-        ListTile(
-          leading: const Icon(Icons.auto_awesome),
-          title: const Text('자동 동작 설정'),
-          subtitle: const Text('눈 깜박임, 호흡, 시선 추적'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const AutoBehaviorSettingsScreen(),
+                builder: (_) => Live2DAdvancedSettingsScreen(
+                  model3Path: selectedModelPath,
+                ),
               ),
             );
           },

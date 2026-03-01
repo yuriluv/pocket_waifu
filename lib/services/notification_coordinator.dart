@@ -62,7 +62,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       _initialized = true;
       _initialize();
     } else {
-      _syncPersistentNotification();
+      _syncNotificationState();
     }
   }
 
@@ -75,7 +75,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     await _bridge.initializeChannels();
     _subscription = _bridge.actions.listen(_handleAction);
     GlobalRuntimeRegistry.instance.register(this);
-    _syncPersistentNotification();
+    _syncNotificationState();
   }
 
   Future<void> dispose() async {
@@ -99,30 +99,31 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         break;
       case 'cancelReply':
         await _bridge.clearAll();
-        await _syncPersistentNotification();
+        await _syncNotificationState();
         break;
     }
   }
 
-  Future<void> _syncPersistentNotification() async {
+  Future<void> _syncNotificationState() async {
     final settings = _notificationSettingsProvider?.notificationSettings;
     final globalEnabled = _globalRuntimeProvider?.isEnabled ?? true;
     if (settings == null) return;
 
     if (!globalEnabled || !settings.notificationsEnabled) {
       await _bridge.clearAll();
-      await _bridge.stopForegroundService();
       return;
     }
-
-    // Persistent notification mode is removed.
-    await _bridge.stopForegroundService();
   }
 
   Future<void> handleNotificationReply(
     String message, {
     String? sessionId,
   }) async {
+    if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
+      debugPrint('NotificationCoordinator: Master OFF, reply ignored');
+      return;
+    }
+
     cancelProactiveInFlight();
     _onUserReply?.call();
     final sessionProvider = _sessionProvider;
@@ -140,21 +141,18 @@ class NotificationCoordinator implements GlobalRuntimeListener {
 
     final resolvedSessionId = sessionId ?? sessionProvider.activeSessionId;
     if (resolvedSessionId == null) {
-      await _bridge.updatePersistentNotification(
+      await _bridge.showPreResponseNotification(
         title: settingsProvider.character.name,
         message: '활성 세션이 없습니다. 앱에서 채팅 세션을 생성하세요.',
         isError: true,
-        ongoing: false,
       );
       return;
     }
 
     final title = settingsProvider.character.name;
-    await _bridge.updatePersistentNotification(
+    await _bridge.showPreResponseNotification(
       title: title,
       message: 'Responding...',
-      isLoading: true,
-      ongoing: false,
       sessionId: resolvedSessionId,
     );
 
@@ -210,29 +208,19 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           Message(role: MessageRole.assistant, content: processedResponse),
         );
 
-        await _bridge.updatePersistentNotification(
+        await _bridge.showPreResponseNotification(
           title: title,
           message: processedResponse,
-          ongoing: false,
           sessionId: resolvedSessionId,
         );
-
-        if (notificationSettings.outputAsNewNotification) {
-          await _bridge.showHeadsUpNotification(
-            title: title,
-            message: processedResponse,
-            sessionId: resolvedSessionId,
-          );
-        }
       } catch (e) {
         if (e is ApiCancelledException) {
           debugPrint('Notification reply cancelled');
         } else {
-          await _bridge.updatePersistentNotification(
+          await _bridge.showPreResponseNotification(
             title: title,
             message: '오류: ${e.toString().replaceFirst('Exception: ', '')}',
             isError: true,
-            ongoing: false,
             sessionId: resolvedSessionId,
           );
         }
@@ -249,6 +237,11 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required bool skipInputBlock,
     required ApiConfig? apiConfig,
   }) async {
+    if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
+      debugPrint('NotificationCoordinator: Master OFF, proactive ignored');
+      return NotificationRequestResult.cancelled;
+    }
+
     final sessionProvider = _sessionProvider;
     final settingsProvider = _settingsProvider;
     final promptProvider = _promptBlockProvider;
@@ -297,31 +290,21 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           Message(role: MessageRole.assistant, content: processedResponse),
         );
 
-        await _bridge.updatePersistentNotification(
+        await _bridge.showPreResponseNotification(
           title: title,
           message: processedResponse,
-          ongoing: false,
           sessionId: sessionId,
         );
-
-        if (notificationSettings.outputAsNewNotification) {
-          await _bridge.showHeadsUpNotification(
-            title: title,
-            message: processedResponse,
-            sessionId: sessionId,
-          );
-        }
         return NotificationRequestResult.completed;
       } catch (e) {
         if (e is ApiCancelledException) {
           debugPrint('Proactive response cancelled');
           return NotificationRequestResult.cancelled;
         } else {
-          await _bridge.updatePersistentNotification(
+          await _bridge.showPreResponseNotification(
             title: title,
             message: '오류: ${e.toString().replaceFirst('Exception: ', '')}',
             isError: true,
-            ongoing: false,
             sessionId: sessionId,
           );
           return NotificationRequestResult.failed;
@@ -501,12 +484,11 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     _activeRequest = null;
     _activeOrigin = null;
     _bridge.clearAll();
-    _bridge.stopForegroundService();
   }
 
   @override
   void onGlobalEnabled() {
-    _syncPersistentNotification();
+    _syncNotificationState();
   }
 
   void cancelProactiveInFlight() {

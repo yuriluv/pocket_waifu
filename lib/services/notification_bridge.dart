@@ -44,50 +44,16 @@ class NotificationBridge {
     await _channel.invokeMethod('initializeChannels');
   }
 
-  Future<void> startForegroundService({
+  Future<void> showPreResponseNotification({
     required String title,
     required String message,
-    required bool ongoing,
-    String? sessionId,
-  }) async {
-    await _channel.invokeMethod('startForegroundService', {
-      'title': title,
-      'message': message,
-      'ongoing': ongoing,
-      'sessionId': sessionId,
-    });
-  }
-
-  Future<void> stopForegroundService() async {
-    await _channel.invokeMethod('stopForegroundService');
-  }
-
-  Future<void> updatePersistentNotification({
-    required String title,
-    required String message,
-    bool isLoading = false,
     bool isError = false,
-    bool ongoing = true,
     String? sessionId,
   }) async {
-    await _channel.invokeMethod('updatePersistentNotification', {
+    await _channel.invokeMethod('showPreResponseNotification', {
       'title': title,
       'message': message,
-      'isLoading': isLoading,
       'isError': isError,
-      'ongoing': ongoing,
-      'sessionId': sessionId,
-    });
-  }
-
-  Future<void> showHeadsUpNotification({
-    required String title,
-    required String message,
-    String? sessionId,
-  }) async {
-    await _channel.invokeMethod('showHeadsUpNotification', {
-      'title': title,
-      'message': message,
       'sessionId': sessionId,
     });
   }
