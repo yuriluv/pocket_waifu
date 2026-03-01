@@ -2,10 +2,46 @@
 // ============================================================================
 // ============================================================================
 
-enum MessageRole {
-  user,
-  assistant,
-  system,
+enum MessageRole { user, assistant, system }
+
+class ImageAttachment {
+  final String id;
+  final String base64Data;
+  final String mimeType;
+  final int width;
+  final int height;
+  final String? thumbnailPath;
+
+  const ImageAttachment({
+    required this.id,
+    required this.base64Data,
+    required this.mimeType,
+    this.width = 0,
+    this.height = 0,
+    this.thumbnailPath,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'base64Data': base64Data,
+      'mimeType': mimeType,
+      'width': width,
+      'height': height,
+      'thumbnailPath': thumbnailPath,
+    };
+  }
+
+  factory ImageAttachment.fromMap(Map<String, dynamic> map) {
+    return ImageAttachment(
+      id: map['id']?.toString() ?? '',
+      base64Data: map['base64Data']?.toString() ?? '',
+      mimeType: map['mimeType']?.toString() ?? 'image/jpeg',
+      width: map['width'] is int ? map['width'] as int : 0,
+      height: map['height'] is int ? map['height'] as int : 0,
+      thumbnailPath: map['thumbnailPath']?.toString(),
+    );
+  }
 }
 
 class Message {
@@ -15,6 +51,7 @@ class Message {
   final String content;
   final DateTime timestamp;
   final Map<String, dynamic>? metadata;
+  final List<ImageAttachment> images;
 
   Message({
     String? id,
@@ -23,6 +60,7 @@ class Message {
     required this.content,
     DateTime? timestamp,
     this.metadata,
+    this.images = const [],
   }) : id = id ?? '',
        timestamp = timestamp ?? DateTime.now();
 
@@ -45,6 +83,7 @@ class Message {
       'content': content,
       'timestamp': timestamp.toIso8601String(),
       'metadata': metadata, // v2.0.1
+      'images': images.map((image) => image.toMap()).toList(),
     };
   }
 
@@ -75,6 +114,15 @@ class Message {
       metadata: map['metadata'] != null
           ? Map<String, dynamic>.from(map['metadata'])
           : null, // v2.0.1
+      images: map['images'] is List
+          ? (map['images'] as List)
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      ImageAttachment.fromMap(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
     );
   }
 
@@ -85,6 +133,7 @@ class Message {
     String? content,
     DateTime? timestamp,
     Map<String, dynamic>? metadata,
+    List<ImageAttachment>? images,
   }) {
     return Message(
       id: id ?? this.id,
@@ -93,6 +142,7 @@ class Message {
       content: content ?? this.content,
       timestamp: timestamp ?? this.timestamp,
       metadata: metadata ?? this.metadata,
+      images: images ?? this.images,
     );
   }
 }

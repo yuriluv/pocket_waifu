@@ -82,7 +82,7 @@ class ApiService {
   ///
   Future<String> sendMessageWithConfig({
     required ApiConfig apiConfig,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required AppSettings settings,
     ApiRequestHandle? requestHandle,
   }) async {
@@ -129,25 +129,19 @@ class ApiService {
     }
   }
 
-  Future<List<Map<String, String>>> _applyPromptLifecycle(
-    List<Map<String, String>> messages,
+  Future<List<Map<String, dynamic>>> _applyPromptLifecycle(
+    List<Map<String, dynamic>> messages,
     AppSettings settings,
   ) async {
-    final List<Map<String, String>> transformed = [];
+    final List<Map<String, dynamic>> transformed = [];
     final context = const LuaHookContext();
     for (final message in messages) {
       final role = message['role'] ?? 'user';
-      final original = message['content'] ?? '';
-
-      var content = original;
-      if (settings.runRegexBeforeLua) {
-        content = await _regexPipeline.applyPromptInjection(content);
-        content = await _luaScriptingService.onPromptBuild(content, context);
-      } else {
-        content = await _luaScriptingService.onPromptBuild(content, context);
-        content = await _regexPipeline.applyPromptInjection(content);
-      }
-
+      final content = await _transformContentWithPromptLifecycle(
+        message['content'],
+        settings: settings,
+        context: context,
+      );
       transformed.add({'role': role, 'content': content});
     }
 
@@ -158,9 +152,61 @@ class ApiService {
     return transformed;
   }
 
+  Future<dynamic> _transformContentWithPromptLifecycle(
+    dynamic content, {
+    required AppSettings settings,
+    required LuaHookContext context,
+  }) async {
+    if (content is String) {
+      return _applyPromptLifecycleToText(
+        content,
+        settings: settings,
+        context: context,
+      );
+    }
+
+    if (content is List) {
+      final transformed = <dynamic>[];
+      for (final part in content) {
+        if (part is Map) {
+          final partMap = Map<String, dynamic>.from(part);
+          if (partMap['type'] == 'text' && partMap['text'] is String) {
+            partMap['text'] = await _applyPromptLifecycleToText(
+              partMap['text'] as String,
+              settings: settings,
+              context: context,
+            );
+          }
+          transformed.add(partMap);
+        } else {
+          transformed.add(part);
+        }
+      }
+      return transformed;
+    }
+
+    return content;
+  }
+
+  Future<String> _applyPromptLifecycleToText(
+    String text, {
+    required AppSettings settings,
+    required LuaHookContext context,
+  }) async {
+    var output = text;
+    if (settings.runRegexBeforeLua) {
+      output = await _regexPipeline.applyPromptInjection(output);
+      output = await _luaScriptingService.onPromptBuild(output, context);
+    } else {
+      output = await _luaScriptingService.onPromptBuild(output, context);
+      output = await _regexPipeline.applyPromptInjection(output);
+    }
+    return output;
+  }
+
   Future<String> _sendToOpenAICompatible({
     required ApiConfig apiConfig,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required AppSettings settings,
     ApiRequestHandle? requestHandle,
   }) async {
@@ -209,7 +255,9 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        final String content = data['choices'][0]['message']['content'];
+        final String content = _extractOpenAITextContent(
+          data['choices'][0]['message']['content'],
+        );
         return content.trim();
       } else {
         String errorMessage = _extractErrorMessage(response.body);
@@ -238,7 +286,9 @@ class ApiService {
 
             if (retryResponse.statusCode == 200) {
               final Map<String, dynamic> data = jsonDecode(retryResponse.body);
-              final String content = data['choices'][0]['message']['content'];
+              final String content = _extractOpenAITextContent(
+                data['choices'][0]['message']['content'],
+              );
               return content.trim();
             }
 
@@ -285,31 +335,37 @@ class ApiService {
 
   Future<String> _sendToAnthropic({
     required ApiConfig apiConfig,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required AppSettings settings,
     ApiRequestHandle? requestHandle,
   }) async {
     requestHandle?.throwIfCancelled();
 
     String? systemMessage;
-    final List<Map<String, String>> chatMessages = [];
+    final List<Map<String, dynamic>> chatMessages = [];
 
     for (final msg in messages) {
       if (msg['role'] == 'system') {
+        final extracted = _extractTextOnlyContent(msg['content']);
+        if (extracted.isEmpty) {
+          continue;
+        }
         if (systemMessage == null) {
-          systemMessage = msg['content'];
+          systemMessage = extracted;
         } else {
-          systemMessage = '$systemMessage\n\n${msg['content']}';
+          systemMessage = '$systemMessage\n\n$extracted';
         }
       } else {
-        chatMessages.add(msg);
+        chatMessages.add(_toAnthropicMessage(msg));
       }
     }
 
     if (chatMessages.isNotEmpty && chatMessages.first['role'] == 'assistant') {
       chatMessages.insert(0, {
         'role': 'user',
-        'content': '(conversation start)',
+        'content': [
+          {'type': 'text', 'text': '(conversation start)'},
+        ],
       });
     }
 
@@ -407,6 +463,122 @@ class ApiService {
     }
   }
 
+  String _extractTextOnlyContent(dynamic content) {
+    if (content is String) {
+      return content;
+    }
+    if (content is List) {
+      final buffer = <String>[];
+      for (final part in content) {
+        if (part is Map &&
+            part['type']?.toString() == 'text' &&
+            part['text'] is String) {
+          buffer.add(part['text'] as String);
+        }
+      }
+      return buffer.join('\n');
+    }
+    return '';
+  }
+
+  String _extractOpenAITextContent(dynamic content) {
+    if (content is String) {
+      return content;
+    }
+    if (content is List) {
+      final buffer = <String>[];
+      for (final part in content) {
+        if (part is Map && part['text'] is String) {
+          buffer.add(part['text'] as String);
+        }
+      }
+      return buffer.join('\n');
+    }
+    return '';
+  }
+
+  Map<String, dynamic> _toAnthropicMessage(Map<String, dynamic> msg) {
+    final role = msg['role']?.toString() ?? 'user';
+    final content = msg['content'];
+
+    if (content is String) {
+      return {
+        'role': role,
+        'content': [
+          {'type': 'text', 'text': content},
+        ],
+      };
+    }
+
+    if (content is List) {
+      final parts = <dynamic>[];
+      for (final part in content) {
+        if (part is! Map) continue;
+        final map = Map<String, dynamic>.from(part);
+        final type = map['type']?.toString() ?? '';
+
+        if (type == 'text' && map['text'] is String) {
+          parts.add({'type': 'text', 'text': map['text']});
+          continue;
+        }
+
+        if (type == 'image_url') {
+          final imageUrl = map['image_url'];
+          String? url;
+          if (imageUrl is Map && imageUrl['url'] is String) {
+            url = imageUrl['url'] as String;
+          }
+          final extracted = _extractBase64FromDataUrl(url);
+          if (extracted != null) {
+            parts.add({
+              'type': 'image',
+              'source': {
+                'type': 'base64',
+                'media_type': extracted.$1,
+                'data': extracted.$2,
+              },
+            });
+          }
+        }
+      }
+
+      if (parts.isEmpty) {
+        parts.add({'type': 'text', 'text': ''});
+      }
+      return {'role': role, 'content': parts};
+    }
+
+    return {
+      'role': role,
+      'content': [
+        {'type': 'text', 'text': ''},
+      ],
+    };
+  }
+
+  (String, String)? _extractBase64FromDataUrl(String? dataUrl) {
+    if (dataUrl == null || !dataUrl.startsWith('data:')) {
+      return null;
+    }
+
+    final commaIndex = dataUrl.indexOf(',');
+    if (commaIndex == -1) {
+      return null;
+    }
+
+    final meta = dataUrl.substring(5, commaIndex);
+    final data = dataUrl.substring(commaIndex + 1);
+    final semicolonIndex = meta.indexOf(';');
+    final mimeType = semicolonIndex == -1
+        ? meta
+        : meta.substring(0, semicolonIndex);
+    if (mimeType.isEmpty || data.isEmpty) {
+      return null;
+    }
+
+    return (mimeType, data);
+  }
+
   String _safeEndpointHost(String rawUrl) {
     final uri = Uri.tryParse(rawUrl);
     if (uri == null) {
@@ -421,7 +593,7 @@ class ApiService {
 
   Map<String, dynamic> _buildOpenAICompatibleRequestBody({
     required ApiConfig apiConfig,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required AppSettings settings,
   }) {
     // Keep preset-specific extras, but never let them overwrite runtime sliders.
@@ -446,7 +618,7 @@ class ApiService {
 
   Map<String, dynamic> _buildAnthropicRequestBody({
     required ApiConfig apiConfig,
-    required List<Map<String, String>> chatMessages,
+    required List<Map<String, dynamic>> chatMessages,
     required AppSettings settings,
   }) {
     // Anthropic also follows runtime settings first for shared parameters.
@@ -634,7 +806,12 @@ class ApiService {
         final requestBody = _buildAnthropicRequestBody(
           apiConfig: apiConfig,
           chatMessages: [
-            {'role': 'user', 'content': 'test'},
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': 'test'},
+              ],
+            },
           ],
           settings: AppSettings(maxTokens: 10, temperature: 0.0, topP: 1.0),
         );
@@ -727,8 +904,17 @@ class ApiService {
   }) async {
     final apiConfig = _createLegacyApiConfig(settings);
 
-    final List<Map<String, String>> formattedMessages = messages.map((msg) {
-      return {'role': msg.roleString, 'content': msg.content};
+    final List<Map<String, dynamic>> formattedMessages = messages.map((msg) {
+      if (msg.images.isEmpty) {
+        return {'role': msg.roleString, 'content': msg.content};
+      }
+      return {
+        'role': msg.roleString,
+        'content': _promptBuilder.buildMultimodalContent(
+          msg.content,
+          msg.images,
+        ),
+      };
     }).toList();
 
     return await sendMessageWithConfig(

@@ -77,10 +77,11 @@ class ChatProvider extends ChangeNotifier {
     required Character character,
     required AppSettings settings,
     required String userName,
+    List<ImageAttachment> images = const [],
     ApiConfig? apiConfig,
     String? targetSessionId,
   }) async {
-    if (userMessage.trim().isEmpty || _isLoading) return;
+    if ((userMessage.trim().isEmpty && images.isEmpty) || _isLoading) return;
 
     final sessionProvider = _sessionProvider;
     if (sessionProvider == null) {
@@ -94,14 +95,17 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
-    final preparedInput = await _prepareUserInput(
-      userMessage.trim(),
-      settings: settings,
-      sessionId: sessionId,
-      characterId: character.id,
-      characterName: character.name,
-      userName: userName,
-    );
+    final trimmedInput = userMessage.trim();
+    final preparedInput = trimmedInput.isEmpty
+        ? ''
+        : await _prepareUserInput(
+            trimmedInput,
+            settings: settings,
+            sessionId: sessionId,
+            characterId: character.id,
+            characterName: character.name,
+            userName: userName,
+          );
 
     await sessionProvider.runSerialized(() async {
       _errorMessage = null;
@@ -111,6 +115,7 @@ class ChatProvider extends ChangeNotifier {
           sessionId: sessionId,
           role: MessageRole.user,
           content: preparedInput,
+          images: images,
         ),
       );
       notifyListeners();
@@ -310,9 +315,7 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    final formattedMessages = apiMessages
-        .map((msg) => {'role': msg.roleString, 'content': msg.content})
-        .toList();
+    final formattedMessages = apiMessages.map(_messageToApiPayload).toList();
 
     return _apiService.sendMessageWithConfig(
       apiConfig: apiConfig,
@@ -421,6 +424,7 @@ class ChatProvider extends ChangeNotifier {
       character: character,
       settings: settings,
       userName: userName,
+      images: lastUserMessage.images,
       apiConfig: apiConfig,
       targetSessionId: sessionId,
     );
@@ -478,13 +482,26 @@ class ChatProvider extends ChangeNotifier {
     required String sessionId,
     required MessageRole role,
     required String content,
+    List<ImageAttachment> images = const [],
   }) {
     return Message(
       id: _uuid.v4(),
       chatId: sessionId,
       role: role,
       content: content,
+      images: images,
     );
+  }
+
+  Map<String, dynamic> _messageToApiPayload(Message msg) {
+    if (msg.images.isEmpty) {
+      return {'role': msg.roleString, 'content': msg.content};
+    }
+
+    return {
+      'role': msg.roleString,
+      'content': _promptBuilder.buildMultimodalContent(msg.content, msg.images),
+    };
   }
 
   String? _resolveSessionId({String? targetSessionId}) {

@@ -18,6 +18,8 @@ import 'providers/theme_provider.dart';
 import 'providers/global_runtime_provider.dart';
 import 'providers/notification_settings_provider.dart';
 import 'providers/prompt_preset_provider.dart';
+import 'providers/screen_share_provider.dart';
+import 'providers/screen_capture_provider.dart';
 import 'services/release_log_service.dart';
 import 'services/notification_bridge.dart';
 import 'services/notification_coordinator.dart';
@@ -88,6 +90,10 @@ class PocketWaifuApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => GlobalRuntimeProvider()),
 
         ChangeNotifierProvider(create: (_) => NotificationSettingsProvider()),
+
+        ChangeNotifierProvider(create: (_) => ScreenShareProvider()),
+
+        ChangeNotifierProvider(create: (_) => ScreenCaptureProvider()),
 
         ChangeNotifierProxyProvider<PromptBlockProvider, PromptPresetProvider>(
           create: (_) => PromptPresetProvider(),
