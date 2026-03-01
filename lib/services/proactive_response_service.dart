@@ -42,7 +42,9 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       GlobalRuntimeRegistry.instance.register(this);
       _registered = true;
     }
-    _notificationCoordinator.setOnUserReplyHandler(cancelInFlightDueToUserReply);
+    _notificationCoordinator.setOnUserReplyHandler(
+      cancelInFlightDueToUserReply,
+    );
     _maybeStart();
   }
 
@@ -100,15 +102,79 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       return;
     }
 
-    final range = _selectRange(config);
-    if (range == null) return;
-
-    _currentInterval = useSameInterval && _currentInterval != null
+    final nextInterval = useSameInterval && _currentInterval != null
         ? _currentInterval
-        : range.pick(_random);
+        : _pickInterval(config);
+
+    _currentInterval = nextInterval;
 
     if (_currentInterval == null) return;
     _timer = Timer(_currentInterval!, _trigger);
+  }
+
+  Duration? _pickInterval(ProactiveConfig config) {
+    if (config.isAdditive) {
+      return _selectAdditiveInterval(config);
+    }
+
+    final range = _selectRange(config);
+    if (range == null) return null;
+    return range.pick(_random);
+  }
+
+  Duration? _selectAdditiveInterval(ProactiveConfig config) {
+    final base = config.baseInterval;
+    if (base == null) return null;
+
+    var totalMs = base.inMilliseconds;
+    final adjustments = config.additiveAdjustments;
+
+    if (_screenOff && adjustments.containsKey('screenoff')) {
+      final value = adjustments['screenoff'];
+      if (value == null) return null;
+      totalMs += value.inMilliseconds;
+    }
+
+    if (_screenLandscape && adjustments.containsKey('screenlandscape')) {
+      final value = adjustments['screenlandscape'];
+      if (value == null) return null;
+      totalMs += value.inMilliseconds;
+    }
+
+    if (_overlayOn && adjustments.containsKey('overlayon')) {
+      final value = adjustments['overlayon'];
+      if (value == null) return null;
+      totalMs += value.inMilliseconds;
+    }
+
+    if (!_overlayOn && adjustments.containsKey('overlayoff')) {
+      final value = adjustments['overlayoff'];
+      if (value == null) return null;
+      totalMs += value.inMilliseconds;
+    }
+
+    if (totalMs <= 0) {
+      debugPrint('Proactive additive schedule produced non-positive interval');
+      return null;
+    }
+
+    final deviation = config.deviationPercent.clamp(0, 100);
+    if (deviation > 0) {
+      final delta = (totalMs * deviation / 100).round();
+      if (delta > 0) {
+        final offset = _random.nextInt(delta * 2 + 1) - delta;
+        totalMs += offset;
+      }
+    }
+
+    if (totalMs <= 0) {
+      debugPrint(
+        'Proactive additive schedule variance produced non-positive interval',
+      );
+      return null;
+    }
+
+    return Duration(milliseconds: totalMs);
   }
 
   ProactiveDurationRange? _selectRange(ProactiveConfig config) {

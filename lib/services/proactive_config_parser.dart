@@ -23,9 +23,23 @@ class ProactiveDurationRange {
 }
 
 class ProactiveConfig {
+  final Duration? baseInterval;
+  final int deviationPercent;
+  final Map<String, Duration?> additiveAdjustments;
   final Map<String, ProactiveDurationRange> ranges;
 
-  const ProactiveConfig(this.ranges);
+  const ProactiveConfig.legacy(this.ranges)
+    : baseInterval = null,
+      deviationPercent = 0,
+      additiveAdjustments = const {};
+
+  const ProactiveConfig.additive({
+    required this.baseInterval,
+    required this.deviationPercent,
+    required this.additiveAdjustments,
+  }) : ranges = const {};
+
+  bool get isAdditive => baseInterval != null;
 }
 
 class ProactiveConfigParser {
@@ -37,8 +51,94 @@ class ProactiveConfigParser {
   };
 
   static ProactiveConfig parse(String raw) {
+    final trimmedLines = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+
+    final hasAdditiveKey = trimmedLines.any(
+      (line) => line.startsWith('base=') || line.startsWith('deviation='),
+    );
+
+    if (hasAdditiveKey) {
+      return _parseAdditive(trimmedLines);
+    }
+
+    return _parseLegacy(trimmedLines);
+  }
+
+  static ProactiveConfig _parseAdditive(List<String> lines) {
+    final keyToLine = <String, int>{};
+    final values = <String, String>{};
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      if (line.contains(' ')) {
+        throw ProactiveConfigParseException('라인 ${i + 1}: 공백이 포함되어 있습니다.');
+      }
+      final parts = line.split('=');
+      if (parts.length != 2) {
+        throw ProactiveConfigParseException('라인 ${i + 1}: 형식이 잘못되었습니다.');
+      }
+      final key = parts[0];
+      final value = parts[1];
+      values[key] = value;
+      keyToLine[key] = i + 1;
+    }
+
+    if (!values.containsKey('base')) {
+      throw ProactiveConfigParseException('base 키가 필요합니다.');
+    }
+
+    final baseLine = keyToLine['base']!;
+    final base = _parseDuration(values['base']!, baseLine);
+    if (base <= Duration.zero) {
+      throw ProactiveConfigParseException('라인 $baseLine: base는 0보다 커야 합니다.');
+    }
+
+    var deviationPercent = 0;
+    if (values.containsKey('deviation')) {
+      final deviationLine = keyToLine['deviation']!;
+      deviationPercent = int.tryParse(values['deviation']!) ?? -1;
+      if (deviationPercent < 0 || deviationPercent > 100) {
+        throw ProactiveConfigParseException(
+          '라인 $deviationLine: deviation은 0~100 정수여야 합니다.',
+        );
+      }
+    }
+
+    final adjustments = <String, Duration?>{};
+    for (final key in supportedKeys) {
+      if (!values.containsKey(key)) continue;
+      final line = keyToLine[key]!;
+      final value = values[key]!;
+      if (value == 'inf') {
+        adjustments[key] = null;
+        continue;
+      }
+      adjustments[key] = _parseSignedDuration(value, line);
+    }
+
+    var minimumPossibleMs = base.inMilliseconds;
+    for (final value in adjustments.values) {
+      if (value != null && value.isNegative) {
+        minimumPossibleMs += value.inMilliseconds;
+      }
+    }
+    if (minimumPossibleMs <= 0) {
+      throw ProactiveConfigParseException('base에 음수 보정을 합산한 최소값은 0보다 커야 합니다.');
+    }
+
+    return ProactiveConfig.additive(
+      baseInterval: base,
+      deviationPercent: deviationPercent,
+      additiveAdjustments: adjustments,
+    );
+  }
+
+  static ProactiveConfig _parseLegacy(List<String> lines) {
     final ranges = <String, ProactiveDurationRange>{};
-    final lines = raw.split('\n');
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
@@ -70,14 +170,28 @@ class ProactiveConfigParser {
         );
       }
       if (maxDuration < minDuration) {
-        throw ProactiveConfigParseException(
-          '라인 ${i + 1}: 최대 간격은 최소보다 커야 합니다.',
-        );
+        throw ProactiveConfigParseException('라인 ${i + 1}: 최대 간격은 최소보다 커야 합니다.');
       }
       ranges[key] = ProactiveDurationRange(minDuration, maxDuration);
     }
 
-    return ProactiveConfig(ranges);
+    return ProactiveConfig.legacy(ranges);
+  }
+
+  static Duration _parseSignedDuration(String input, int line) {
+    if (input.isEmpty) {
+      throw ProactiveConfigParseException('라인 $line: 시간 값이 비어 있습니다.');
+    }
+    var sign = 1;
+    var raw = input;
+    if (input.startsWith('+')) {
+      raw = input.substring(1);
+    } else if (input.startsWith('-')) {
+      raw = input.substring(1);
+      sign = -1;
+    }
+    final value = _parseDuration(raw, line);
+    return Duration(milliseconds: sign * value.inMilliseconds);
   }
 
   static Duration _parseDuration(String input, int line) {

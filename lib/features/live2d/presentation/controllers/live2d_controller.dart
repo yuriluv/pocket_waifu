@@ -14,6 +14,7 @@ import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/interaction_manager.dart';
 import '../../data/services/display_config_store.dart';
 import '../../data/services/live2d_overlay_state_service.dart';
+import '../../../../services/global_runtime_registry.dart';
 
 enum Live2DControllerState { initial, loading, ready, error }
 
@@ -396,6 +397,9 @@ class Live2DController extends ChangeNotifier {
   }
 
   Future<void> setEditMode(bool enabled) async {
+    if (!enabled && _settings.isEnabled && selectedModel != null) {
+      await saveDisplayConfigForModel(selectedModel!.id);
+    }
     _settings = _settings.copyWith(editModeEnabled: enabled);
     await _nativeBridge.setEditMode(enabled);
     if (!enabled) {
@@ -559,6 +563,10 @@ class Live2DController extends ChangeNotifier {
     live2dLog.info(_tag, '플로팅 뷰어 ${enabled ? '활성화' : '비활성화'} 요청');
 
     if (enabled) {
+      if (!GlobalRuntimeRegistry.instance.isEnabled) {
+        _setError('전체 기능이 OFF 상태입니다. 먼저 전체 기능을 ON으로 전환하세요.');
+        return false;
+      }
       if (!await _nativeBridge.hasOverlayPermission()) {
         live2dLog.warning(_tag, '오버레이 권한 없음');
         _setError('오버레이 권한이 필요합니다');
@@ -591,12 +599,17 @@ class Live2DController extends ChangeNotifier {
       await _nativeBridge.setCharacterRotation(_settings.characterRotation);
 
       await _loadModelToOverlay(selectedModel!);
+      await _applyDisplayConfigForModel(selectedModel!.id);
 
       _settings = _settings.copyWith(isEnabled: true);
       await _settings.save();
 
       live2dLog.info(_tag, '플로팅 뷰어 활성화됨 (Native)');
     } else {
+      final model = selectedModel;
+      if (model != null) {
+        await saveDisplayConfigForModel(model.id);
+      }
       await _nativeBridge.hideOverlay();
 
       _settings = _settings.copyWith(isEnabled: false, editModeEnabled: false);

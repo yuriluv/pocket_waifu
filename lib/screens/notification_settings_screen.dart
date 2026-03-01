@@ -24,8 +24,9 @@ class _NotificationSettingsScreenState
   @override
   void initState() {
     super.initState();
-    final provider =
-        context.read<NotificationSettingsProvider>().proactiveSettings;
+    final provider = context
+        .read<NotificationSettingsProvider>()
+        .proactiveSettings;
     _proactiveController = TextEditingController(text: provider.scheduleText);
   }
 
@@ -46,50 +47,30 @@ class _NotificationSettingsScreenState
     settingsProvider.rebindApiPresets(apiConfigs);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('알림 설정'),
-      ),
+      appBar: AppBar(title: const Text('알림 설정')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _SectionTitle(title: '알림'),
           SwitchListTile(
             title: const Text('알림 사용'),
-            subtitle: const Text('알림 표시 여부를 제어합니다.'),
+            subtitle: const Text('선응답(프로액티브) 대화 알림을 사용합니다.'),
             value: notificationSettings.notificationsEnabled,
             onChanged: (value) async {
-              final enabled =
-                  await settingsProvider.setNotificationsEnabled(value);
+              final enabled = await settingsProvider.setNotificationsEnabled(
+                value,
+              );
+              if (!mounted) return;
               if (!enabled) {
                 _showPermissionDialog();
               }
             },
           ),
           SwitchListTile(
-            title: const Text('지속 알림'),
-            subtitle: const Text('알림을 항상 고정합니다.'),
-            value: notificationSettings.persistentEnabled,
-            onChanged: settingsProvider.setPersistentEnabled,
-          ),
-          SwitchListTile(
             title: const Text('출력을 새 알림으로'),
             subtitle: const Text('AI 응답을 헤드업 알림으로 표시합니다.'),
             value: notificationSettings.outputAsNewNotification,
             onChanged: settingsProvider.setOutputAsNewNotification,
-          ),
-          const SizedBox(height: 12),
-          _PresetDropdown(
-            label: '알림 프롬프트 프리셋',
-            value: notificationSettings.promptPresetId,
-            presets: promptPresets,
-            onChanged: settingsProvider.setNotificationPromptPreset,
-          ),
-          const SizedBox(height: 12),
-          _ApiPresetDropdown(
-            label: '알림 API 프리셋',
-            value: notificationSettings.apiPresetId,
-            apiConfigs: apiConfigs,
-            onChanged: settingsProvider.setNotificationApiPreset,
           ),
           const Divider(height: 32),
           _SectionTitle(title: '프로액티브 응답'),
@@ -106,7 +87,8 @@ class _NotificationSettingsScreenState
             decoration: const InputDecoration(
               labelText: '프로액티브 스케줄',
               border: OutlineInputBorder(),
-              helperText: '예: overlayon=3m30s~5m',
+              helperText:
+                  '예: base=30m\ndeviation=10\noverlayon=-20m\nscreenlandscape=+20m\nscreenoff=inf',
             ),
           ),
           const SizedBox(height: 8),
@@ -187,9 +169,9 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -256,8 +238,7 @@ class _ApiPresetDropdown extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          value: value ??
-              (apiConfigs.isNotEmpty ? apiConfigs.first.id : null),
+          value: value ?? (apiConfigs.isNotEmpty ? apiConfigs.first.id : null),
           isExpanded: true,
           items: apiConfigs
               .map<DropdownMenuItem<String>>(

@@ -35,13 +35,15 @@ class NotificationSettingsProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final notificationJson = prefs.getString(_notificationKey);
       if (notificationJson != null) {
-        _notificationSettings =
-            NotificationSettings.fromMap(jsonDecode(notificationJson));
+        _notificationSettings = NotificationSettings.fromMap(
+          jsonDecode(notificationJson),
+        );
       }
       final proactiveJson = prefs.getString(_proactiveKey);
       if (proactiveJson != null) {
-        _proactiveSettings =
-            ProactiveResponseSettings.fromMap(jsonDecode(proactiveJson));
+        _proactiveSettings = ProactiveResponseSettings.fromMap(
+          jsonDecode(proactiveJson),
+        );
       }
     } catch (e) {
       debugPrint('NotificationSettingsProvider load failed: $e');
@@ -78,30 +80,34 @@ class NotificationSettingsProvider extends ChangeNotifier {
     if (enabled) {
       final granted = await ensureNotificationPermission();
       if (!granted) {
-        _notificationSettings =
-            _notificationSettings.copyWith(notificationsEnabled: false);
+        _notificationSettings = _notificationSettings.copyWith(
+          notificationsEnabled: false,
+        );
         notifyListeners();
         await _save();
         return false;
       }
     }
-    _notificationSettings =
-        _notificationSettings.copyWith(notificationsEnabled: enabled);
+    _notificationSettings = _notificationSettings.copyWith(
+      notificationsEnabled: enabled,
+    );
     notifyListeners();
     await _save();
     return true;
   }
 
   void setPersistentEnabled(bool enabled) {
-    _notificationSettings =
-        _notificationSettings.copyWith(persistentEnabled: enabled);
+    _notificationSettings = _notificationSettings.copyWith(
+      persistentEnabled: false,
+    );
     notifyListeners();
     _save();
   }
 
   void setOutputAsNewNotification(bool enabled) {
-    _notificationSettings =
-        _notificationSettings.copyWith(outputAsNewNotification: enabled);
+    _notificationSettings = _notificationSettings.copyWith(
+      outputAsNewNotification: enabled,
+    );
     notifyListeners();
     _save();
   }
@@ -137,8 +143,9 @@ class NotificationSettingsProvider extends ChangeNotifier {
   }
 
   void updateProactiveSchedule(String scheduleText) {
-    _proactiveSettings =
-        _proactiveSettings.copyWith(scheduleText: scheduleText);
+    _proactiveSettings = _proactiveSettings.copyWith(
+      scheduleText: scheduleText,
+    );
     notifyListeners();
     _save();
   }
@@ -177,14 +184,16 @@ class NotificationSettingsProvider extends ChangeNotifier {
     bool changed = false;
     if (_notificationSettings.apiPresetId != null &&
         !ids.contains(_notificationSettings.apiPresetId)) {
-      _notificationSettings =
-          _notificationSettings.copyWith(apiPresetId: configs.first.id);
+      _notificationSettings = _notificationSettings.copyWith(
+        apiPresetId: configs.first.id,
+      );
       changed = true;
     }
     if (_proactiveSettings.apiPresetId != null &&
         !ids.contains(_proactiveSettings.apiPresetId)) {
-      _proactiveSettings =
-          _proactiveSettings.copyWith(apiPresetId: configs.first.id);
+      _proactiveSettings = _proactiveSettings.copyWith(
+        apiPresetId: configs.first.id,
+      );
       changed = true;
     }
     if (changed) {

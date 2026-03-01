@@ -98,6 +98,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         await Live2DQuickToggleService.instance.toggleTouchThrough();
         break;
       case 'cancelReply':
+        await _bridge.clearAll();
         await _syncPersistentNotification();
         break;
     }
@@ -106,29 +107,16 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   Future<void> _syncPersistentNotification() async {
     final settings = _notificationSettingsProvider?.notificationSettings;
     final globalEnabled = _globalRuntimeProvider?.isEnabled ?? true;
-    if (settings == null || !globalEnabled) return;
+    if (settings == null) return;
 
-    if (settings.notificationsEnabled && settings.persistentEnabled) {
-      final title = _settingsProvider!.character.name;
-      await _bridge.startForegroundService(
-        title: title,
-        message: '대기 중',
-        ongoing: true,
-        sessionId: _sessionProvider?.activeSessionId,
-      );
-    } else if (settings.notificationsEnabled && !settings.persistentEnabled) {
-      final title = _settingsProvider!.character.name;
-      await _bridge.stopForegroundService();
-      await _bridge.updatePersistentNotification(
-        title: title,
-        message: '대기 중',
-        ongoing: false,
-        sessionId: _sessionProvider?.activeSessionId,
-      );
-    } else {
+    if (!globalEnabled || !settings.notificationsEnabled) {
       await _bridge.clearAll();
       await _bridge.stopForegroundService();
+      return;
     }
+
+    // Persistent notification mode is removed.
+    await _bridge.stopForegroundService();
   }
 
   Future<void> handleNotificationReply(
@@ -156,7 +144,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         title: settingsProvider.character.name,
         message: '활성 세션이 없습니다. 앱에서 채팅 세션을 생성하세요.',
         isError: true,
-        ongoing: notificationSettings.persistentEnabled,
+        ongoing: false,
       );
       return;
     }
@@ -166,7 +154,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       title: title,
       message: 'Responding...',
       isLoading: true,
-      ongoing: notificationSettings.persistentEnabled,
+      ongoing: false,
       sessionId: resolvedSessionId,
     );
 
@@ -185,7 +173,11 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         Message(role: MessageRole.user, content: preparedInput),
       );
 
-      final apiConfig = _resolveApiConfig(notificationSettings.apiPresetId);
+      final proactiveSettings =
+          _notificationSettingsProvider?.proactiveSettings;
+      final apiConfig = _resolveApiConfig(
+        proactiveSettings?.apiPresetId ?? notificationSettings.apiPresetId,
+      );
 
       final requestHandle = _apiService.createRequestHandle();
       _activeRequest = requestHandle;
@@ -221,7 +213,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         await _bridge.updatePersistentNotification(
           title: title,
           message: processedResponse,
-          ongoing: notificationSettings.persistentEnabled,
+          ongoing: false,
           sessionId: resolvedSessionId,
         );
 
@@ -240,7 +232,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
             title: title,
             message: '오류: ${e.toString().replaceFirst('Exception: ', '')}',
             isError: true,
-            ongoing: notificationSettings.persistentEnabled,
+            ongoing: false,
             sessionId: resolvedSessionId,
           );
         }
@@ -308,7 +300,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         await _bridge.updatePersistentNotification(
           title: title,
           message: processedResponse,
-          ongoing: notificationSettings.persistentEnabled,
+          ongoing: false,
           sessionId: sessionId,
         );
 
@@ -329,7 +321,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
             title: title,
             message: '오류: ${e.toString().replaceFirst('Exception: ', '')}',
             isError: true,
-            ongoing: notificationSettings.persistentEnabled,
+            ongoing: false,
             sessionId: sessionId,
           );
           return NotificationRequestResult.failed;

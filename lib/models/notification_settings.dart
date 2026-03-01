@@ -1,5 +1,6 @@
 class NotificationSettings {
   final bool notificationsEnabled;
+  // Deprecated: persistent notification mode has been removed.
   final bool persistentEnabled;
   final bool outputAsNewNotification;
   final String? promptPresetId;
@@ -7,7 +8,7 @@ class NotificationSettings {
 
   const NotificationSettings({
     this.notificationsEnabled = false,
-    this.persistentEnabled = true,
+    this.persistentEnabled = false,
     this.outputAsNewNotification = true,
     this.promptPresetId = 'current',
     this.apiPresetId,
@@ -27,8 +28,9 @@ class NotificationSettings {
       persistentEnabled: persistentEnabled ?? this.persistentEnabled,
       outputAsNewNotification:
           outputAsNewNotification ?? this.outputAsNewNotification,
-      promptPresetId:
-          clearPromptPreset ? null : (promptPresetId ?? this.promptPresetId),
+      promptPresetId: clearPromptPreset
+          ? null
+          : (promptPresetId ?? this.promptPresetId),
       apiPresetId: clearApiPreset ? null : (apiPresetId ?? this.apiPresetId),
     );
   }

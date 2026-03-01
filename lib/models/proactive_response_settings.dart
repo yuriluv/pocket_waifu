@@ -6,7 +6,12 @@ class ProactiveResponseSettings {
 
   const ProactiveResponseSettings({
     this.enabled = false,
-    this.scheduleText = 'overlayon=0\noverlayoff=0\nscreenlandscape=0\nscreenoff=0',
+    this.scheduleText =
+        'base=30m\n'
+        'deviation=10\n'
+        'overlayon=-20m\n'
+        'screenlandscape=+20m\n'
+        'screenoff=inf',
     this.promptPresetId = 'current',
     this.apiPresetId,
   });
@@ -22,8 +27,9 @@ class ProactiveResponseSettings {
     return ProactiveResponseSettings(
       enabled: enabled ?? this.enabled,
       scheduleText: scheduleText ?? this.scheduleText,
-      promptPresetId:
-          clearPromptPreset ? null : (promptPresetId ?? this.promptPresetId),
+      promptPresetId: clearPromptPreset
+          ? null
+          : (promptPresetId ?? this.promptPresetId),
       apiPresetId: clearApiPreset ? null : (apiPresetId ?? this.apiPresetId),
     );
   }

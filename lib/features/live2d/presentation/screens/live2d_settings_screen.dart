@@ -269,11 +269,6 @@ class _Live2DSettingsScreenContentState
                   onChanged: controller.setEditMode,
                 ),
 
-                _SectionHeader(title: '🎮 상호작용 테스트', icon: Icons.touch_app),
-                _InteractionTestTile(
-                  hasOverlayPermission: _hasOverlayPermission,
-                ),
-
                 const SizedBox(height: 32),
               ],
             ),
@@ -635,7 +630,7 @@ class _AdvancedSettingsMenu extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.sports_esports),
           title: const Text('상호작용 설정'),
-          subtitle: const Text('모션/표정 테스트, 제스처 매핑, 자동 동작'),
+          subtitle: const Text('모션 파라미터, 제스처 매핑, 자동 동작'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
             Navigator.push(

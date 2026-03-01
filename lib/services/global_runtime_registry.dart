@@ -9,9 +9,13 @@ abstract class GlobalRuntimeListener {
 class GlobalRuntimeRegistry {
   GlobalRuntimeRegistry._internal();
 
-  static final GlobalRuntimeRegistry instance = GlobalRuntimeRegistry._internal();
+  static final GlobalRuntimeRegistry instance =
+      GlobalRuntimeRegistry._internal();
 
   final Set<GlobalRuntimeListener> _listeners = {};
+  bool _isEnabled = true;
+
+  bool get isEnabled => _isEnabled;
 
   void register(GlobalRuntimeListener listener) {
     _listeners.add(listener);
@@ -22,6 +26,7 @@ class GlobalRuntimeRegistry {
   }
 
   void notifyEnabled() {
+    _isEnabled = true;
     for (final listener in List<GlobalRuntimeListener>.from(_listeners)) {
       try {
         listener.onGlobalEnabled();
@@ -32,6 +37,7 @@ class GlobalRuntimeRegistry {
   }
 
   void notifyDisabled() {
+    _isEnabled = false;
     for (final listener in List<GlobalRuntimeListener>.from(_listeners)) {
       try {
         listener.onGlobalDisabled();
