@@ -89,7 +89,7 @@ class PromptBuilder {
   }
 
   ///
-  List<Map<String, String>> buildMessagesForApi({
+  List<Map<String, dynamic>> buildMessagesForApi({
     required List<PromptBlock> blocks,
     required List<Message> pastMessages,
     required String currentInput,
@@ -115,6 +115,31 @@ class PromptBuilder {
     return [
       {'role': role, 'content': prompt},
     ];
+  }
+
+  List<dynamic> buildMultimodalContent(
+    String text,
+    List<ImageAttachment> images,
+  ) {
+    if (images.isEmpty) {
+      return [
+        {'type': 'text', 'text': text},
+      ];
+    }
+
+    final parts = <dynamic>[];
+    if (text.trim().isNotEmpty) {
+      parts.add({'type': 'text', 'text': text});
+    }
+
+    for (final img in images) {
+      parts.add({
+        'type': 'image_url',
+        'image_url': {'url': 'data:${img.mimeType};base64,${img.base64Data}'},
+      });
+    }
+
+    return parts;
   }
 
   int _parseNaturalRange(String value) {

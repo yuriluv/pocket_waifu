@@ -12,6 +12,7 @@ import 'prompt_editor_screen.dart';
 import 'chat_list_screen.dart';
 import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
+import 'screen_share_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'regex_lua_management_screen.dart';
 import '../features/live2d/live2d_module.dart';
@@ -211,6 +212,23 @@ class MenuDrawer extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const Live2DSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                const _SectionTitle(title: 'Screen Share'),
+
+                _DrawerMenuItem(
+                  icon: Icons.screen_share_outlined,
+                  title: 'Screen Share Settings',
+                  subtitle: 'Permission & capture options',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ScreenShareSettingsScreen(),
                       ),
                     );
                   },

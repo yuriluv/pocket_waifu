@@ -62,7 +62,10 @@ class PromptBlockProvider extends ChangeNotifier {
             .map(PromptPreset.fromMap)
             .toList();
         _presets = _presets
-            .map((preset) => preset.copyWith(blocks: _normalizeBlocks(preset.blocks)))
+            .map(
+              (preset) =>
+                  preset.copyWith(blocks: _normalizeBlocks(preset.blocks)),
+            )
             .toList();
       }
 
@@ -103,7 +106,9 @@ class PromptBlockProvider extends ChangeNotifier {
       final int legacyPastCount =
           prefs.getInt(_legacyPastMessageCountKey) ?? 10;
 
-      final legacyBlocks = legacyList.whereType<Map<String, dynamic>>().toList();
+      final legacyBlocks = legacyList
+          .whereType<Map<String, dynamic>>()
+          .toList();
       legacyBlocks.sort((a, b) {
         final aOrder = a['order'] ?? 0;
         final bOrder = b['order'] ?? 0;
@@ -181,7 +186,10 @@ class PromptBlockProvider extends ChangeNotifier {
       PromptBlock.input(title: 'Input'),
     ];
 
-    return PromptPreset(name: 'Default Preset', blocks: _normalizeBlocks(blocks));
+    return PromptPreset(
+      name: 'Default Preset',
+      blocks: _normalizeBlocks(blocks),
+    );
   }
 
   Future<void> _savePresets() async {
@@ -206,12 +214,7 @@ class PromptBlockProvider extends ChangeNotifier {
 
   List<PromptBlock> _cloneBlocks(List<PromptBlock> blocks) {
     return blocks
-        .map(
-          (b) => b.copyWith(
-            id: _uuid.v4(),
-            order: b.order,
-          ),
-        )
+        .map((b) => b.copyWith(id: _uuid.v4(), order: b.order))
         .toList();
   }
 
@@ -364,7 +367,11 @@ class PromptBlockProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updatePastMemoryHeaders(String id, String userHeader, String charHeader) {
+  void updatePastMemoryHeaders(
+    String id,
+    String userHeader,
+    String charHeader,
+  ) {
     final index = _workingBlocks.indexWhere((b) => b.id == id);
     if (index == -1) return;
     _workingBlocks[index] = _workingBlocks[index].copyWith(
@@ -383,7 +390,7 @@ class PromptBlockProvider extends ChangeNotifier {
     );
   }
 
-  List<Map<String, String>> buildMessagesForApi(
+  List<Map<String, dynamic>> buildMessagesForApi(
     List<Message> pastMessages,
     String currentInput, {
     bool hasFirstSystemPrompt = true,
@@ -402,7 +409,9 @@ class PromptBlockProvider extends ChangeNotifier {
 
   Future<(bool, String?)> exportPresetToFile(PromptPreset preset) async {
     try {
-      final String exportFileName = _sanitizeExportFileName('${preset.name}.json');
+      final String exportFileName = _sanitizeExportFileName(
+        '${preset.name}.json',
+      );
       final PromptPreset exportPreset = _buildExportPreset(preset);
       final String jsonString = jsonEncode(exportPreset.toExternalMap());
 
@@ -451,7 +460,9 @@ class PromptBlockProvider extends ChangeNotifier {
   PromptPreset _buildExportPreset(PromptPreset preset) {
     final bool isActive = preset.id == _activePresetId;
     final sourceBlocks = isActive ? _workingBlocks : preset.blocks;
-    return preset.copyWith(blocks: _normalizeBlocks(_cloneBlocks(sourceBlocks)));
+    return preset.copyWith(
+      blocks: _normalizeBlocks(_cloneBlocks(sourceBlocks)),
+    );
   }
 
   Future<String?> _resolveFallbackExportPath(String fileName) async {
@@ -507,8 +518,9 @@ class PromptBlockProvider extends ChangeNotifier {
     return switch (value) {
       'prompt' => PromptBlock.typePrompt,
       'input' || 'user_input' => PromptBlock.typeInput,
-      'pastmemory' || 'past_memory' || 'past-memory' =>
-        PromptBlock.typePastMemory,
+      'pastmemory' ||
+      'past_memory' ||
+      'past-memory' => PromptBlock.typePastMemory,
       _ => value,
     };
   }
@@ -623,12 +635,7 @@ class PromptBlockProvider extends ChangeNotifier {
           ),
         );
       } else if (type == PromptBlock.typeInput) {
-        blocks.add(
-          PromptBlock.input(
-            title: title,
-            isActive: isActive,
-          ),
-        );
+        blocks.add(PromptBlock.input(title: title, isActive: isActive));
       } else {
         blocks.add(
           PromptBlock.prompt(

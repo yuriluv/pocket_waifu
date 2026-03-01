@@ -2,19 +2,23 @@
 // ============================================================================
 // ============================================================================
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../models/message.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_session_provider.dart';
+import '../providers/screen_capture_provider.dart';
 import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import '../widgets/empty_state_view.dart';
 import '../utils/ui_feedback.dart';
 import '../services/proactive_response_service.dart';
+import '../services/image_attachment_service.dart';
 import '../features/live2d/data/models/live2d_settings.dart';
 import 'menu_drawer.dart';
 import 'settings_screen.dart';
@@ -26,8 +30,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen>
-    with WidgetsBindingObserver {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _textController = TextEditingController();
 
   final ScrollController _scrollController = ScrollController();
@@ -43,6 +46,8 @@ class _ChatScreenState extends State<ChatScreen>
   AppLifecycleState? _lastLifecycleState;
 
   bool _wasKeyboardVisible = false;
+
+  List<ImageAttachment> _attachedImages = const [];
 
   @override
   void initState() {
@@ -71,13 +76,13 @@ class _ChatScreenState extends State<ChatScreen>
     chatProvider.setSessionProvider(chatSessionProvider);
     _isProviderLinked = true;
 
-    debugPrint('>>> v2.0.5: Provider 연결 완료');
+    debugPrint('>>> v2.0.5: Provider ?곌껐 ?꾨즺');
   }
 
   void _captureCurrentSessionId() {
     final chatSessionProvider = context.read<ChatSessionProvider>();
     _currentSessionId = chatSessionProvider.activeSessionId;
-    debugPrint('>>> v2.0.5: 세션 ID 캡처됨: $_currentSessionId');
+    debugPrint('>>> v2.0.5: ?몄뀡 ID 罹≪쿂?? $_currentSessionId');
   }
 
   @override
@@ -87,7 +92,7 @@ class _ChatScreenState extends State<ChatScreen>
     final newSessionId = chatSessionProvider.activeSessionId;
     if (newSessionId != null && newSessionId != _currentSessionId) {
       _currentSessionId = newSessionId;
-      debugPrint('>>> v2.0.5: 세션 ID 업데이트됨: $_currentSessionId');
+      debugPrint('>>> v2.0.5: ?몄뀡 ID ?낅뜲?댄듃?? $_currentSessionId');
     }
     _syncProactiveEnvironment();
   }
@@ -139,7 +144,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _sendMessage() {
     final String text = _textController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _attachedImages.isEmpty) return;
 
     final chatProvider = context.read<ChatProvider>();
     final chatSessionProvider = context.read<ChatSessionProvider>();
@@ -147,7 +152,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     final sessionId = _currentSessionId ?? chatSessionProvider.activeSessionId;
     if (sessionId == null) {
-      context.showErrorSnackBar('활성 세션이 없습니다.');
+      context.showErrorSnackBar('?쒖꽦 ?몄뀡???놁뒿?덈떎.');
       return;
     }
 
@@ -165,19 +170,95 @@ class _ChatScreenState extends State<ChatScreen>
 
     final activeApiConfig = settingsProvider.activeApiConfig;
 
-    debugPrint('>>> _sendMessage - 세션 ID: $sessionId');
+    debugPrint('>>> _sendMessage - ?몄뀡 ID: $sessionId');
 
     chatProvider.sendMessage(
       userMessage: text,
       character: settingsProvider.character,
       settings: settingsProvider.settings,
       userName: settingsProvider.userName,
+      images: _attachedImages,
       apiConfig: activeApiConfig,
       targetSessionId: sessionId,
     );
 
     _textController.clear();
+    setState(() {
+      _attachedImages = const [];
+    });
     _scrollToBottom();
+  }
+
+  Future<void> _attachImage() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Camera'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (source == null || !mounted) {
+      return;
+    }
+
+    try {
+      final image = await ImageAttachmentService.pickImage(source);
+      if (image == null || !mounted) {
+        return;
+      }
+      setState(() {
+        // Keep one image per message for initial rollout.
+        _attachedImages = [image];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      context.showErrorSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  void _removeAttachedImage(String id) {
+    setState(() {
+      _attachedImages = _attachedImages.where((img) => img.id != id).toList();
+    });
+  }
+
+  Future<void> _captureScreen() async {
+    final captureProvider = context.read<ScreenCaptureProvider>();
+    if (!captureProvider.hasPermission) {
+      await captureProvider.requestPermission();
+    }
+    if (!captureProvider.hasPermission || !mounted) {
+      return;
+    }
+
+    try {
+      final capture = await captureProvider.capture();
+      if (capture == null || !mounted) {
+        return;
+      }
+      setState(() {
+        _attachedImages = [capture];
+      });
+    } catch (e) {
+      if (!mounted) return;
+      context.showErrorSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   void _handleCommand(
@@ -198,12 +279,11 @@ class _ChatScreenState extends State<ChatScreen>
               currentMessages[idx].id,
               targetSessionId: sessionId,
             );
-            context.showInfoSnackBar('${command.index}번 메시지를 삭제했습니다.');
+            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜???젣?덉뒿?덈떎.');
           } else {
-            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
+            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
           }
-        }
-        else if (command.index != null && command.endIndex != null) {
+        } else if (command.index != null && command.endIndex != null) {
           final start = command.index! - 1;
           final end = command.endIndex! - 1;
           if (start >= 0 && end < currentMessages.length && start <= end) {
@@ -213,9 +293,11 @@ class _ChatScreenState extends State<ChatScreen>
                 targetSessionId: sessionId,
               );
             }
-            context.showInfoSnackBar('${command.index}~${command.endIndex}번 메시지를 삭제했습니다.');
+            context.showInfoSnackBar(
+              '${command.index}~${command.endIndex}踰?硫붿떆吏瑜???젣?덉뒿?덈떎.',
+            );
           } else {
-            context.showErrorSnackBar('잘못된 메시지 범위입니다.');
+            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰붿쐞?낅땲??');
           }
         }
         break;
@@ -226,7 +308,7 @@ class _ChatScreenState extends State<ChatScreen>
             Message(role: MessageRole.user, content: command.content!),
             targetSessionId: sessionId,
           );
-          context.showInfoSnackBar('메시지가 기록에 추가되었습니다.');
+          context.showInfoSnackBar('硫붿떆吏媛 湲곕줉??異붽??섏뿀?듬땲??');
           _scrollToBottom();
         }
         break;
@@ -240,9 +322,9 @@ class _ChatScreenState extends State<ChatScreen>
               command.content!,
               targetSessionId: sessionId,
             );
-            context.showInfoSnackBar('${command.index}번 메시지를 수정했습니다.');
+            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜??섏젙?덉뒿?덈떎.');
           } else {
-            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
+            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
           }
         }
         break;
@@ -254,9 +336,9 @@ class _ChatScreenState extends State<ChatScreen>
             Clipboard.setData(
               ClipboardData(text: currentMessages[idx].content),
             );
-            context.showInfoSnackBar('${command.index}번 메시지를 복사했습니다.');
+            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜?蹂듭궗?덉뒿?덈떎.');
           } else {
-            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
+            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
           }
         }
         break;
@@ -267,7 +349,7 @@ class _ChatScreenState extends State<ChatScreen>
           userName: settingsProvider.userName,
           targetSessionId: sessionId,
         );
-        context.showInfoSnackBar('대화가 초기화되었습니다.');
+        context.showInfoSnackBar('??붽? 珥덇린?붾릺?덉뒿?덈떎.');
         break;
 
       case 'export':
@@ -281,13 +363,16 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-
   void _showExportDialog(String json) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Row(
-          children: [Icon(Icons.download), SizedBox(width: 8), Text('대화 내보내기')],
+          children: [
+            Icon(Icons.download),
+            SizedBox(width: 8),
+            Text('????대낫?닿린'),
+          ],
         ),
         content: SizedBox(
           width: double.maxFinite,
@@ -305,11 +390,11 @@ class _ChatScreenState extends State<ChatScreen>
               context.copyToClipboard(json);
             },
             icon: const Icon(Icons.copy, size: 18),
-            label: const Text('복사'),
+            label: const Text('蹂듭궗'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
+            child: const Text('?リ린'),
           ),
         ],
       ),
@@ -365,7 +450,7 @@ class _ChatScreenState extends State<ChatScreen>
           setState(() {
             _currentSessionId = activeSessionId;
           });
-          debugPrint('>>> v2.0.5: 세션 변경 감지 - $_currentSessionId');
+          debugPrint('>>> v2.0.5: ?몄뀡 蹂寃?媛먯? - $_currentSessionId');
         }
       });
     }
@@ -413,7 +498,7 @@ class _ChatScreenState extends State<ChatScreen>
           actions: [
             IconButton(
               icon: const Icon(Icons.settings),
-              tooltip: '설정',
+              tooltip: '?ㅼ젙',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -439,7 +524,7 @@ class _ChatScreenState extends State<ChatScreen>
                   TextButton(
                     onPressed: () => chatProvider.clearError(),
                     child: const Text(
-                      '닫기',
+                      '?リ린',
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -450,7 +535,7 @@ class _ChatScreenState extends State<ChatScreen>
               child: chatProvider.messages.isEmpty
                   ? EmptyStateView(
                       icon: Icons.chat_bubble_outline,
-                      title: '${character.name}와(과) 대화를 시작해보세요!',
+                      title: '${character.name}?(怨? ??붾? ?쒖옉?대낫?몄슂!',
                       action: ElevatedButton(
                         onPressed: () {
                           chatProvider.initializeChat(
@@ -458,7 +543,7 @@ class _ChatScreenState extends State<ChatScreen>
                             userName: settingsProvider.userName,
                           );
                         },
-                        child: const Text('대화 시작'),
+                        child: const Text('????쒖옉'),
                       ),
                     )
                   : ListView.builder(
@@ -490,7 +575,7 @@ class _ChatScreenState extends State<ChatScreen>
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      '${character.name}이(가) 입력 중...',
+                      '${character.name}??媛) ?낅젰 以?..',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -519,6 +604,10 @@ class _ChatScreenState extends State<ChatScreen>
               controller: _textController,
               focusNode: _inputFocusNode,
               onSend: _sendMessage,
+              onAttachImage: _attachImage,
+              onCaptureScreen: _captureScreen,
+              attachedImages: _attachedImages,
+              onRemoveImage: _removeAttachedImage,
               isLoading: chatProvider.isLoading,
             ),
           ],
@@ -575,7 +664,7 @@ class _MessageBubble extends StatelessWidget {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.delete, color: Colors.red),
-                          title: const Text('메시지 삭제'),
+                          title: const Text('硫붿떆吏 ??젣'),
                           onTap: () {
                             Navigator.pop(context);
                             onDelete();
@@ -583,7 +672,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                         ListTile(
                           leading: const Icon(Icons.copy),
-                          title: const Text('복사'),
+                          title: const Text('蹂듭궗'),
                           onTap: () {
                             Navigator.pop(context);
                             context.copyToClipboard(message.content);
@@ -620,7 +709,9 @@ class _MessageBubble extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                         color: isUser
-                            ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8)
+                            ? Theme.of(
+                                context,
+                              ).colorScheme.onPrimary.withValues(alpha: 0.8)
                             : Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -660,12 +751,20 @@ class _MessageInput extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onSend;
+  final VoidCallback onAttachImage;
+  final VoidCallback onCaptureScreen;
+  final List<ImageAttachment> attachedImages;
+  final ValueChanged<String> onRemoveImage;
   final bool isLoading;
 
   const _MessageInput({
     required this.controller,
     required this.focusNode,
     required this.onSend,
+    required this.onAttachImage,
+    required this.onCaptureScreen,
+    required this.attachedImages,
+    required this.onRemoveImage,
     required this.isLoading,
   });
 
@@ -684,40 +783,103 @@ class _MessageInput extends StatelessWidget {
         ],
       ),
       child: SafeArea(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                decoration: InputDecoration(
-                  hintText: '메시지를 입력하세요...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
+            if (attachedImages.isNotEmpty)
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: attachedImages.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final image = attachedImages[index];
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            base64Decode(image.base64Data),
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: -6,
+                          right: -6,
+                          child: IconButton(
+                            visualDensity: VisualDensity.compact,
+                            iconSize: 18,
+                            onPressed: isLoading
+                                ? null
+                                : () => onRemoveImage(image.id),
+                            icon: const Icon(Icons.cancel),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            if (attachedImages.isNotEmpty) const SizedBox(height: 8),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: isLoading ? null : onAttachImage,
+                  icon: Icon(
+                    Icons.attach_file,
+                    color: isLoading
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                maxLines: null,
-                keyboardType: TextInputType.multiline,
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: isLoading ? null : onSend,
-              icon: Icon(
-                Icons.send,
-                color: isLoading
-                    ? Colors.grey
-                    : Theme.of(context).colorScheme.primary,
-              ),
+                IconButton(
+                  onPressed: isLoading ? null : onCaptureScreen,
+                  icon: Icon(
+                    Icons.screenshot_monitor_outlined,
+                    color: isLoading
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    decoration: InputDecoration(
+                      hintText: '메시지를 입력하세요..',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide.none,
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 10,
+                      ),
+                    ),
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => onSend(),
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: isLoading ? null : onSend,
+                  icon: Icon(
+                    Icons.send,
+                    color: isLoading
+                        ? Colors.grey
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
