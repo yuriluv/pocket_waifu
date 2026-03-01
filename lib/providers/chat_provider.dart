@@ -11,6 +11,7 @@ import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/api_service.dart';
 import '../services/global_runtime_registry.dart';
+import '../services/image_cache_manager.dart';
 import '../services/prompt_builder.dart';
 import 'chat_session_provider.dart';
 
@@ -178,29 +179,34 @@ class ChatProvider extends ChangeNotifier {
     required String userName,
   }) async {
     var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyUserInput(
         output,
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onUserMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onUserMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyUserInput(
         output,
         characterId: characterId,
@@ -219,29 +225,34 @@ class ChatProvider extends ChangeNotifier {
     required String userName,
   }) async {
     var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyAiOutput(
         output,
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onAssistantMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onAssistantMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyAiOutput(
         output,
         characterId: characterId,
@@ -251,7 +262,9 @@ class ChatProvider extends ChangeNotifier {
 
     final directiveResult = await _directiveService.processAssistantOutput(
       output,
-      parsingEnabled: settings.live2dDirectiveParsingEnabled,
+      parsingEnabled: settings.live2dLlmIntegrationEnabled &&
+          settings.live2dDirectiveParsingEnabled,
+      exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
     );
     output = directiveResult.cleanedText;
 
@@ -261,23 +274,27 @@ class ChatProvider extends ChangeNotifier {
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onDisplayRender(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onDisplayRender(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyDisplayOnly(
         output,
         characterId: characterId,
@@ -316,7 +333,10 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    final formattedMessages = apiMessages.map(_messageToApiPayload).toList();
+    final formattedMessages = <Map<String, dynamic>>[];
+    for (final message in apiMessages) {
+      formattedMessages.add(await _messageToApiPayload(message));
+    }
 
     return _apiService.sendMessageWithConfig(
       apiConfig: apiConfig,
@@ -470,6 +490,22 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeImageFromMessage(
+    String messageId,
+    String imageId, {
+    String? targetSessionId,
+  }) {
+    final sessionId = _resolveSessionId(targetSessionId: targetSessionId);
+    if (sessionId == null) return;
+
+    _sessionProvider!.removeImageFromMessageInSession(
+      sessionId,
+      messageId,
+      imageId,
+    );
+    notifyListeners();
+  }
+
   Message? _findLastUserMessage(List<Message> messages) {
     for (var i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role == MessageRole.user) {
@@ -494,14 +530,33 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  Map<String, dynamic> _messageToApiPayload(Message msg) {
+  Future<Map<String, dynamic>> _messageToApiPayload(Message msg) async {
     if (msg.images.isEmpty) {
       return {'role': msg.roleString, 'content': msg.content};
     }
 
+    final hydratedImages = <ImageAttachment>[];
+    for (final image in msg.images) {
+      if (image.base64Data.isNotEmpty) {
+        hydratedImages.add(image);
+        continue;
+      }
+
+      final filePath = image.thumbnailPath;
+      if (filePath != null && filePath.isNotEmpty) {
+        final base64 = await ImageCacheManager.instance.loadBase64(filePath);
+        if (base64 != null && base64.isNotEmpty) {
+          hydratedImages.add(image.copyWith(base64Data: base64));
+          continue;
+        }
+      }
+
+      hydratedImages.add(image);
+    }
+
     return {
       'role': msg.roleString,
-      'content': _promptBuilder.buildMultimodalContent(msg.content, msg.images),
+      'content': _promptBuilder.buildMultimodalContent(msg.content, hydratedImages),
     };
   }
 

@@ -4,10 +4,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/api_config.dart';
+import '../providers/global_runtime_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
+import '../services/image_cache_manager.dart';
+import 'live2d_llm_settings_screen.dart';
 import '../widgets/empty_state_view.dart';
 import '../utils/ui_feedback.dart';
 
@@ -36,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final runtimeProvider = context.watch<GlobalRuntimeProvider>();
     return Scaffold(
       appBar: AppBar(
         title: const Text('설정'),
@@ -48,9 +53,32 @@ class _SettingsScreenState extends State<SettingsScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [_ApiPresetsTab(), _ParameterSettingsTab()],
+      body: Column(
+        children: [
+          if (!runtimeProvider.isEnabled)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              color: Colors.amber.withValues(alpha: 0.18),
+              child: Row(
+                children: const [
+                  Icon(Icons.warning_amber_rounded, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Master is OFF - changes will take effect when turned ON',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: const [_ApiPresetsTab(), _ParameterSettingsTab()],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1093,7 +1121,193 @@ class _ParameterSettingsTab extends StatelessWidget {
           onChanged: settingsProvider.setPresencePenalty,
         ),
 
+        const SizedBox(height: 24),
+        const _ImageCacheManagementSection(),
+
+        const SizedBox(height: 24),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.animation_outlined),
+            title: const Text('Live2D-LLM Integration Settings'),
+            subtitle: const Text('Directive/Lua/Prompt 통합 설정'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const Live2DLlmSettingsScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+
         // Note: Additional/Jailbreak prompts removed in v2.0.6
+      ],
+    );
+  }
+}
+
+class _ImageCacheManagementSection extends StatefulWidget {
+  const _ImageCacheManagementSection();
+
+  @override
+  State<_ImageCacheManagementSection> createState() =>
+      _ImageCacheManagementSectionState();
+}
+
+class _ImageCacheManagementSectionState
+    extends State<_ImageCacheManagementSection> {
+  static const String _maxImagesKey = 'image_cache_max_images_per_session';
+  static const String _compressionKey = 'image_cache_compression_quality';
+  static const String _resolutionKey = 'image_cache_max_resolution';
+
+  int _maxImagesPerSession = 20;
+  int _compressionQuality = 85;
+  String _maxResolution = '1080p';
+  int _cacheSizeBytes = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheSize = await ImageCacheManager.instance.totalSizeBytes();
+    if (!mounted) return;
+    setState(() {
+      _maxImagesPerSession = prefs.getInt(_maxImagesKey) ?? 20;
+      _compressionQuality = prefs.getInt(_compressionKey) ?? 85;
+      _maxResolution = prefs.getString(_resolutionKey) ?? '1080p';
+      _cacheSizeBytes = cacheSize;
+    });
+  }
+
+  Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_maxImagesKey, _maxImagesPerSession);
+    await prefs.setInt(_compressionKey, _compressionQuality);
+    await prefs.setString(_resolutionKey, _maxResolution);
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 MB used';
+    final mb = bytes / (1024 * 1024);
+    return '${mb.toStringAsFixed(2)} MB used';
+  }
+
+  Future<void> _clearAllCache() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Image Cache'),
+        content: const Text('모든 캐시 이미지를 삭제합니다. 계속할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await ImageCacheManager.instance.clearAll();
+    await _load();
+    if (!mounted) return;
+    context.showInfoSnackBar('이미지 캐시를 삭제했습니다.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(title: 'Image Cache Management'),
+        const SizedBox(height: 8),
+        Text(
+          '채팅 이미지 캐시 동작을 제어합니다.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Max images per session: $_maxImagesPerSession'),
+                Slider(
+                  value: _maxImagesPerSession.toDouble(),
+                  min: 4,
+                  max: 100,
+                  divisions: 24,
+                  onChanged: (v) {
+                    setState(() => _maxImagesPerSession = v.round());
+                    _save();
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text('Compression quality: $_compressionQuality'),
+                Slider(
+                  value: _compressionQuality.toDouble(),
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  onChanged: (v) {
+                    setState(() => _compressionQuality = v.round());
+                    _save();
+                  },
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _maxResolution,
+                  decoration: const InputDecoration(
+                    labelText: 'Max resolution',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: '720p', child: Text('720p')),
+                    DropdownMenuItem(value: '1080p', child: Text('1080p')),
+                    DropdownMenuItem(value: 'original', child: Text('original')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _maxResolution = value);
+                    _save();
+                  },
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: Text(_formatBytes(_cacheSizeBytes))),
+                    TextButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('새로고침'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: _clearAllCache,
+                  icon: const Icon(Icons.delete_sweep_outlined),
+                  label: const Text('Clear All Image Cache'),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

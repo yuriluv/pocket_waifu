@@ -78,14 +78,29 @@ class PromptBuilder {
 
     final List<String> xmlParts = [];
     for (final msg in recentMessages) {
+      final attachmentXml = _buildPastMemoryAttachmentXml(msg.images);
       if (msg.role == MessageRole.user) {
-        xmlParts.add('<$userHeader>${msg.content}</$userHeader>');
+        xmlParts.add('<$userHeader>${msg.content}$attachmentXml</$userHeader>');
       } else if (msg.role == MessageRole.assistant) {
-        xmlParts.add('<$charHeader>${msg.content}</$charHeader>');
+        xmlParts.add('<$charHeader>${msg.content}$attachmentXml</$charHeader>');
       }
     }
 
     return xmlParts.join('');
+  }
+
+  String _buildPastMemoryAttachmentXml(List<ImageAttachment> images) {
+    if (images.isEmpty) {
+      return '';
+    }
+
+    final tags = images
+        .map(
+          (image) =>
+              '<image mime="${image.mimeType}" width="${image.width}" height="${image.height}" />',
+        )
+        .join();
+    return '<attachments count="${images.length}">$tags</attachments>';
   }
 
   ///
@@ -133,6 +148,9 @@ class PromptBuilder {
     }
 
     for (final img in images) {
+      if (img.base64Data.isEmpty) {
+        continue;
+      }
       parts.add({
         'type': 'image_url',
         'image_url': {'url': 'data:${img.mimeType};base64,${img.base64Data}'},

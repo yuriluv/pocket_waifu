@@ -26,8 +26,12 @@ class AppSettings {
   final String systemPrompt;
   final bool live2dDirectiveParsingEnabled;
   final bool live2dPromptInjectionEnabled;
+  final bool live2dLlmIntegrationEnabled;
+  final bool live2dLuaExecutionEnabled;
+  final bool live2dShowRawDirectivesInChat;
   final bool runRegexBeforeLua;
   final String live2dSystemPromptTemplate;
+  final int live2dSystemPromptTokenBudget;
 
   AppSettings({
     this.apiProvider = ApiProvider.openai,
@@ -45,9 +49,13 @@ class AppSettings {
     this.systemPrompt = '',
     this.live2dDirectiveParsingEnabled = true,
     this.live2dPromptInjectionEnabled = true,
+    this.live2dLlmIntegrationEnabled = true,
+    this.live2dLuaExecutionEnabled = true,
+    this.live2dShowRawDirectivesInChat = false,
     this.runRegexBeforeLua = true,
     this.live2dSystemPromptTemplate =
         '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+    this.live2dSystemPromptTokenBudget = 500,
   });
 
   String get currentApiKey {
@@ -100,8 +108,12 @@ class AppSettings {
       'systemPrompt': systemPrompt,
       'live2dDirectiveParsingEnabled': live2dDirectiveParsingEnabled,
       'live2dPromptInjectionEnabled': live2dPromptInjectionEnabled,
+      'live2dLlmIntegrationEnabled': live2dLlmIntegrationEnabled,
+      'live2dLuaExecutionEnabled': live2dLuaExecutionEnabled,
+      'live2dShowRawDirectivesInChat': live2dShowRawDirectivesInChat,
       'runRegexBeforeLua': runRegexBeforeLua,
       'live2dSystemPromptTemplate': live2dSystemPromptTemplate,
+      'live2dSystemPromptTokenBudget': live2dSystemPromptTokenBudget,
     };
   }
 
@@ -135,10 +147,16 @@ class AppSettings {
       live2dDirectiveParsingEnabled:
           map['live2dDirectiveParsingEnabled'] ?? true,
       live2dPromptInjectionEnabled: map['live2dPromptInjectionEnabled'] ?? true,
+      live2dLlmIntegrationEnabled: map['live2dLlmIntegrationEnabled'] ?? true,
+      live2dLuaExecutionEnabled: map['live2dLuaExecutionEnabled'] ?? true,
+      live2dShowRawDirectivesInChat:
+          map['live2dShowRawDirectivesInChat'] ?? false,
       runRegexBeforeLua: map['runRegexBeforeLua'] ?? true,
       live2dSystemPromptTemplate:
           map['live2dSystemPromptTemplate'] ??
           '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+      live2dSystemPromptTokenBudget:
+          (map['live2dSystemPromptTokenBudget'] ?? 500) as int,
     );
   }
 
@@ -158,8 +176,12 @@ class AppSettings {
     String? systemPrompt,
     bool? live2dDirectiveParsingEnabled,
     bool? live2dPromptInjectionEnabled,
+    bool? live2dLlmIntegrationEnabled,
+    bool? live2dLuaExecutionEnabled,
+    bool? live2dShowRawDirectivesInChat,
     bool? runRegexBeforeLua,
     String? live2dSystemPromptTemplate,
+    int? live2dSystemPromptTokenBudget,
   }) {
     return AppSettings(
       apiProvider: apiProvider ?? this.apiProvider,
@@ -179,9 +201,17 @@ class AppSettings {
           live2dDirectiveParsingEnabled ?? this.live2dDirectiveParsingEnabled,
       live2dPromptInjectionEnabled:
           live2dPromptInjectionEnabled ?? this.live2dPromptInjectionEnabled,
+      live2dLlmIntegrationEnabled:
+          live2dLlmIntegrationEnabled ?? this.live2dLlmIntegrationEnabled,
+      live2dLuaExecutionEnabled:
+          live2dLuaExecutionEnabled ?? this.live2dLuaExecutionEnabled,
+      live2dShowRawDirectivesInChat:
+          live2dShowRawDirectivesInChat ?? this.live2dShowRawDirectivesInChat,
       runRegexBeforeLua: runRegexBeforeLua ?? this.runRegexBeforeLua,
       live2dSystemPromptTemplate:
           live2dSystemPromptTemplate ?? this.live2dSystemPromptTemplate,
+      live2dSystemPromptTokenBudget:
+          live2dSystemPromptTokenBudget ?? this.live2dSystemPromptTokenBudget,
     );
   }
 }

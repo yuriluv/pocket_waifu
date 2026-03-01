@@ -252,15 +252,16 @@ class ApiService {
       );
 
       debugPrint('>>> Response Status: ${response.statusCode}');
+      final responseBody = _decodeUtf8ResponseBody(response.bodyBytes);
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
+        final Map<String, dynamic> data = jsonDecode(responseBody);
         final String content = _extractOpenAITextContent(
           data['choices'][0]['message']['content'],
         );
         return content.trim();
       } else {
-        String errorMessage = _extractErrorMessage(response.body);
+        String errorMessage = _extractErrorMessage(responseBody);
         if (response.statusCode == 400) {
           final suggestedKey = _extractSuggestedTokenKey(errorMessage);
           if (suggestedKey != null &&
@@ -285,14 +286,20 @@ class ApiService {
             );
 
             if (retryResponse.statusCode == 200) {
-              final Map<String, dynamic> data = jsonDecode(retryResponse.body);
+              final decodedRetryBody = _decodeUtf8ResponseBody(
+                retryResponse.bodyBytes,
+              );
+              final Map<String, dynamic> data = jsonDecode(decodedRetryBody);
               final String content = _extractOpenAITextContent(
                 data['choices'][0]['message']['content'],
               );
               return content.trim();
             }
 
-            errorMessage = _extractErrorMessage(retryResponse.body);
+            final decodedRetryBody = _decodeUtf8ResponseBody(
+              retryResponse.bodyBytes,
+            );
+            errorMessage = _extractErrorMessage(decodedRetryBody);
           }
         }
         debugPrint('>>> API Error: $errorMessage');
@@ -414,13 +421,14 @@ class ApiService {
       );
 
       debugPrint('>>> Response Status: ${response.statusCode}');
+      final responseBody = _decodeUtf8ResponseBody(response.bodyBytes);
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body);
+        final Map<String, dynamic> data = jsonDecode(responseBody);
         final String content = data['content'][0]['text'];
         return content.trim();
       } else {
-        final Map<String, dynamic> errorData = jsonDecode(response.body);
+        final Map<String, dynamic> errorData = jsonDecode(responseBody);
         final String errorMessage =
             errorData['error']?['message'] ?? 'Unknown error';
         debugPrint('>>> Anthropic Error: $errorMessage');
@@ -705,6 +713,21 @@ class ApiService {
     }
     next[tokenKey] = tokenValue;
     return next;
+  }
+
+  String _decodeUtf8ResponseBody(List<int> bodyBytes) {
+    final output = StringBuffer();
+    final sink = StringConversionSink.fromStringSink(output);
+    final chunkedDecoder = utf8.decoder.startChunkedConversion(sink);
+
+    const chunkSize = 1024;
+    for (int i = 0; i < bodyBytes.length; i += chunkSize) {
+      final end = min(i + chunkSize, bodyBytes.length);
+      chunkedDecoder.add(bodyBytes.sublist(i, end));
+    }
+    chunkedDecoder.close();
+
+    return output.toString();
   }
 
   Future<T> _awaitWithCancellation<T>({

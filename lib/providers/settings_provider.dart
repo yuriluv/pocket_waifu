@@ -262,12 +262,32 @@ class SettingsProvider extends ChangeNotifier {
     updateSettings(_settings.copyWith(live2dPromptInjectionEnabled: enabled));
   }
 
+  void setLive2DLlmIntegrationEnabled(bool enabled) {
+    updateSettings(_settings.copyWith(live2dLlmIntegrationEnabled: enabled));
+  }
+
+  void setLive2DLuaExecutionEnabled(bool enabled) {
+    updateSettings(_settings.copyWith(live2dLuaExecutionEnabled: enabled));
+  }
+
+  void setLive2DShowRawDirectivesInChat(bool enabled) {
+    updateSettings(_settings.copyWith(live2dShowRawDirectivesInChat: enabled));
+  }
+
   void setRunRegexBeforeLua(bool enabled) {
     updateSettings(_settings.copyWith(runRegexBeforeLua: enabled));
   }
 
   void setLive2DSystemPromptTemplate(String template) {
     updateSettings(_settings.copyWith(live2dSystemPromptTemplate: template));
+  }
+
+  void setLive2DSystemPromptTokenBudget(int budget) {
+    updateSettings(
+      _settings.copyWith(
+        live2dSystemPromptTokenBudget: budget.clamp(100, 2000).toInt(),
+      ),
+    );
   }
 
   void setCharacterName(String name) {

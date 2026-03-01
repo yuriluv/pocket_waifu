@@ -41,6 +41,10 @@ void main() {
       expect(settings.apiProvider, ApiProvider.openai);
       expect(settings.currentModel, 'gpt-4o-mini');
       expect(settings.maxTokens, 1024);
+      expect(settings.live2dLlmIntegrationEnabled, isTrue);
+      expect(settings.live2dLuaExecutionEnabled, isTrue);
+      expect(settings.live2dShowRawDirectivesInChat, isFalse);
+      expect(settings.live2dSystemPromptTokenBudget, 500);
     });
   });
 }

@@ -27,6 +27,9 @@ class NotificationBridge {
   Stream<NotificationAction> get actions => _actions.stream;
 
   Future<void> initialize() async {
+    // Notification pipeline diagnostics: bridge initialized.
+    // Used to trace ProactiveResponseService -> NotificationCoordinator -> NotificationBridge.
+    // Android native logs are emitted in MainActivity / NotificationHelper.
     _channel.setMethodCallHandler(_handleMethodCall);
     final pending = await _channel.invokeMethod<List<dynamic>>(
       'drainPendingActions',
@@ -50,6 +53,7 @@ class NotificationBridge {
     bool isError = false,
     String? sessionId,
   }) async {
+    // Notification pipeline diagnostics: last Dart-side stage before Android native dispatch.
     await _channel.invokeMethod('showPreResponseNotification', {
       'title': title,
       'message': message,

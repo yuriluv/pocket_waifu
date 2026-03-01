@@ -32,6 +32,7 @@ class ApiConfig {
   bool mergeSystemPrompts;
   bool mustStartWithUserInput;
   bool useMaxOutputTokens;
+  bool supportsVision;
 
   int? reasoningEffort; // verbosity/reasoning_effort (0-100)
   String? thinkingLevel; // Gemini thinking_level
@@ -60,6 +61,7 @@ class ApiConfig {
     this.mergeSystemPrompts = false,
     this.mustStartWithUserInput = false,
     this.useMaxOutputTokens = false,
+    this.supportsVision = true,
     this.reasoningEffort,
     this.thinkingLevel,
     this.useDeepSeekReasoning = false,
@@ -101,6 +103,7 @@ class ApiConfig {
       'mergeSystemPrompts': mergeSystemPrompts,
       'mustStartWithUserInput': mustStartWithUserInput,
       'useMaxOutputTokens': useMaxOutputTokens,
+      'supportsVision': supportsVision,
       'reasoningEffort': reasoningEffort,
       'thinkingLevel': thinkingLevel,
       'useDeepSeekReasoning': useDeepSeekReasoning,
@@ -146,6 +149,7 @@ class ApiConfig {
       mergeSystemPrompts: map['mergeSystemPrompts'] ?? false,
       mustStartWithUserInput: map['mustStartWithUserInput'] ?? false,
       useMaxOutputTokens: map['useMaxOutputTokens'] ?? false,
+      supportsVision: map['supportsVision'] ?? true,
       reasoningEffort: map['reasoningEffort'],
       thinkingLevel: map['thinkingLevel'],
       useDeepSeekReasoning: map['useDeepSeekReasoning'] ?? false,
@@ -174,6 +178,7 @@ class ApiConfig {
     bool? mergeSystemPrompts,
     bool? mustStartWithUserInput,
     bool? useMaxOutputTokens,
+    bool? supportsVision,
     int? reasoningEffort,
     String? thinkingLevel,
     bool? useDeepSeekReasoning,
@@ -202,6 +207,7 @@ class ApiConfig {
       mustStartWithUserInput:
           mustStartWithUserInput ?? this.mustStartWithUserInput,
       useMaxOutputTokens: useMaxOutputTokens ?? this.useMaxOutputTokens,
+      supportsVision: supportsVision ?? this.supportsVision,
       reasoningEffort: reasoningEffort ?? this.reasoningEffort,
       thinkingLevel: thinkingLevel ?? this.thinkingLevel,
       useDeepSeekReasoning: useDeepSeekReasoning ?? this.useDeepSeekReasoning,
@@ -236,6 +242,7 @@ class ApiConfig {
       format: ApiFormat.openAICompatible,
       hasFirstSystemPrompt: true,
       requiresAlternateRole: true,
+      supportsVision: false,
     );
   }
 
@@ -257,6 +264,7 @@ class ApiConfig {
       format: ApiFormat.openAICompatible,
       hasFirstSystemPrompt: true,
       requiresAlternateRole: false,
+      supportsVision: true,
     );
   }
 
@@ -273,6 +281,7 @@ class ApiConfig {
       format: ApiFormat.anthropic,
       hasFirstSystemPrompt: false,
       requiresAlternateRole: true,
+      supportsVision: true,
     );
   }
 
@@ -292,6 +301,7 @@ class ApiConfig {
       format: ApiFormat.openRouter,
       hasFirstSystemPrompt: true,
       requiresAlternateRole: false,
+      supportsVision: true,
     );
   }
 

@@ -32,6 +32,24 @@ class ImageAttachment {
     };
   }
 
+  ImageAttachment copyWith({
+    String? id,
+    String? base64Data,
+    String? mimeType,
+    int? width,
+    int? height,
+    String? thumbnailPath,
+  }) {
+    return ImageAttachment(
+      id: id ?? this.id,
+      base64Data: base64Data ?? this.base64Data,
+      mimeType: mimeType ?? this.mimeType,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+    );
+  }
+
   factory ImageAttachment.fromMap(Map<String, dynamic> map) {
     return ImageAttachment(
       id: map['id']?.toString() ?? '',

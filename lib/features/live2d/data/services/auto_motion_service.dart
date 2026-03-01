@@ -27,6 +27,8 @@ class AutoMotionService {
   final Random _random = Random();
 
   Timer? _timer;
+  Timer? _saveDebounce;
+  AutoMotionConfig? _pendingSaveConfig;
   bool _isTicking = false;
   int _motionCursor = 0;
   int _expressionCursor = 0;
@@ -51,22 +53,33 @@ class AutoMotionService {
   }
 
   Future<void> saveConfig(AutoMotionConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyEnabled, config.enabled);
-    if (config.motionGroup == null || config.motionGroup!.isEmpty) {
-      await prefs.remove(_keyMotionGroup);
-    } else {
-      await prefs.setString(_keyMotionGroup, config.motionGroup!);
-    }
-    await prefs.setInt(_keyInterval, config.intervalSeconds.clamp(5, 120));
-    await prefs.setBool(_keyRandomMode, config.randomMode);
-    await prefs.setBool(_keyAutoExpression, config.autoExpressionChange);
-    if (config.expressionSelection == null || config.expressionSelection!.isEmpty) {
-      await prefs.remove(_keyExpressionSelection);
-    } else {
-      await prefs.setString(_keyExpressionSelection, config.expressionSelection!);
-    }
     _config = config;
+    _pendingSaveConfig = config;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = _pendingSaveConfig;
+      if (pending == null) {
+        return;
+      }
+
+      await prefs.setBool(_keyEnabled, pending.enabled);
+      if (pending.motionGroup == null || pending.motionGroup!.isEmpty) {
+        await prefs.remove(_keyMotionGroup);
+      } else {
+        await prefs.setString(_keyMotionGroup, pending.motionGroup!);
+      }
+      await prefs.setInt(_keyInterval, pending.intervalSeconds.clamp(5, 120));
+      await prefs.setBool(_keyRandomMode, pending.randomMode);
+      await prefs.setBool(_keyAutoExpression, pending.autoExpressionChange);
+      if (pending.expressionSelection == null || pending.expressionSelection!.isEmpty) {
+        await prefs.remove(_keyExpressionSelection);
+      } else {
+        await prefs.setString(_keyExpressionSelection, pending.expressionSelection!);
+      }
+
+      _pendingSaveConfig = null;
+    });
   }
 
   Future<void> applyConfig(AutoMotionConfig config, Model3Data modelData) async {
@@ -112,6 +125,14 @@ class AutoMotionService {
       _timer = null;
       live2dLog.info(_tag, 'Auto motion stopped');
     }
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    _pendingSaveConfig = null;
   }
 
   Future<void> _tick() async {

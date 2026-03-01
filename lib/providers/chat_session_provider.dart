@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/chat_session.dart';
 import '../models/message.dart';
+import '../services/image_cache_manager.dart';
 
 class ChatSessionProvider extends ChangeNotifier {
   static const String _sessionsKey = 'chat_sessions';
@@ -128,9 +129,7 @@ class ChatSessionProvider extends ChangeNotifier {
 
       for (var session in _sessions) {
         final key = 'messages_${session.id}';
-        final messagesJson = jsonEncode(
-          session.messages.map((m) => m.toMap()).toList(),
-        );
+        final messagesJson = jsonEncode(session.messages.map(_toStorageMap).toList());
         await prefs.setString(key, messagesJson);
       }
     } catch (e) {
@@ -185,6 +184,14 @@ class ChatSessionProvider extends ChangeNotifier {
 
     final index = _sessions.indexWhere((s) => s.id == id);
     if (index != -1) {
+      final removedSession = _sessions[index];
+      final imagePaths = removedSession.messages
+          .expand((message) => message.images)
+          .map((image) => image.thumbnailPath)
+          .whereType<String>()
+          .where((path) => path.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
       _sessions.removeAt(index);
 
       if (_activeSessionId == id) {
@@ -194,6 +201,7 @@ class ChatSessionProvider extends ChangeNotifier {
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('messages_$id');
+        await _deleteSessionImageFiles(imagePaths);
         debugPrint('>>> 세션 $id 및 메시지 삭제됨');
       } catch (e) {
         debugPrint('>>> 세션 $id 메시지 삭제 실패: $e');
@@ -245,10 +253,20 @@ class ChatSessionProvider extends ChangeNotifier {
       debugPrint('>>> 경고: 세션 $sessionId 없음, 삭제 실패');
       return;
     }
+    final messageIndex = session.messages.indexWhere((m) => m.id == messageId);
+    final imagePaths = messageIndex == -1
+        ? const <String>[]
+        : session.messages[messageIndex].images
+              .map((image) => image.thumbnailPath)
+              .whereType<String>()
+              .where((path) => path.isNotEmpty)
+              .toList(growable: false);
+
     session.deleteMessageById(messageId);
     session.lastModifiedAt = DateTime.now();
     notifyListeners();
     saveAllSessions();
+    _deleteSessionImageFiles(imagePaths);
   }
 
   void editMessageInSession(
@@ -270,6 +288,73 @@ class ChatSessionProvider extends ChangeNotifier {
       notifyListeners();
       saveAllSessions();
     }
+  }
+
+  Map<String, dynamic> _toStorageMap(Message message) {
+    if (message.images.isEmpty) {
+      return message.toMap();
+    }
+
+    final imageMaps = message.images
+        .map((image) {
+          final map = image.toMap();
+          final storedPath = image.thumbnailPath;
+          if (storedPath != null && storedPath.isNotEmpty) {
+            map['base64Data'] = '';
+          }
+          return map;
+        })
+        .toList(growable: false);
+
+    final out = message.toMap();
+    out['images'] = imageMaps;
+    return out;
+  }
+
+  Future<void> _deleteSessionImageFiles(List<String> paths) async {
+    for (final filePath in paths) {
+      await ImageCacheManager.instance.deleteFile(filePath);
+    }
+  }
+
+  void removeImageFromMessageInSession(
+    String sessionId,
+    String messageId,
+    String imageId,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      debugPrint('>>> 경고: 세션 $sessionId 없음, 이미지 삭제 실패');
+      return;
+    }
+
+    final index = session.messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) {
+      return;
+    }
+
+    final message = session.messages[index];
+    if (message.images.isEmpty) {
+      return;
+    }
+
+    final nextImages =
+        message.images.where((image) => image.id != imageId).toList(growable: false);
+    if (nextImages.length == message.images.length) {
+      return;
+    }
+
+    session.messages[index] = message.copyWith(images: nextImages);
+    session.lastModifiedAt = DateTime.now();
+    notifyListeners();
+    saveAllSessions();
+    final removedImagePath = message.images
+        .where((image) => image.id == imageId)
+        .map((image) => image.thumbnailPath)
+        .whereType<String>()
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    _deleteSessionImageFiles(removedImagePath);
   }
 
   void clearSession(String sessionId) {

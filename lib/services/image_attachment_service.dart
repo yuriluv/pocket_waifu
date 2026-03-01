@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/message.dart';
+import 'image_cache_manager.dart';
 
 class ImageAttachmentService {
   ImageAttachmentService._();
@@ -34,14 +35,20 @@ class ImageAttachmentService {
 
     final decoded = await _decodeImage(rawBytes);
     final mimeType = _mimeTypeFromPath(picked.path);
+    final imageId = _uuid.v4();
+    final cachedPath = await ImageCacheManager.instance.saveImageBytes(
+      imageId: imageId,
+      bytes: rawBytes,
+      extension: _extensionFromMimeType(mimeType),
+    );
 
     return ImageAttachment(
-      id: _uuid.v4(),
+      id: imageId,
       base64Data: base64Encode(rawBytes),
       mimeType: mimeType,
       width: decoded?.width ?? 0,
       height: decoded?.height ?? 0,
-      thumbnailPath: picked.path,
+      thumbnailPath: cachedPath,
     );
   }
 
@@ -67,5 +74,18 @@ class ImageAttachmentService {
       return 'image/heic';
     }
     return 'image/jpeg';
+  }
+
+  static String _extensionFromMimeType(String mimeType) {
+    switch (mimeType) {
+      case 'image/png':
+        return '.png';
+      case 'image/webp':
+        return '.webp';
+      case 'image/heic':
+        return '.heic';
+      default:
+        return '.jpg';
+    }
   }
 }

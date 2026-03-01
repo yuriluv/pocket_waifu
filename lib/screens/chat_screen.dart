@@ -3,6 +3,7 @@
 // ============================================================================
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,7 +13,7 @@ import '../models/message.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_session_provider.dart';
-import '../providers/screen_capture_provider.dart';
+import '../providers/global_runtime_provider.dart';
 import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import '../widgets/empty_state_view.dart';
@@ -31,6 +32,8 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
+  static const int _maxAttachmentsPerMessage = 4;
+
   final TextEditingController _textController = TextEditingController();
 
   final ScrollController _scrollController = ScrollController();
@@ -223,8 +226,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         return;
       }
       setState(() {
-        // Keep one image per message for initial rollout.
-        _attachedImages = [image];
+        if (_attachedImages.length >= _maxAttachmentsPerMessage) {
+          context.showInfoSnackBar('최대 $_maxAttachmentsPerMessage장까지 첨부할 수 있습니다.');
+          return;
+        }
+        _attachedImages = <ImageAttachment>[..._attachedImages, image];
       });
     } catch (e) {
       if (!mounted) return;
@@ -236,29 +242,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       _attachedImages = _attachedImages.where((img) => img.id != id).toList();
     });
-  }
-
-  Future<void> _captureScreen() async {
-    final captureProvider = context.read<ScreenCaptureProvider>();
-    if (!captureProvider.hasPermission) {
-      await captureProvider.requestPermission();
-    }
-    if (!captureProvider.hasPermission || !mounted) {
-      return;
-    }
-
-    try {
-      final capture = await captureProvider.capture();
-      if (capture == null || !mounted) {
-        return;
-      }
-      setState(() {
-        _attachedImages = [capture];
-      });
-    } catch (e) {
-      if (!mounted) return;
-      context.showErrorSnackBar(e.toString().replaceFirst('Exception: ', ''));
-    }
   }
 
   void _handleCommand(
@@ -440,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final chatProvider = context.watch<ChatProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
+    final runtimeProvider = context.watch<GlobalRuntimeProvider>();
     final chatSessionProvider = context.watch<ChatSessionProvider>();
     final character = settingsProvider.character;
 
@@ -531,6 +515,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ],
               ),
 
+            if (!runtimeProvider.isEnabled)
+              Container(
+                width: double.infinity,
+                color: Colors.orange.withValues(alpha: 0.14),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: const Row(
+                  children: [
+                    Icon(Icons.power_settings_new, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Master OFF - automation paused')),
+                  ],
+                ),
+              ),
+
             Expanded(
               child: chatProvider.messages.isEmpty
                   ? EmptyStateView(
@@ -558,6 +556,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           userName: settingsProvider.userName,
                           onDelete: () =>
                               chatProvider.deleteMessage(message.id),
+                          onRemoveImage: (imageId) => chatProvider
+                              .removeImageFromMessage(message.id, imageId),
                         );
                       },
                     ),
@@ -605,10 +605,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               focusNode: _inputFocusNode,
               onSend: _sendMessage,
               onAttachImage: _attachImage,
-              onCaptureScreen: _captureScreen,
               attachedImages: _attachedImages,
               onRemoveImage: _removeAttachedImage,
               isLoading: chatProvider.isLoading,
+              canAttachImages:
+                  settingsProvider.activeApiConfig?.supportsVision ?? true,
             ),
           ],
         ),
@@ -622,12 +623,14 @@ class _MessageBubble extends StatelessWidget {
   final String characterName;
   final String userName;
   final VoidCallback onDelete;
+  final ValueChanged<String>? onRemoveImage;
 
   const _MessageBubble({
     required this.message,
     required this.characterName,
     required this.userName,
     required this.onDelete,
+    this.onRemoveImage,
   });
 
   @override
@@ -664,7 +667,7 @@ class _MessageBubble extends StatelessWidget {
                       children: [
                         ListTile(
                           leading: const Icon(Icons.delete, color: Colors.red),
-                          title: const Text('硫붿떆吏 ??젣'),
+                          title: const Text('메시지 삭제'),
                           onTap: () {
                             Navigator.pop(context);
                             onDelete();
@@ -672,7 +675,7 @@ class _MessageBubble extends StatelessWidget {
                         ),
                         ListTile(
                           leading: const Icon(Icons.copy),
-                          title: const Text('蹂듭궗'),
+                          title: const Text('복사'),
                           onTap: () {
                             Navigator.pop(context);
                             context.copyToClipboard(message.content);
@@ -703,6 +706,16 @@ class _MessageBubble extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (message.images.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: message.images
+                            .map((image) => _buildImageThumb(context, image))
+                            .toList(growable: false),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Text(
                       isUser ? userName : characterName,
                       style: TextStyle(
@@ -745,6 +758,112 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildImageThumb(BuildContext context, ImageAttachment image) {
+    final filePath = image.thumbnailPath;
+    final hasFile = filePath != null && filePath.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () => _showImagePreview(context, image),
+      onLongPress: onRemoveImage == null
+          ? null
+          : () {
+              showModalBottomSheet<void>(
+                context: context,
+                builder: (sheetContext) => SafeArea(
+                  child: ListTile(
+                    leading: const Icon(Icons.delete_outline, color: Colors.red),
+                    title: const Text('이미지 삭제'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      onRemoveImage!(image.id);
+                    },
+                  ),
+                ),
+              );
+            },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: hasFile
+            ? Image.file(
+                File(filePath),
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _brokenImage(context),
+              )
+            : Image.memory(
+                base64Decode(image.base64Data),
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded || frame != null) {
+                    return child;
+                  }
+                  return _loadingImage(context);
+                },
+                errorBuilder: (context, error, stackTrace) => _brokenImage(context),
+              ),
+      ),
+    );
+  }
+
+  Widget _loadingImage(BuildContext context) {
+    return Container(
+      width: 96,
+      height: 96,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+  }
+
+  Widget _brokenImage(BuildContext context) {
+    return Container(
+      width: 96,
+      height: 96,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: const Icon(Icons.broken_image_outlined),
+    );
+  }
+
+  void _showImagePreview(BuildContext context, ImageAttachment image) {
+    final filePath = image.thumbnailPath;
+    final hasFile = filePath != null && filePath.isNotEmpty;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: hasFile
+              ? Image.file(
+                  File(filePath),
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Icon(Icons.broken_image_outlined, size: 48),
+                  ),
+                )
+              : Image.memory(
+                  base64Decode(image.base64Data),
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Icon(Icons.broken_image_outlined, size: 48),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MessageInput extends StatelessWidget {
@@ -752,20 +871,20 @@ class _MessageInput extends StatelessWidget {
   final FocusNode focusNode;
   final VoidCallback onSend;
   final VoidCallback onAttachImage;
-  final VoidCallback onCaptureScreen;
   final List<ImageAttachment> attachedImages;
   final ValueChanged<String> onRemoveImage;
   final bool isLoading;
+  final bool canAttachImages;
 
   const _MessageInput({
     required this.controller,
     required this.focusNode,
     required this.onSend,
     required this.onAttachImage,
-    required this.onCaptureScreen,
     required this.attachedImages,
     required this.onRemoveImage,
     required this.isLoading,
+    required this.canAttachImages,
   });
 
   @override
@@ -792,7 +911,8 @@ class _MessageInput extends StatelessWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: attachedImages.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, separatorIndex) =>
+                      const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final image = attachedImages[index];
                     return Stack(
@@ -827,22 +947,16 @@ class _MessageInput extends StatelessWidget {
             Row(
               children: [
                 IconButton(
-                  onPressed: isLoading ? null : onAttachImage,
+                  onPressed: isLoading || !canAttachImages ? null : onAttachImage,
                   icon: Icon(
                     Icons.attach_file,
-                    color: isLoading
+                    color: isLoading || !canAttachImages
                         ? Colors.grey
                         : Theme.of(context).colorScheme.primary,
                   ),
-                ),
-                IconButton(
-                  onPressed: isLoading ? null : onCaptureScreen,
-                  icon: Icon(
-                    Icons.screenshot_monitor_outlined,
-                    color: isLoading
-                        ? Colors.grey
-                        : Theme.of(context).colorScheme.primary,
-                  ),
+                  tooltip: canAttachImages
+                      ? '이미지 첨부'
+                      : '현재 API 설정은 이미지 입력을 지원하지 않습니다',
                 ),
                 Expanded(
                   child: TextField(

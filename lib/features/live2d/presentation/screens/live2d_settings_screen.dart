@@ -84,9 +84,17 @@ class _Live2DSettingsScreenContentState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final masterEnabled = context.watch<GlobalRuntimeProvider>().isEnabled;
+    final live2dController = context.watch<Live2DController>();
 
-    return Scaffold(
-      appBar: AppBar(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          return;
+        }
+        _persistDisplayConfigOnExit(live2dController);
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: const Text('Live2D 설정'),
         actions: [
           Consumer<Live2DController>(
@@ -118,8 +126,8 @@ class _Live2DSettingsScreenContentState
           ),
         ],
       ),
-      body: Consumer<Live2DController>(
-        builder: (context, controller, _) {
+        body: Consumer<Live2DController>(
+          builder: (context, controller, _) {
           if (controller.state == Live2DControllerState.initial ||
               (controller.isLoading && !controller.hasFolderSelected)) {
             return Center(
@@ -182,12 +190,8 @@ class _Live2DSettingsScreenContentState
                       ),
                     ),
                   ),
-                Opacity(
-                  opacity: masterEnabled ? 1 : 0.4,
-                  child: IgnorePointer(
-                    ignoring: !masterEnabled,
-                    child: Column(
-                      children: [
+                Column(
+                  children: [
                 const SizedBox(height: 8),
 
                 _SectionHeader(title: '권한', icon: Icons.security),
@@ -289,16 +293,23 @@ class _Live2DSettingsScreenContentState
                 ),
 
                 const SizedBox(height: 32),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
           );
-        },
+          },
+        ),
       ),
     );
+  }
+
+  Future<void> _persistDisplayConfigOnExit(Live2DController controller) async {
+    final model = controller.selectedModel;
+    if (!controller.isEnabled || model == null) {
+      return;
+    }
+    await controller.saveDisplayConfigForModel(model.id);
   }
 
   String? _getDisabledReason(Live2DController controller) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -22,6 +23,8 @@ class GestureMotionMapper {
 
   GestureMotionConfig _config = GestureMotionConfig.defaults();
   bool _initialized = false;
+  Timer? _saveDebounce;
+  GestureMotionConfig? _pendingSaveConfig;
 
   GestureMotionConfig get config => _config;
 
@@ -41,6 +44,9 @@ class GestureMotionMapper {
     }
     _bridge.removeEventHandler(_handleInteractionEvent);
     _initialized = false;
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    _pendingSaveConfig = null;
   }
 
   Future<GestureMotionConfig> loadConfig() async {
@@ -71,9 +77,18 @@ class GestureMotionMapper {
   }
 
   Future<void> saveConfig(GestureMotionConfig config) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_storageKey, jsonEncode(config.toJson()));
     _config = config;
+    _pendingSaveConfig = config;
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = _pendingSaveConfig;
+      if (pending == null) {
+        return;
+      }
+      await prefs.setString(_storageKey, jsonEncode(pending.toJson()));
+      _pendingSaveConfig = null;
+    });
   }
 
   Future<void> setConfig(GestureMotionConfig config) async {

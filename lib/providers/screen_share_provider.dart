@@ -57,8 +57,35 @@ class ScreenShareProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> revokePermission() async {
+    await _captureService.release();
+    final granted = await _captureService.hasPermission();
+    _settings = _settings.copyWith(isPermissionGranted: granted);
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> setAutoAttachToMessage(bool value) async {
-    _settings = _settings.copyWith(autoAttachToMessage: value);
+    _settings = _settings.copyWith(autoAttachToMessage: value, autoCapture: value);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setEnabled(bool value) async {
+    _settings = _settings.copyWith(enabled: value);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setCaptureInterval(int seconds) async {
+    final safe = seconds.clamp(5, 600).toInt();
+    _settings = _settings.copyWith(captureInterval: safe);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setAutoCapture(bool value) async {
+    _settings = _settings.copyWith(autoCapture: value, autoAttachToMessage: value);
     await _persist();
     notifyListeners();
   }

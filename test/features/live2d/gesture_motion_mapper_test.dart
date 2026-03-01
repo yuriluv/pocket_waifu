@@ -34,6 +34,7 @@ void main() {
       );
 
       await mapper.setConfig(config);
+      await Future<void>.delayed(const Duration(milliseconds: 650));
       final loaded = await mapper.loadConfig();
 
       final entries = loaded.entriesFor(InteractionType.doubleTap);

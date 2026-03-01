@@ -1,28 +1,51 @@
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/message.dart';
 import '../services/screen_capture_service.dart';
 
+enum ScreenCapturePermissionStatus { unknown, denied, granted, unavailable }
+
 class ScreenCaptureProvider extends ChangeNotifier {
   final ScreenCaptureService _service = ScreenCaptureService();
-  static const Uuid _uuid = Uuid();
 
-  bool _hasPermission = false;
+  ScreenCapturePermissionStatus _permissionStatus =
+      ScreenCapturePermissionStatus.unknown;
   bool _isCapturing = false;
   ImageAttachment? _lastCapture;
 
-  bool get hasPermission => _hasPermission;
+  bool get hasPermission =>
+      _permissionStatus == ScreenCapturePermissionStatus.granted;
+  ScreenCapturePermissionStatus get permissionStatus => _permissionStatus;
   bool get isCapturing => _isCapturing;
   ImageAttachment? get lastCapture => _lastCapture;
 
   Future<void> refreshPermission() async {
-    _hasPermission = await _service.hasPermission();
+    final available = await _service.isAvailable();
+    if (!available) {
+      _permissionStatus = ScreenCapturePermissionStatus.unavailable;
+      notifyListeners();
+      return;
+    }
+
+    final granted = await _service.hasPermission();
+    _permissionStatus = granted
+        ? ScreenCapturePermissionStatus.granted
+        : ScreenCapturePermissionStatus.denied;
     notifyListeners();
   }
 
   Future<void> requestPermission() async {
-    _hasPermission = await _service.requestPermission();
+    final available = await _service.isAvailable();
+    if (!available) {
+      _permissionStatus = ScreenCapturePermissionStatus.unavailable;
+      notifyListeners();
+      return;
+    }
+
+    final granted = await _service.requestPermission();
+    _permissionStatus = granted
+        ? ScreenCapturePermissionStatus.granted
+        : ScreenCapturePermissionStatus.denied;
     notifyListeners();
   }
 
@@ -30,21 +53,7 @@ class ScreenCaptureProvider extends ChangeNotifier {
     _isCapturing = true;
     notifyListeners();
     try {
-      final raw = await _service.captureScreen();
-      if (raw == null || raw.isEmpty) {
-        return null;
-      }
-
-      final parsed = _parseCapture(raw);
-      if (parsed == null) {
-        return null;
-      }
-
-      _lastCapture = ImageAttachment(
-        id: _uuid.v4(),
-        base64Data: parsed.$2,
-        mimeType: parsed.$1,
-      );
+      _lastCapture = await _service.capture();
       return _lastCapture;
     } finally {
       _isCapturing = false;
@@ -52,18 +61,31 @@ class ScreenCaptureProvider extends ChangeNotifier {
     }
   }
 
-  (String, String)? _parseCapture(String raw) {
-    if (raw.startsWith('data:')) {
-      final comma = raw.indexOf(',');
-      if (comma == -1) return null;
-      final meta = raw.substring(5, comma);
-      final data = raw.substring(comma + 1);
-      final semi = meta.indexOf(';');
-      final mimeType = semi == -1 ? meta : meta.substring(0, semi);
-      if (mimeType.isEmpty || data.isEmpty) return null;
-      return (mimeType, data);
+  Future<List<ImageAttachment>> captureAndAttach(
+    List<ImageAttachment> currentAttachments, {
+    int maxAttachments = 4,
+  }) async {
+    if (permissionStatus == ScreenCapturePermissionStatus.unavailable) {
+      return currentAttachments;
     }
 
-    return ('image/jpeg', raw);
+    if (!hasPermission) {
+      await requestPermission();
+      if (!hasPermission) {
+        return currentAttachments;
+      }
+    }
+
+    final captureImage = await capture();
+    if (captureImage == null) {
+      return currentAttachments;
+    }
+
+    final next = <ImageAttachment>[...currentAttachments];
+    if (next.length >= maxAttachments) {
+      next.removeAt(0);
+    }
+    next.add(captureImage);
+    return next;
   }
 }

@@ -1,17 +1,23 @@
 package com.example.flutter_application_1.notifications
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
+import androidx.core.content.ContextCompat
 import com.example.flutter_application_1.MainActivity
 import com.example.flutter_application_1.R
 
 object NotificationHelper {
+    private const val TAG = "NotificationHelper"
+
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val notificationManager =
@@ -128,6 +134,17 @@ object NotificationHelper {
         isError: Boolean,
         sessionId: String?
     ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                Log.d(TAG, "POST_NOTIFICATIONS denied - skipping notification")
+                return
+            }
+        }
+
         val notificationManager =
             context.getSystemService(NotificationManager::class.java) ?: return
         val id = NotificationConstants.NOTIFICATION_ID_PRE_RESPONSE_BASE +

@@ -68,5 +68,71 @@ void main() {
       expect(json['modelOffsetXDp'], 30.0);
       expect(json['modelOffsetYDp'], -45.0);
     });
+
+    test('toJson/fromJson round-trip preserves core fields', () {
+      const original = Live2DDisplayConfig(
+        modelId: 'model-roundtrip',
+        modelPath: '/tmp/roundtrip.model3.json',
+        containerWidthDp: 512,
+        containerHeightDp: 768,
+        containerXRatio: 0.33,
+        containerYRatio: 0.67,
+        containerWidthRatio: 0.42,
+        containerHeightRatio: 0.58,
+        modelScaleX: 1.25,
+        modelScaleY: 1.25,
+        modelOffsetXRatio: 0.2,
+        modelOffsetYRatio: -0.15,
+        modelOffsetXDp: 64,
+        modelOffsetYDp: -48,
+        relativeScaleRatio: 1.15,
+        rotationDeg: 12,
+      );
+
+      final restored = Live2DDisplayConfig.fromJson(original.toJson());
+      expect(restored.modelId, original.modelId);
+      expect(restored.modelPath, original.modelPath);
+      expect(restored.containerWidthDp, closeTo(original.containerWidthDp, 0.0001));
+      expect(restored.containerHeightDp, closeTo(original.containerHeightDp, 0.0001));
+      expect(restored.containerXRatio, closeTo(original.containerXRatio, 0.0001));
+      expect(restored.containerYRatio, closeTo(original.containerYRatio, 0.0001));
+      expect(
+        restored.containerWidthRatio,
+        closeTo(original.containerWidthRatio, 0.0001),
+      );
+      expect(
+        restored.containerHeightRatio,
+        closeTo(original.containerHeightRatio, 0.0001),
+      );
+      expect(restored.modelScaleX, closeTo(original.modelScaleX, 0.0001));
+      expect(restored.modelScaleY, closeTo(original.modelScaleY, 0.0001));
+      expect(
+        restored.modelOffsetXRatio,
+        closeTo(original.modelOffsetXRatio, 0.0001),
+      );
+      expect(
+        restored.modelOffsetYRatio,
+        closeTo(original.modelOffsetYRatio, 0.0001),
+      );
+      expect(restored.modelOffsetXDp, closeTo(original.modelOffsetXDp, 0.0001));
+      expect(restored.modelOffsetYDp, closeTo(original.modelOffsetYDp, 0.0001));
+      expect(
+        restored.relativeScaleRatio,
+        closeTo(original.relativeScaleRatio, 0.0001),
+      );
+      expect(restored.rotationDeg, original.rotationDeg);
+      expect(
+        restored.schemaVersion,
+        Live2DDisplayConfig.currentSchemaVersion,
+      );
+      expect(restored.isValid, isTrue);
+    });
+
+    test('defaultConfig returns valid fallback object', () {
+      final fallback = Live2DDisplayConfig.defaultConfig('model-fallback');
+      expect(fallback.modelId, 'model-fallback');
+      expect(fallback.isValid, isTrue);
+      expect(fallback.relativeScaleRatio, 1.0);
+    });
   });
 }

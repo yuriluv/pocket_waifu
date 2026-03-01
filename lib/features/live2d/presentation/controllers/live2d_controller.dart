@@ -637,12 +637,34 @@ class Live2DController extends ChangeNotifier {
   }
 
   Future<void> _applyDisplayConfigForModel(String modelId) async {
-    var config = await _displayConfigStore.loadForModel(modelId);
-    if (config == null || !config.isValid) {
-      config = await _displayConfigStore.migrateLegacy(
-        modelId: modelId,
-        settings: _settings,
+    Live2DDisplayConfig config;
+    try {
+      final loaded = await _displayConfigStore.loadForModel(modelId);
+      if (loaded == null || !loaded.isValid) {
+        final migrated = await _displayConfigStore.migrateLegacy(
+          modelId: modelId,
+          settings: _settings,
+        );
+        config = migrated.isValid
+            ? migrated
+            : Live2DDisplayConfig.defaultConfig(modelId);
+        if (!migrated.isValid) {
+          live2dLog.warning(_tag, '마이그레이션 설정이 유효하지 않아 기본값 사용');
+          await _displayConfigStore.save(config);
+        }
+      } else {
+        config = loaded;
+      }
+    } catch (e, stack) {
+      live2dLog.warning(
+        _tag,
+        '디스플레이 설정 로드 실패 - 기본값 사용',
+        details: '$e',
+        error: e,
       );
+      live2dLog.debug(_tag, '디스플레이 설정 로드 실패 스택', details: '$stack');
+      config = Live2DDisplayConfig.defaultConfig(modelId);
+      await _displayConfigStore.save(config);
     }
     final state = await _overlayStateService.fetchCurrentState();
     if (state == null) return;

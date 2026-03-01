@@ -25,7 +25,20 @@ void main() {
       ];
       final pastMessages = [
         Message(id: 'a', role: MessageRole.system, content: 'ignored system'),
-        Message(id: 'b', role: MessageRole.user, content: 'hello'),
+        Message(
+          id: 'b',
+          role: MessageRole.user,
+          content: 'hello',
+          images: const [
+            ImageAttachment(
+              id: 'img1',
+              base64Data: 'AAAA',
+              mimeType: 'image/png',
+              width: 256,
+              height: 128,
+            ),
+          ],
+        ),
         Message(id: 'c', role: MessageRole.assistant, content: 'hi there'),
       ];
 
@@ -36,7 +49,12 @@ void main() {
       );
 
       expect(prompt, contains('Keep roleplay consistency.'));
-      expect(prompt, contains('<user>hello</user>'));
+      expect(prompt, contains('<user>hello<attachments count="1">'));
+      expect(prompt, contains('<attachments count="1">'));
+      expect(
+        prompt,
+        contains('<image mime="image/png" width="256" height="128" />'),
+      );
       expect(prompt, contains('<char>hi there</char>'));
       expect(prompt, endsWith('current input'));
     });
@@ -65,6 +83,29 @@ void main() {
       expect(apiMessages.first['content'], contains('System contract'));
       expect(apiMessages.first['content'], contains('new user input'));
       expect(apiMessages.length, 1);
+    });
+
+    test('text-only message after image message keeps plain text format', () {
+      final builder = PromptBuilder();
+
+      final imagePayload = builder.buildMultimodalContent(
+        'with image',
+        const [
+          ImageAttachment(
+            id: 'img-a',
+            base64Data: 'AAAA',
+            mimeType: 'image/png',
+            width: 64,
+            height: 64,
+          ),
+        ],
+      );
+      expect(imagePayload.any((part) => part['type'] == 'image_url'), isTrue);
+
+      final textOnlyPayload = builder.buildMultimodalContent('plain text only', const []);
+      expect(textOnlyPayload.length, 1);
+      expect(textOnlyPayload.first['type'], 'text');
+      expect(textOnlyPayload.first['text'], 'plain text only');
     });
   });
 }

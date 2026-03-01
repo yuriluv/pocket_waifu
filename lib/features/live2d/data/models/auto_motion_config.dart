@@ -47,4 +47,26 @@ class AutoMotionConfig {
           : (expressionSelection ?? this.expressionSelection),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'motionGroup': motionGroup,
+      'intervalSeconds': intervalSeconds,
+      'randomMode': randomMode,
+      'autoExpressionChange': autoExpressionChange,
+      'expressionSelection': expressionSelection,
+    };
+  }
+
+  factory AutoMotionConfig.fromJson(Map<String, dynamic> json) {
+    return AutoMotionConfig(
+      enabled: json['enabled'] as bool? ?? false,
+      motionGroup: json['motionGroup'] as String?,
+      intervalSeconds: (json['intervalSeconds'] as int? ?? 10).clamp(5, 120),
+      randomMode: json['randomMode'] as bool? ?? true,
+      autoExpressionChange: json['autoExpressionChange'] as bool? ?? false,
+      expressionSelection: json['expressionSelection'] as String?,
+    );
+  }
 }

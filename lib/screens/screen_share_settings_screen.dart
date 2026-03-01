@@ -54,13 +54,25 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                 settings.isPermissionGranted ? 'Granted' : 'Not Granted',
               ),
               subtitle: const Text('MediaProjection screen capture permission'),
-              trailing: FilledButton(
-                onPressed: provider.isLoading
-                    ? null
-                    : settings.isPermissionGranted
-                    ? provider.refreshPermission
-                    : provider.requestPermission,
-                child: Text(settings.isPermissionGranted ? 'Refresh' : 'Grant'),
+              trailing: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton(
+                    onPressed: provider.isLoading
+                        ? null
+                        : settings.isPermissionGranted
+                            ? provider.refreshPermission
+                            : provider.requestPermission,
+                    child: Text(settings.isPermissionGranted ? 'Refresh' : 'Grant'),
+                  ),
+                  const SizedBox(height: 6),
+                  OutlinedButton(
+                    onPressed: provider.isLoading || !settings.isPermissionGranted
+                        ? null
+                        : provider.revokePermission,
+                    child: const Text('Revoke'),
+                  ),
+                ],
               ),
             ),
           ),
@@ -71,9 +83,25 @@ class ScreenShareSettingsScreen extends StatelessWidget {
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Auto-attach to message'),
-                  value: settings.autoAttachToMessage,
-                  onChanged: provider.setAutoAttachToMessage,
+                  title: const Text('Enable screen share'),
+                  value: settings.enabled,
+                  onChanged: provider.setEnabled,
+                ),
+                const SizedBox(height: 8),
+                Text('Capture interval: ${settings.captureInterval}s'),
+                Slider(
+                  value: settings.captureInterval.toDouble(),
+                  min: 5,
+                  max: 600,
+                  divisions: 119,
+                  label: '${settings.captureInterval}s',
+                  onChanged: (value) => provider.setCaptureInterval(value.round()),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Auto capture'),
+                  value: settings.autoCapture,
+                  onChanged: provider.setAutoCapture,
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

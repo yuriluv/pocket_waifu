@@ -225,12 +225,18 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     if (resolvedSessionId == null) return;
 
     _inFlight = true;
+    debugPrint(
+      'ProactiveResponseService -> NotificationCoordinator: trigger session=$resolvedSessionId',
+    );
     try {
       final apiConfig = _resolveApiConfig(settings.apiPresetId);
       final result = await _notificationCoordinator.triggerProactiveResponse(
         sessionId: resolvedSessionId,
         skipInputBlock: true,
         apiConfig: apiConfig,
+      );
+      debugPrint(
+        'ProactiveResponseService <- NotificationCoordinator: result=$result session=$resolvedSessionId',
       );
       if (result == NotificationRequestResult.cancelled) {
         _maybeStart();

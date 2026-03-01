@@ -256,6 +256,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     }
 
     final title = settingsProvider.character.name;
+    debugPrint(
+      'NotificationCoordinator: proactive request queued session=$sessionId',
+    );
 
     return sessionProvider.runSerialized(() async {
       final requestHandle = _apiService.createRequestHandle();
@@ -294,6 +297,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           title: title,
           message: processedResponse,
           sessionId: sessionId,
+        );
+        debugPrint(
+          'NotificationCoordinator -> NotificationBridge: dispatched pre-response notification session=$sessionId',
         );
         return NotificationRequestResult.completed;
       } catch (e) {

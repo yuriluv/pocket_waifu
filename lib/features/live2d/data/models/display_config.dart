@@ -3,6 +3,7 @@
 // ============================================================================
 
 import 'dart:math';
+import 'dart:developer' as developer;
 
 class Live2DDisplayConfig {
   static const int currentSchemaVersion = 2;
@@ -119,22 +120,47 @@ class Live2DDisplayConfig {
       };
 
   factory Live2DDisplayConfig.fromJson(Map<String, dynamic> json) {
-    final containerWidthDp = _readDouble(
+    final modelId = json['modelId'] as String? ?? '';
+    if (modelId.trim().isEmpty) {
+      _logFallback('modelId', modelId.isEmpty ? '(empty)' : modelId);
+    }
+
+    final containerWidthMeta = _readDoubleWithMeta(
       json,
       const ['containerWidthDp', 'containerWidth', 'overlayWidth'],
     );
-    final containerHeightDp = _readDouble(
+    final containerWidthDp = containerWidthMeta.value;
+    if (!containerWidthMeta.found) {
+      _logFallback('containerWidthDp', containerWidthDp);
+    }
+
+    final containerHeightMeta = _readDoubleWithMeta(
       json,
       const ['containerHeightDp', 'containerHeight', 'overlayHeight'],
     );
-    final modelOffsetXDp = _readDouble(
+    final containerHeightDp = containerHeightMeta.value;
+    if (!containerHeightMeta.found) {
+      _logFallback('containerHeightDp', containerHeightDp);
+    }
+
+    final modelOffsetXMeta = _readDoubleWithMeta(
       json,
       const ['modelOffsetXDp', 'modelOffsetX', 'characterOffsetX'],
     );
-    final modelOffsetYDp = _readDouble(
+    final modelOffsetXDp = modelOffsetXMeta.value;
+    if (!modelOffsetXMeta.found) {
+      _logFallback('modelOffsetXDp', modelOffsetXDp);
+    }
+
+    final modelOffsetYMeta = _readDoubleWithMeta(
       json,
       const ['modelOffsetYDp', 'modelOffsetY', 'characterOffsetY'],
     );
+    final modelOffsetYDp = modelOffsetYMeta.value;
+    if (!modelOffsetYMeta.found) {
+      _logFallback('modelOffsetYDp', modelOffsetYDp);
+    }
+
     final modelOffsetXRatio = json.containsKey('modelOffsetXRatio')
         ? _signedRatio(
             _readDouble(json, const ['modelOffsetXRatio']),
@@ -148,37 +174,91 @@ class Live2DDisplayConfig {
           )
         : _deriveSignedRatio(modelOffsetYDp, containerHeightDp);
 
+    if (!json.containsKey('modelOffsetXRatio')) {
+      _logFallback('modelOffsetXRatio', modelOffsetXRatio);
+    }
+    if (!json.containsKey('modelOffsetYRatio')) {
+      _logFallback('modelOffsetYRatio', modelOffsetYRatio);
+    }
+
+    final containerXMeta = _readDoubleWithMeta(
+      json,
+      const ['containerXRatio', 'containerX', 'positionX'],
+    );
+    final containerYMeta = _readDoubleWithMeta(
+      json,
+      const ['containerYRatio', 'containerY', 'positionY'],
+    );
+    final containerWidthRatioMeta = _readDoubleWithMeta(
+      json,
+      const ['containerWidthRatio'],
+    );
+    final containerHeightRatioMeta = _readDoubleWithMeta(
+      json,
+      const ['containerHeightRatio'],
+    );
+
+    final modelScaleX = (json['modelScaleX'] as num?)?.toDouble() ?? 1.0;
+    final modelScaleY = (json['modelScaleY'] as num?)?.toDouble() ?? 1.0;
+    final relativeScaleRatio =
+        (json['relativeScaleRatio'] as num?)?.toDouble() ?? 1.0;
+    final rotationDeg = (json['rotationDeg'] as int?) ?? 0;
+
+    if (!containerXMeta.found) {
+      _logFallback('containerXRatio', containerXMeta.value);
+    }
+    if (!containerYMeta.found) {
+      _logFallback('containerYRatio', containerYMeta.value);
+    }
+    if (!containerWidthRatioMeta.found) {
+      _logFallback('containerWidthRatio', containerWidthRatioMeta.value);
+    }
+    if (!containerHeightRatioMeta.found) {
+      _logFallback('containerHeightRatio', containerHeightRatioMeta.value);
+    }
+    if (json['modelScaleX'] == null) {
+      _logFallback('modelScaleX', modelScaleX);
+    }
+    if (json['modelScaleY'] == null) {
+      _logFallback('modelScaleY', modelScaleY);
+    }
+    if (json['relativeScaleRatio'] == null) {
+      _logFallback('relativeScaleRatio', relativeScaleRatio);
+    }
+    if (json['rotationDeg'] == null) {
+      _logFallback('rotationDeg', rotationDeg);
+    }
+
     return Live2DDisplayConfig(
       schemaVersion: (json['schemaVersion'] as int?) ?? 0,
-      modelId: json['modelId'] as String? ?? '',
+      modelId: modelId,
       modelPath: json['modelPath'] as String?,
       containerWidthDp: containerWidthDp,
       containerHeightDp: containerHeightDp,
       containerXRatio: _ratio(
-        _readDouble(json, const ['containerXRatio', 'containerX', 'positionX']),
+        containerXMeta.value,
         fallback: 0.5,
       ),
       containerYRatio: _ratio(
-        _readDouble(json, const ['containerYRatio', 'containerY', 'positionY']),
+        containerYMeta.value,
         fallback: 0.5,
       ),
       containerWidthRatio: _ratio(
-        _readDouble(json, const ['containerWidthRatio']),
+        containerWidthRatioMeta.value,
         fallback: 0.0,
       ),
       containerHeightRatio: _ratio(
-        _readDouble(json, const ['containerHeightRatio']),
+        containerHeightRatioMeta.value,
         fallback: 0.0,
       ),
-      modelScaleX: (json['modelScaleX'] as num?)?.toDouble() ?? 1.0,
-      modelScaleY: (json['modelScaleY'] as num?)?.toDouble() ?? 1.0,
+      modelScaleX: modelScaleX,
+      modelScaleY: modelScaleY,
       modelOffsetXRatio: modelOffsetXRatio,
       modelOffsetYRatio: modelOffsetYRatio,
       modelOffsetXDp: modelOffsetXDp,
       modelOffsetYDp: modelOffsetYDp,
-      relativeScaleRatio:
-          (json['relativeScaleRatio'] as num?)?.toDouble() ?? 1.0,
-      rotationDeg: (json['rotationDeg'] as int?) ?? 0,
+      relativeScaleRatio: relativeScaleRatio,
+      rotationDeg: rotationDeg,
     );
   }
 
@@ -215,6 +295,34 @@ class Live2DDisplayConfig {
       }
     }
     return defaultValue;
+  }
+
+  static ({bool found, double value}) _readDoubleWithMeta(
+    Map<String, dynamic> source,
+    List<String> keys, {
+    double defaultValue = 0.0,
+  }) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value is num) {
+        return (found: true, value: value.toDouble());
+      }
+      if (value is String) {
+        final parsed = double.tryParse(value);
+        if (parsed != null) {
+          return (found: true, value: parsed);
+        }
+      }
+    }
+    return (found: false, value: defaultValue);
+  }
+
+  static void _logFallback(String field, Object value) {
+    developer.log(
+      'Fallback applied for $field: $value',
+      name: 'Live2DDisplayConfig',
+      level: 900,
+    );
   }
 
   static double _ratio(double value, {double fallback = 0.0}) {
@@ -256,6 +364,10 @@ class Live2DDisplayConfig {
       relativeScaleRatio: 1.0,
       rotationDeg: 0,
     );
+  }
+
+  static Live2DDisplayConfig defaultConfig(String modelId) {
+    return fallbackFor(modelId);
   }
 
   static Live2DDisplayConfig fromOverlayState({

@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/auto_motion_config.dart';
+import '../models/gesture_motion_mapping.dart';
 import '../models/live2d_parameter_preset.dart';
 
 class Live2DSettingsRepository {
@@ -14,6 +16,8 @@ class Live2DSettingsRepository {
   factory Live2DSettingsRepository() => _instance;
 
   static const String _motionEnabledPrefix = 'live2d_motion_enabled_';
+  static const String _autoMotionPrefix = 'live2d_auto_motion_config_';
+  static const String _gestureMappingPrefix = 'live2d_gesture_mapping_config_';
 
   String _modelKey(String modelPath) {
     final normalized = modelPath.replaceAll('\\', '/').toLowerCase();
@@ -25,6 +29,63 @@ class Live2DSettingsRepository {
 
   String _motionEnabledKey(String modelPath) {
     return '$_motionEnabledPrefix${_modelKey(modelPath)}';
+  }
+
+  String _autoMotionKey(String modelPath) {
+    return '$_autoMotionPrefix${_modelKey(modelPath)}';
+  }
+
+  String _gestureMappingKey(String modelPath) {
+    return '$_gestureMappingPrefix${_modelKey(modelPath)}';
+  }
+
+  Future<AutoMotionConfig?> loadAutoMotionConfig(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_autoMotionKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      return AutoMotionConfig.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveAutoMotionConfig(String modelPath, AutoMotionConfig config) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_autoMotionKey(modelPath), jsonEncode(config.toJson()));
+  }
+
+  Future<GestureMotionConfig?> loadGestureMappingConfig(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_gestureMappingKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      return GestureMotionConfig.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveGestureMappingConfig(
+    String modelPath,
+    GestureMotionConfig config,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_gestureMappingKey(modelPath), jsonEncode(config.toJson()));
   }
 
   Future<Map<String, bool>> loadMotionEnabled(String modelPath) async {

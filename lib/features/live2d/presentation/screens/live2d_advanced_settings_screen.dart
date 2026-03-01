@@ -123,26 +123,34 @@ class _Live2DAdvancedSettingsScreenState
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: [
-                _AutoMotionTab(
-                  model3Data: _model3Data,
-                  isLoading: _isLoading,
-                ),
-                _GestureMappingTab(
-                  model3Data: _model3Data,
-                  modelPath: modelPath,
-                  isLoading: _isLoading,
-                ),
-                _InteractionTestTab(
-                  model3Data: _model3Data,
-                  isLoading: _isLoading,
-                ),
-                _MotionParametersTab(
-                  model3Data: _model3Data,
-                  modelPath: modelPath,
-                  isLoading: _isLoading,
-                ),
-              ],
+              children: _isLoading
+                  ? const [
+                      _ComingSoonTabPlaceholder(),
+                      _ComingSoonTabPlaceholder(),
+                      _ComingSoonTabPlaceholder(),
+                      _ComingSoonTabPlaceholder(),
+                    ]
+                  : [
+                      _AutoMotionTab(
+                        model3Data: _model3Data,
+                        modelPath: modelPath,
+                        isLoading: _isLoading,
+                      ),
+                      _GestureMappingTab(
+                        model3Data: _model3Data,
+                        modelPath: modelPath,
+                        isLoading: _isLoading,
+                      ),
+                      _InteractionTestTab(
+                        model3Data: _model3Data,
+                        isLoading: _isLoading,
+                      ),
+                      _MotionParametersTab(
+                        model3Data: _model3Data,
+                        modelPath: modelPath,
+                        isLoading: _isLoading,
+                      ),
+                    ],
             ),
           ),
         ],
@@ -151,13 +159,26 @@ class _Live2DAdvancedSettingsScreenState
   }
 }
 
+class _ComingSoonTabPlaceholder extends StatelessWidget {
+  const _ComingSoonTabPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text('Coming soon'),
+    );
+  }
+}
+
 class _AutoMotionTab extends StatefulWidget {
   const _AutoMotionTab({
     required this.model3Data,
+    required this.modelPath,
     required this.isLoading,
   });
 
   final Model3Data? model3Data;
+  final String? modelPath;
   final bool isLoading;
 
   @override
@@ -166,6 +187,7 @@ class _AutoMotionTab extends StatefulWidget {
 
 class _AutoMotionTabState extends State<_AutoMotionTab> {
   final AutoMotionService _autoMotionService = AutoMotionService();
+  final Live2DSettingsRepository _repo = Live2DSettingsRepository();
   AutoMotionConfig _config = AutoMotionConfig.defaults();
   bool _loadingConfig = true;
 
@@ -179,12 +201,23 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
   void didUpdateWidget(covariant _AutoMotionTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.model3Data != widget.model3Data && widget.model3Data != null) {
-      _sanitizeConfigForModel(widget.model3Data!);
+      _onModelChanged(widget.model3Data!);
+    }
+  }
+
+  Future<void> _onModelChanged(Model3Data data) async {
+    await _sanitizeConfigForModel(data);
+    if (_config.enabled) {
+      await _autoMotionService.applyConfig(_config, data);
     }
   }
 
   Future<void> _loadConfig() async {
-    final loaded = await _autoMotionService.loadConfig();
+    final modelPath = widget.modelPath;
+    final loaded = modelPath == null || modelPath.isEmpty
+        ? await _autoMotionService.loadConfig()
+        : (await _repo.loadAutoMotionConfig(modelPath)) ??
+            await _autoMotionService.loadConfig();
     if (!mounted) {
       return;
     }
@@ -223,6 +256,10 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
         _config = next;
       });
       await _autoMotionService.saveConfig(next);
+      final modelPath = widget.modelPath;
+      if (modelPath != null && modelPath.isNotEmpty) {
+        await _repo.saveAutoMotionConfig(modelPath, next);
+      }
     }
   }
 
@@ -232,10 +269,19 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
       _config = config;
     });
     if (data == null) {
-      await _autoMotionService.saveConfig(config.copyWith(enabled: false));
+      final saved = config.copyWith(enabled: false);
+      await _autoMotionService.saveConfig(saved);
+      final modelPath = widget.modelPath;
+      if (modelPath != null && modelPath.isNotEmpty) {
+        await _repo.saveAutoMotionConfig(modelPath, saved);
+      }
       return;
     }
     await _autoMotionService.applyConfig(config, data);
+    final modelPath = widget.modelPath;
+    if (modelPath != null && modelPath.isNotEmpty) {
+      await _repo.saveAutoMotionConfig(modelPath, config);
+    }
   }
 
   @override
@@ -376,6 +422,7 @@ class _GestureMappingTab extends StatefulWidget {
 
 class _GestureMappingTabState extends State<_GestureMappingTab> {
   final GestureMotionMapper _mapper = GestureMotionMapper();
+  final Live2DSettingsRepository _repo = Live2DSettingsRepository();
   GestureMotionConfig _config = GestureMotionConfig.defaults();
   bool _loading = true;
 
@@ -396,7 +443,11 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
   }
 
   Future<void> _loadConfig() async {
-    final config = await _mapper.loadConfig();
+    final modelPath = widget.modelPath;
+    final config = modelPath == null || modelPath.isEmpty
+        ? await _mapper.loadConfig()
+        : (await _repo.loadGestureMappingConfig(modelPath)) ??
+            await _mapper.loadConfig();
     if (!mounted) {
       return;
     }
@@ -408,6 +459,10 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
 
   Future<void> _saveConfig(GestureMotionConfig config) async {
     await _mapper.setConfig(config);
+    final modelPath = widget.modelPath;
+    if (modelPath != null && modelPath.isNotEmpty) {
+      await _repo.saveGestureMappingConfig(modelPath, config);
+    }
     if (!mounted) {
       return;
     }
