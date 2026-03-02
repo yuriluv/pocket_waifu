@@ -10,6 +10,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -17,13 +19,19 @@ import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Switch
+import android.widget.TextView
 import androidx.core.app.NotificationCompat
-import androidx.core.app.RemoteInput
 import com.example.flutter_application_1.MainActivity
 import com.example.flutter_application_1.live2d.Live2DEventStreamHandler
 import com.example.flutter_application_1.live2d.core.Live2DLogger
@@ -33,6 +41,8 @@ import com.example.flutter_application_1.live2d.gesture.GestureConfig
 import com.example.flutter_application_1.live2d.gesture.GestureDetectorManager
 import com.example.flutter_application_1.live2d.gesture.GestureType
 import com.example.flutter_application_1.live2d.renderer.Live2DGLSurfaceView
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.plugin.common.MethodChannel
 
 /**
  * 
@@ -68,12 +78,8 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_CHARACTER_OFFSET = "com.example.flutter_application_1.live2d.SET_CHARACTER_OFFSET"
         const val ACTION_SET_CHARACTER_ROTATION = "com.example.flutter_application_1.live2d.SET_CHARACTER_ROTATION"
         const val ACTION_SET_PARAMETER = "com.example.flutter_application_1.live2d.SET_PARAMETER"
-        const val ACTION_NOTIFICATION_SHOW_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SHOW_REPLY"
-        const val ACTION_NOTIFICATION_SEND_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_SEND_REPLY"
-        const val ACTION_NOTIFICATION_CANCEL_REPLY = "com.example.flutter_application_1.live2d.NOTIFICATION_CANCEL_REPLY"
-        const val ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH = "com.example.flutter_application_1.live2d.NOTIFICATION_TOGGLE_TOUCH_THROUGH"
-        const val ACTION_NOTIFICATION_SET_RESPONSE = "com.example.flutter_application_1.live2d.NOTIFICATION_SET_RESPONSE"
-        const val ACTION_NOTIFICATION_SET_ERROR = "com.example.flutter_application_1.live2d.NOTIFICATION_SET_ERROR"
+        const val ACTION_OPEN_MINI_MENU = "com.example.flutter_application_1.live2d.OPEN_MINI_MENU"
+        const val ACTION_CLOSE_MINI_MENU = "com.example.flutter_application_1.live2d.CLOSE_MINI_MENU"
 
         const val EDGE_LEFT = 1
         const val EDGE_TOP = 2
@@ -108,23 +114,13 @@ class Live2DOverlayService : Service() {
         const val EXTRA_PARAMETER_ID = "parameter_id"
         const val EXTRA_PARAMETER_VALUE = "parameter_value"
         const val EXTRA_PARAMETER_DURATION = "parameter_duration"
-        const val EXTRA_NOTIFICATION_MESSAGE = "notification_message"
-        const val EXTRA_NOTIFICATION_ERROR = "notification_error"
-        const val EXTRA_NOTIFICATION_SESSION_ID = "notification_session_id"
         
         private const val CHANNEL_ID = "live2d_overlay_channel"
+        private const val MINI_MENU_CHANNEL = "com.example.flutter_application_1/mini_menu"
+        private const val ENGINE_ID = "main_engine"
         private const val NOTIFICATION_ID = 1001
-        private const val REMOTE_INPUT_REPLY_KEY = "notification_reply_text"
-        private const val SESSION_SYNC_CONTRACT = "newcastle.notification.session_sync.v1"
-        private const val SESSION_SYNC_CONTRACT_VERSION = 1
-        private const val SESSION_SYNC_SCOPE_ACTIVE_MAIN = "active_main_session"
-        private const val REPLY_LOADING_TEXT = "응답 생성 중..."
 
         private const val REQUEST_CODE_OPEN_APP = 1000
-        private const val REQUEST_CODE_NOTIFICATION_SHOW_REPLY = 1001
-        private const val REQUEST_CODE_NOTIFICATION_SEND_REPLY = 1002
-        private const val REQUEST_CODE_NOTIFICATION_CANCEL_REPLY = 1003
-        private const val REQUEST_CODE_NOTIFICATION_TOUCH_THROUGH = 1004
         
         // Android 12+ (API 31) Untrusted Touch Occlusion:
         private val MAX_OVERLAY_ALPHA = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.8f else 1.0f
@@ -202,13 +198,19 @@ class Live2DOverlayService : Service() {
     private enum class TouchState { IDLE, DRAGGING, BOX_DRAGGING, BOX_RESIZING }
     private var touchState = TouchState.IDLE
     private var resizeEdgeMask = 0  // bitmask: 1=LEFT, 2=TOP, 4=RIGHT, 8=BOTTOM
-    private enum class NotificationLayoutState { DEFAULT, REPLY }
-    private var notificationLayoutState = NotificationLayoutState.DEFAULT
-    private var notificationMessage = "오버레이가 실행 중입니다"
-    private var notificationLoading = false
-    private var notificationPendingReply: String? = null
-    private var notificationError: String? = null
-    private var notificationSessionId: String? = null
+
+    private var miniMenuOverlayView: View? = null
+    private var miniMenuCardView: View? = null
+    private var miniMenuParams: WindowManager.LayoutParams? = null
+    private var miniMenuSessionId: String? = null
+    private var miniMenuMessagesContainer: LinearLayout? = null
+    private var miniMenuInputField: EditText? = null
+    private var miniMenuStatusText: TextView? = null
+    private var miniMenuScreenshotText: EditText? = null
+    private var miniMenuTouchToggle: Switch? = null
+    private var miniMenuNotificationToggle: Switch? = null
+    private val miniMenuHandler = Handler(Looper.getMainLooper())
+    private var miniMenuPolling = false
 
     
     private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
@@ -350,18 +352,8 @@ class Live2DOverlayService : Service() {
                 intent.getFloatExtra(EXTRA_PARAMETER_VALUE, 0f),
                 intent.getIntExtra(EXTRA_PARAMETER_DURATION, 0)
             )
-            ACTION_NOTIFICATION_SHOW_REPLY -> openNotificationReplyLayout()
-            ACTION_NOTIFICATION_SEND_REPLY -> handleInlineReplyFromNotification(intent)
-            ACTION_NOTIFICATION_CANCEL_REPLY -> cancelNotificationReplyLayout()
-            ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH -> toggleTouchThroughFromNotification()
-            ACTION_NOTIFICATION_SET_RESPONSE -> updateNotificationResponse(
-                message = intent.getStringExtra(EXTRA_NOTIFICATION_MESSAGE),
-                sessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID),
-            )
-            ACTION_NOTIFICATION_SET_ERROR -> updateNotificationError(
-                errorMessage = intent.getStringExtra(EXTRA_NOTIFICATION_ERROR),
-                sessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID),
-            )
+            ACTION_OPEN_MINI_MENU -> openMiniMenu(intent.getStringExtra("sessionId"))
+            ACTION_CLOSE_MINI_MENU -> closeMiniMenu()
         }
         
         return START_STICKY
@@ -372,6 +364,7 @@ class Live2DOverlayService : Service() {
     override fun onDestroy() {
         android.util.Log.d("Live2D", ">>> SERVICE onDestroy")
         Live2DLogger.Overlay.i("서비스 종료", "Live2DOverlayService 정리")
+        closeMiniMenu()
         try {
             application.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
         } catch (_: Exception) {}
@@ -463,6 +456,7 @@ class Live2DOverlayService : Service() {
     }
     
     private fun hideOverlay() {
+        closeMiniMenu()
         stopStateChecks()
         
         overlayView?.let { view ->
@@ -1220,103 +1214,428 @@ class Live2DOverlayService : Service() {
         serviceStartTime = 0
         Live2DLogger.Overlay.d("상태 체크 중지", null)
     }
-    
-    // ============================================================================
-    // ============================================================================
 
-    private fun openNotificationReplyLayout() {
-        notificationLayoutState = NotificationLayoutState.REPLY
-        refreshForegroundNotification()
-        publishNotificationSessionSync(phase = "reply_input_opened")
+    private fun dp(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics,
+        ).toInt()
     }
 
-    private fun cancelNotificationReplyLayout() {
-        notificationLayoutState = NotificationLayoutState.DEFAULT
-        refreshForegroundNotification()
-        publishNotificationSessionSync(phase = "reply_input_cancelled")
+    private fun miniMenuChannel(): MethodChannel? {
+        val engine = FlutterEngineCache.getInstance().get(ENGINE_ID) ?: return null
+        return MethodChannel(engine.dartExecutor.binaryMessenger, MINI_MENU_CHANNEL)
     }
 
-    private fun handleInlineReplyFromNotification(intent: Intent) {
-        val replyText = RemoteInput.getResultsFromIntent(intent)
-            ?.getCharSequence(REMOTE_INPUT_REPLY_KEY)
-            ?.toString()
-            ?.trim()
+    private fun invokeMiniMenuMethod(
+        method: String,
+        arguments: Any? = null,
+        onSuccess: (Any?) -> Unit = {},
+        onError: (String) -> Unit = {},
+    ) {
+        val channel = miniMenuChannel() ?: run {
+            onError("flutter_engine_unavailable")
+            return
+        }
+        channel.invokeMethod(method, arguments, object : MethodChannel.Result {
+            override fun success(result: Any?) {
+                onSuccess(result)
+            }
 
-        if (replyText.isNullOrEmpty()) {
-            cancelNotificationReplyLayout()
+            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                onError(errorMessage ?: errorCode)
+            }
+
+            override fun notImplemented() {
+                onError("not_implemented")
+            }
+        })
+    }
+
+    private fun openMiniMenu(sessionId: String?) {
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:$packageName"),
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            return
+        }
+        if (miniMenuOverlayView != null) {
+            miniMenuSessionId = sessionId ?: miniMenuSessionId
+            refreshMiniMenuFromFlutter()
             return
         }
 
-        notificationSessionId = intent.getStringExtra(EXTRA_NOTIFICATION_SESSION_ID) ?: notificationSessionId
-        notificationLayoutState = NotificationLayoutState.DEFAULT
-        notificationLoading = true
-        notificationPendingReply = replyText
-        notificationError = null
-        refreshForegroundNotification()
+        miniMenuSessionId = sessionId
+        if (miniMenuSessionId == null) {
+            invokeMiniMenuMethod("miniMenuGetActiveSessionId", onSuccess = { result ->
+                miniMenuSessionId = result as? String
+                showMiniMenuWindow()
+            })
+            return
+        }
+        showMiniMenuWindow()
+    }
 
-        publishNotificationSessionSync(
-            phase = "reply_submitted",
-            replyText = replyText,
+    private fun showMiniMenuWindow() {
+        if (miniMenuOverlayView != null) return
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(0x88000000.toInt())
+            isClickable = true
+            setOnClickListener { closeMiniMenu() }
+        }
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val bg = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.WHITE)
+            }
+            background = bg
+            elevation = dp(8).toFloat()
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            isClickable = true
+            setOnClickListener { }
+        }
+        miniMenuCardView = card
+
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val generalButton = Button(this).apply { text = "General" }
+        val inputButton = Button(this).apply { text = "Input" }
+        val settingsButton = Button(this).apply { text = "설정" }
+        tabs.addView(generalButton)
+        tabs.addView(inputButton)
+        tabs.addView(settingsButton)
+
+        val generalTab = buildGeneralTab()
+        val inputTab = buildInputTab()
+        val settingsTab = buildSettingsTab()
+
+        fun showTab(index: Int) {
+            generalTab.visibility = if (index == 0) View.VISIBLE else View.GONE
+            inputTab.visibility = if (index == 1) View.VISIBLE else View.GONE
+            settingsTab.visibility = if (index == 2) View.VISIBLE else View.GONE
+        }
+        generalButton.setOnClickListener { showTab(0) }
+        inputButton.setOnClickListener { showTab(1) }
+        settingsButton.setOnClickListener { showTab(2) }
+
+        val closeButton = Button(this).apply {
+            text = "닫기"
+            setOnClickListener { closeMiniMenu() }
+        }
+
+        card.addView(tabs)
+        card.addView(closeButton)
+        card.addView(generalTab)
+        card.addView(inputTab)
+        card.addView(settingsTab)
+        showTab(0)
+
+        val contentParams = FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.8f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.6f).toInt(),
+        ).apply {
+            gravity = Gravity.CENTER
+        }
+        root.addView(card, contentParams)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        )
+        miniMenuParams = params
+        miniMenuOverlayView = root
+
+        try {
+            windowManager.addView(root, params)
+            startMiniMenuPolling()
+            refreshMiniMenuFromFlutter()
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.e("미니 메뉴 표시 실패", e.message, e)
+            miniMenuOverlayView = null
+            miniMenuParams = null
+        }
+    }
+
+    private fun closeMiniMenu() {
+        stopMiniMenuPolling()
+        miniMenuOverlayView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Exception) {
+            }
+        }
+        miniMenuOverlayView = null
+        miniMenuCardView = null
+        miniMenuParams = null
+        miniMenuMessagesContainer = null
+        miniMenuInputField = null
+        miniMenuStatusText = null
+        miniMenuScreenshotText = null
+        miniMenuTouchToggle = null
+        miniMenuNotificationToggle = null
+    }
+
+    private fun startMiniMenuPolling() {
+        if (miniMenuPolling) return
+        miniMenuPolling = true
+        miniMenuHandler.post(object : Runnable {
+            override fun run() {
+                if (!miniMenuPolling || miniMenuOverlayView == null) return
+                refreshMiniMenuFromFlutter()
+                miniMenuHandler.postDelayed(this, 2000)
+            }
+        })
+    }
+
+    private fun stopMiniMenuPolling() {
+        miniMenuPolling = false
+        miniMenuHandler.removeCallbacksAndMessages(null)
+    }
+
+    private fun buildGeneralTab(): View {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        miniMenuScreenshotText = EditText(this).apply {
+            hint = "메세지 (선택사항)"
+        }
+        val screenshotButton = Button(this).apply {
+            text = "스크린샷"
+            setOnClickListener {
+                val text = miniMenuScreenshotText?.text?.toString()?.trim().orEmpty()
+                closeMiniMenu()
+                miniMenuHandler.postDelayed({
+                    invokeMiniMenuMethod(
+                        "miniMenuCaptureAndSendScreenshot",
+                        mapOf("sessionId" to miniMenuSessionId, "text" to text),
+                    )
+                }, 300)
+            }
+        }
+
+        miniMenuTouchToggle = Switch(this).apply {
+            text = "터치스루"
+            setOnCheckedChangeListener { _, _ ->
+                invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { result ->
+                    val enabled = result as? Boolean ?: false
+                    post {
+                        setOnCheckedChangeListener(null)
+                        isChecked = enabled
+                        setOnCheckedChangeListener { _, _ ->
+                            invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
+                                val now = r as? Boolean ?: false
+                                post {
+                                    setOnCheckedChangeListener(null)
+                                    isChecked = now
+                                    setOnCheckedChangeListener { _, _ -> }
+                                }
+                            })
+                        }
+                    }
+                })
+            }
+        }
+
+        val openAppButton = Button(this).apply {
+            text = "앱으로 이동"
+            setOnClickListener {
+                closeMiniMenu()
+                val intent = Intent(this@Live2DOverlayService, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                startActivity(intent)
+            }
+        }
+
+        miniMenuNotificationToggle = Switch(this).apply {
+            text = "알림 간편설정"
+            setOnCheckedChangeListener { _, isChecked ->
+                invokeMiniMenuMethod(
+                    "miniMenuSetNotificationEnabled",
+                    mapOf("enabled" to isChecked),
+                )
+            }
+        }
+
+        layout.addView(miniMenuScreenshotText)
+        layout.addView(screenshotButton)
+        layout.addView(miniMenuTouchToggle)
+        layout.addView(openAppButton)
+        layout.addView(miniMenuNotificationToggle)
+        return layout
+    }
+
+    private fun buildInputTab(): View {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        val scrollView = ScrollView(this)
+        miniMenuMessagesContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        scrollView.addView(miniMenuMessagesContainer)
+
+        miniMenuStatusText = TextView(this).apply {
+            text = ""
+        }
+
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        miniMenuInputField = EditText(this).apply {
+            hint = "메세지"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val sendButton = Button(this).apply {
+            text = "Send"
+            setOnClickListener {
+                val text = miniMenuInputField?.text?.toString()?.trim().orEmpty()
+                if (text.isEmpty()) return@setOnClickListener
+                miniMenuStatusText?.text = "Responding..."
+                invokeMiniMenuMethod(
+                    "miniMenuSendMessage",
+                    mapOf("sessionId" to miniMenuSessionId, "message" to text),
+                    onSuccess = {
+                        miniMenuInputField?.setText("")
+                        miniMenuStatusText?.text = ""
+                        refreshMessages()
+                    },
+                    onError = {
+                        miniMenuStatusText?.text = "오류: $it"
+                    },
+                )
+            }
+        }
+        inputRow.addView(miniMenuInputField)
+        inputRow.addView(sendButton)
+
+        layout.addView(scrollView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            0,
+            1f,
+        ))
+        layout.addView(miniMenuStatusText)
+        layout.addView(inputRow)
+        return layout
+    }
+
+    private fun buildSettingsTab(): View {
+        return FrameLayout(this).apply {
+            addView(TextView(this@Live2DOverlayService).apply {
+                text = "향후 업데이트 예정"
+                gravity = Gravity.CENTER
+                setTextColor(Color.DKGRAY)
+            }, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
+        }
+    }
+
+    private fun refreshMiniMenuFromFlutter() {
+        invokeMiniMenuMethod("miniMenuGetTouchThroughEnabled", onSuccess = { result ->
+            val enabled = result as? Boolean ?: false
+            miniMenuTouchToggle?.let { toggle ->
+                toggle.setOnCheckedChangeListener(null)
+                toggle.isChecked = enabled
+                toggle.setOnCheckedChangeListener { _, _ ->
+                    invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
+                        val next = r as? Boolean ?: false
+                        toggle.post {
+                            toggle.setOnCheckedChangeListener(null)
+                            toggle.isChecked = next
+                            toggle.setOnCheckedChangeListener { _, _ -> }
+                        }
+                    })
+                }
+            }
+        })
+
+        invokeMiniMenuMethod("miniMenuGetNotificationEnabled", onSuccess = { result ->
+            val enabled = result as? Boolean ?: false
+            miniMenuNotificationToggle?.let { toggle ->
+                toggle.setOnCheckedChangeListener(null)
+                toggle.isChecked = enabled
+                toggle.setOnCheckedChangeListener { _, isChecked ->
+                    invokeMiniMenuMethod(
+                        "miniMenuSetNotificationEnabled",
+                        mapOf("enabled" to isChecked),
+                    )
+                }
+            }
+        })
+
+        refreshMessages()
+    }
+
+    private fun refreshMessages() {
+        invokeMiniMenuMethod(
+            "miniMenuGetMessages",
+            mapOf("sessionId" to miniMenuSessionId),
+            onSuccess = { result ->
+                val list = (result as? List<*>)
+                    ?.filterIsInstance<Map<*, *>>()
+                    ?.map { raw ->
+                        raw.entries.associate { entry ->
+                            entry.key.toString() to entry.value
+                        }
+                    }
+                    ?: emptyList()
+                renderMessages(list)
+            },
         )
     }
 
-    private fun toggleTouchThroughFromNotification() {
-        setTouchThroughEnabled(!touchThroughEnabled)
-        publishNotificationTouchThroughEvent()
-        publishNotificationSessionSync(phase = "touch_through_toggled")
+    private fun renderMessages(messages: List<Map<String, Any?>>) {
+        val container = miniMenuMessagesContainer ?: return
+        container.removeAllViews()
+        for (message in messages) {
+            val role = message["role"]?.toString() ?: "user"
+            val content = message["content"]?.toString() ?: ""
+            val bubble = TextView(this).apply {
+                text = content
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                val bg = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(if (role == "assistant") 0xFFE8EAF6.toInt() else 0xFFD1F5D3.toInt())
+                }
+                background = bg
+            }
+            val params = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(6)
+                gravity = if (role == "assistant") Gravity.START else Gravity.END
+            }
+            container.addView(bubble, params)
+        }
     }
-
-    private fun updateNotificationResponse(message: String?, sessionId: String?) {
-        if (!sessionId.isNullOrBlank()) {
-            notificationSessionId = sessionId
-        }
-
-        notificationLoading = false
-        notificationPendingReply = null
-        notificationError = null
-        notificationLayoutState = NotificationLayoutState.DEFAULT
-
-        if (!message.isNullOrBlank()) {
-            notificationMessage = message.trim()
-        }
-
-        refreshForegroundNotification()
-
-        publishNotificationSessionSync(
-            phase = "assistant_response_synced",
-            assistantMessage = notificationMessage,
-        )
-    }
-
-    private fun updateNotificationError(errorMessage: String?, sessionId: String?) {
-        if (!sessionId.isNullOrBlank()) {
-            notificationSessionId = sessionId
-        }
-
-        notificationLoading = false
-        notificationPendingReply = null
-        notificationLayoutState = NotificationLayoutState.DEFAULT
-        notificationError = errorMessage?.trim()?.ifBlank { null } ?: "응답 생성 실패"
-        refreshForegroundNotification()
-
-        publishNotificationSessionSync(
-            phase = "assistant_response_failed",
-            errorMessage = notificationError,
-        )
-    }
-
-    private fun buildNotificationContentText(): String {
-        notificationError?.let { error ->
-            return "오류: $error"
-        }
-
-        if (notificationLoading) {
-            val pending = notificationPendingReply?.takeIf { it.isNotBlank() } ?: "요청 처리 중"
-            return "$REPLY_LOADING_TEXT\n$pending"
-        }
-
-        return notificationMessage
-    }
+    
+    // ============================================================================
+    // ============================================================================
 
     private fun refreshForegroundNotification() {
         try {
@@ -1351,132 +1670,6 @@ class Live2DOverlayService : Service() {
         }
         return flags
     }
-
-    private fun createServicePendingIntent(
-        action: String,
-        requestCode: Int,
-        mutable: Boolean = false,
-    ): PendingIntent {
-        val intent = Intent(this, Live2DOverlayService::class.java).apply {
-            this.action = action
-            notificationSessionId?.let { putExtra(EXTRA_NOTIFICATION_SESSION_ID, it) }
-        }
-
-        return PendingIntent.getService(
-            this,
-            requestCode,
-            intent,
-            pendingIntentFlags(mutable),
-        )
-    }
-
-    private fun createReplyEntryAction(): NotificationCompat.Action {
-        val pendingIntent = createServicePendingIntent(
-            action = ACTION_NOTIFICATION_SHOW_REPLY,
-            requestCode = REQUEST_CODE_NOTIFICATION_SHOW_REPLY,
-        )
-
-        return NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_edit,
-            "Reply",
-            pendingIntent,
-        ).build()
-    }
-
-    private fun createInlineReplyAction(): NotificationCompat.Action {
-        val remoteInput = RemoteInput.Builder(REMOTE_INPUT_REPLY_KEY)
-            .setLabel("답장을 입력하세요")
-            .build()
-
-        val pendingIntent = createServicePendingIntent(
-            action = ACTION_NOTIFICATION_SEND_REPLY,
-            requestCode = REQUEST_CODE_NOTIFICATION_SEND_REPLY,
-            mutable = true,
-        )
-
-        return NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send,
-            "Reply",
-            pendingIntent,
-        )
-            .addRemoteInput(remoteInput)
-            .setAllowGeneratedReplies(true)
-            .build()
-    }
-
-    private fun createCancelReplyAction(): NotificationCompat.Action {
-        val pendingIntent = createServicePendingIntent(
-            action = ACTION_NOTIFICATION_CANCEL_REPLY,
-            requestCode = REQUEST_CODE_NOTIFICATION_CANCEL_REPLY,
-        )
-
-        return NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_close_clear_cancel,
-            "Cancel",
-            pendingIntent,
-        ).build()
-    }
-
-    private fun createTouchThroughToggleAction(): NotificationCompat.Action {
-        val pendingIntent = createServicePendingIntent(
-            action = ACTION_NOTIFICATION_TOGGLE_TOUCH_THROUGH,
-            requestCode = REQUEST_CODE_NOTIFICATION_TOUCH_THROUGH,
-        )
-
-        return NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_view,
-            "Touch-Through",
-            pendingIntent,
-        ).build()
-    }
-
-    private fun publishNotificationTouchThroughEvent() {
-        Live2DEventStreamHandler.getInstance()?.sendSystemEvent(
-            "notificationTouchThroughToggled",
-            mapOf(
-                "contract" to SESSION_SYNC_CONTRACT,
-                "contractVersion" to SESSION_SYNC_CONTRACT_VERSION,
-                "source" to "notification_action",
-                "touchThroughEnabled" to touchThroughEnabled,
-            ),
-        )
-    }
-
-    private fun publishNotificationSessionSync(
-        phase: String,
-        replyText: String? = null,
-        assistantMessage: String? = null,
-        errorMessage: String? = null,
-    ) {
-        val extras = mutableMapOf<String, Any?>(
-            "contract" to SESSION_SYNC_CONTRACT,
-            "contractVersion" to SESSION_SYNC_CONTRACT_VERSION,
-            "source" to "notification_reply",
-            "phase" to phase,
-            "sessionScope" to SESSION_SYNC_SCOPE_ACTIVE_MAIN,
-            "sessionId" to notificationSessionId,
-            "requiresSerialization" to true,
-            "touchThroughEnabled" to touchThroughEnabled,
-        )
-
-        if (!replyText.isNullOrBlank()) {
-            extras["replyText"] = replyText
-        }
-        if (!assistantMessage.isNullOrBlank()) {
-            extras["assistantMessage"] = assistantMessage
-        }
-        if (!errorMessage.isNullOrBlank()) {
-            extras["error"] = errorMessage
-        }
-
-        Live2DEventStreamHandler.getInstance()?.sendEvent(
-            mapOf(
-                "type" to "notificationSessionSync",
-                "timestamp" to System.currentTimeMillis(),
-                "extras" to extras,
-            ),
-        )
-    }
     
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1495,8 +1688,8 @@ class Live2DOverlayService : Service() {
     }
     
     private fun createNotification(): Notification {
-        val contentText = buildNotificationContentText()
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val contentText = "오버레이가 실행 중입니다"
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Live2D 오버레이")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
@@ -1507,18 +1700,6 @@ class Live2DOverlayService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-
-        when (notificationLayoutState) {
-            NotificationLayoutState.DEFAULT -> {
-                builder.addAction(createReplyEntryAction())
-                builder.addAction(createTouchThroughToggleAction())
-            }
-            NotificationLayoutState.REPLY -> {
-                builder.addAction(createInlineReplyAction())
-                builder.addAction(createCancelReplyAction())
-            }
-        }
-
-        return builder.build()
+            .build()
     }
 }

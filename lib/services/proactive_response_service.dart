@@ -23,6 +23,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
 
   bool _inFlight = false;
   bool _registered = false;
+  VoidCallback? _notificationSettingsListener;
 
   GlobalRuntimeProvider? _globalRuntimeProvider;
   NotificationSettingsProvider? _notificationSettingsProvider;
@@ -38,6 +39,14 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     required NotificationSettingsProvider notificationSettingsProvider,
     required SettingsProvider settingsProvider,
   }) {
+    if (!identical(_notificationSettingsProvider, notificationSettingsProvider)) {
+      if (_notificationSettingsListener != null) {
+        _notificationSettingsProvider?.removeListener(_notificationSettingsListener!);
+      }
+      _notificationSettingsListener = _handleNotificationSettingsChanged;
+      notificationSettingsProvider.addListener(_notificationSettingsListener!);
+    }
+
     _globalRuntimeProvider = globalRuntimeProvider;
     _notificationSettingsProvider = notificationSettingsProvider;
     _settingsProvider = settingsProvider;
@@ -48,6 +57,10 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     }
 
     _notificationCoordinator.setOnUserReplyHandler(cancelInFlightDueToUserReply);
+    _maybeStart();
+  }
+
+  void _handleNotificationSettingsChanged() {
     _maybeStart();
   }
 
@@ -81,8 +94,15 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   }
 
   void _maybeStart() {
+    final notificationSettings = _notificationSettingsProvider?.notificationSettings;
     final settings = _notificationSettingsProvider?.proactiveSettings;
-    if (settings == null) return;
+    if (settings == null || notificationSettings == null) return;
+    if (!notificationSettings.notificationsEnabled) {
+      _notificationCoordinator.cancelProactiveInFlight();
+      _inFlight = false;
+      stop();
+      return;
+    }
     if (!settings.enabled) {
       stop();
       return;

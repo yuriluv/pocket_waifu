@@ -50,8 +50,6 @@ class Live2DMethodHandler(
                 "setTouchThroughEnabled" -> setTouchThroughEnabled(call, result)
                 "setTouchThroughAlpha" -> setTouchThroughAlpha(call, result)
                 "setCharacterOpacity" -> setCharacterOpacity(call, result)
-                "setNotificationResponse" -> setNotificationResponse(call, result)
-                "setNotificationError" -> setNotificationError(call, result)
                 
                 "setEditMode" -> setEditMode(call, result)
                 "setCharacterPinned" -> setCharacterPinned(call, result)
@@ -382,54 +380,6 @@ class Live2DMethodHandler(
         }
     }
 
-    private fun setNotificationResponse(call: MethodCall, result: MethodChannel.Result) {
-        val message = call.argument<String>("message")
-        if (message.isNullOrBlank()) {
-            result.error("INVALID_ARGUMENT", "message is required", null)
-            return
-        }
-        val sessionId = call.argument<String>("sessionId")
-
-        try {
-            val intent = Intent(context, Live2DOverlayService::class.java).apply {
-                action = Live2DOverlayService.ACTION_NOTIFICATION_SET_RESPONSE
-                putExtra(Live2DOverlayService.EXTRA_NOTIFICATION_MESSAGE, message)
-                if (!sessionId.isNullOrBlank()) {
-                    putExtra(Live2DOverlayService.EXTRA_NOTIFICATION_SESSION_ID, sessionId)
-                }
-            }
-            context.startService(intent)
-            result.success(true)
-        } catch (e: Exception) {
-            Live2DLogger.e("알림 응답 텍스트 설정 실패", e)
-            result.error("NOTIFICATION_ERROR", e.message, null)
-        }
-    }
-
-    private fun setNotificationError(call: MethodCall, result: MethodChannel.Result) {
-        val errorMessage = call.argument<String>("error")
-        if (errorMessage.isNullOrBlank()) {
-            result.error("INVALID_ARGUMENT", "error is required", null)
-            return
-        }
-        val sessionId = call.argument<String>("sessionId")
-
-        try {
-            val intent = Intent(context, Live2DOverlayService::class.java).apply {
-                action = Live2DOverlayService.ACTION_NOTIFICATION_SET_ERROR
-                putExtra(Live2DOverlayService.EXTRA_NOTIFICATION_ERROR, errorMessage)
-                if (!sessionId.isNullOrBlank()) {
-                    putExtra(Live2DOverlayService.EXTRA_NOTIFICATION_SESSION_ID, sessionId)
-                }
-            }
-            context.startService(intent)
-            result.success(true)
-        } catch (e: Exception) {
-            Live2DLogger.e("알림 오류 텍스트 설정 실패", e)
-            result.error("NOTIFICATION_ERROR", e.message, null)
-        }
-    }
-    
     private fun setEditMode(call: MethodCall, result: MethodChannel.Result) {
         val enabled = call.argument<Boolean>("enabled") ?: false
         

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class NotificationAction {
@@ -31,12 +32,15 @@ class NotificationBridge {
     // Used to trace ProactiveResponseService -> NotificationCoordinator -> NotificationBridge.
     // Android native logs are emitted in MainActivity / NotificationHelper.
     _channel.setMethodCallHandler(_handleMethodCall);
+    debugPrint('NotificationBridge: method channel handler registered');
     final pending = await _channel.invokeMethod<List<dynamic>>(
       'drainPendingActions',
     );
+    debugPrint('NotificationBridge: drained pending actions count=${pending?.length ?? 0}');
     if (pending != null) {
       for (final item in pending) {
         if (item is Map) {
+          debugPrint('NotificationBridge: enqueue drained action type=${item['type']}');
           _actions.add(_mapToAction(item));
         }
       }
@@ -74,7 +78,10 @@ class NotificationBridge {
 
   Future<void> _handleMethodCall(MethodCall call) async {
     if (call.method == 'notificationAction') {
+      debugPrint('NotificationBridge: notificationAction method received');
       if (call.arguments is Map) {
+        final args = call.arguments as Map;
+        debugPrint('NotificationBridge: stream action type=${args['type']}');
         _actions.add(_mapToAction(call.arguments as Map));
       }
     }

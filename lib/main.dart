@@ -4,7 +4,6 @@
 // ============================================================================
 
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,11 +20,15 @@ import 'providers/prompt_preset_provider.dart';
 import 'providers/screen_share_provider.dart';
 import 'providers/screen_capture_provider.dart';
 import 'services/release_log_service.dart';
+import 'services/screen_capture_service.dart';
 import 'services/notification_bridge.dart';
 import 'services/notification_coordinator.dart';
 import 'services/proactive_response_service.dart';
+import 'services/mini_menu_service.dart';
 import 'services/live2d_global_runtime_handler.dart';
 import 'services/global_runtime_registry.dart';
+import 'services/live2d_quick_toggle_service.dart';
+import 'features/live2d/data/models/live2d_settings.dart';
 
 import 'screens/chat_screen.dart';
 
@@ -179,6 +182,92 @@ class PocketWaifuApp extends StatelessWidget {
                   globalRuntimeProvider: globalRuntime,
                   notificationSettingsProvider: notificationSettings,
                   settingsProvider: settingsProvider,
+                );
+                return instance;
+              },
+        ),
+
+        ProxyProvider4<
+          NotificationCoordinator,
+          ChatSessionProvider,
+          NotificationSettingsProvider,
+          SettingsProvider,
+          MiniMenuService
+        >(
+          create: (_) => MiniMenuService.instance,
+          update:
+              (
+                _,
+                coordinator,
+                sessionProvider,
+                notificationSettingsProvider,
+                settingsProvider,
+                miniMenuService,
+              ) {
+                final instance = miniMenuService ?? MiniMenuService.instance;
+                instance.configure(
+                  getActiveSessionId: () => sessionProvider.activeSessionId,
+                  getMessages: (sessionId) async {
+                    final resolved = sessionId ?? sessionProvider.activeSessionId;
+                    if (resolved == null) return const <Map<String, dynamic>>[];
+                    return sessionProvider
+                        .getMessagesForSession(resolved)
+                        .map((m) => {
+                              'id': m.id,
+                              'role': m.roleString,
+                              'content': m.content,
+                              'timestamp': m.timestamp.toIso8601String(),
+                            })
+                        .toList(growable: false);
+                  },
+                  sendMessage: (message, sessionId) async {
+                    final result = await coordinator.handleMiniMenuReply(
+                      message,
+                      sessionId: sessionId,
+                    );
+                    return result;
+                  },
+                  captureAndSend: (sessionId, text) async {
+                    final captureService = ScreenCaptureService();
+                    final hasPermission = await captureService.hasPermission();
+                    if (!hasPermission) {
+                      final granted = await captureService.requestPermission();
+                      if (!granted) {
+                        return {
+                          'ok': false,
+                          'error': 'capture_permission_denied',
+                        };
+                      }
+                    }
+                    final image = await captureService.capture();
+                    if (image == null) {
+                      return {
+                        'ok': false,
+                        'error': 'capture_failed',
+                      };
+                    }
+                    return coordinator.handleMiniMenuReplyWithImages(
+                      message: text,
+                      images: [image],
+                      sessionId: sessionId,
+                    );
+                  },
+                  getNotificationsEnabled: () =>
+                      notificationSettingsProvider
+                          .notificationSettings
+                          .notificationsEnabled,
+                  setNotificationsEnabled: (enabled) async {
+                    await notificationSettingsProvider.setNotificationsEnabled(
+                      enabled,
+                    );
+                  },
+                  toggleTouchThrough: () async {
+                    return Live2DQuickToggleService.instance.toggleTouchThrough();
+                  },
+                  getTouchThroughEnabled: () async {
+                    final settings = await Live2DSettings.load();
+                    return settings.touchThroughEnabled;
+                  },
                 );
                 return instance;
               },

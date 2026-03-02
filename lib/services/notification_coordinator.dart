@@ -15,6 +15,7 @@ import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/global_runtime_registry.dart';
 import '../services/live2d_quick_toggle_service.dart';
+import '../services/mini_menu_service.dart';
 import '../services/notification_bridge.dart';
 
 enum NotificationRequestOrigin { reply, proactive }
@@ -87,6 +88,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   Future<void> _handleAction(NotificationAction action) async {
     switch (action.type) {
       case 'reply':
+        debugPrint('NotificationCoordinator: action=reply session=${action.sessionId}');
         if (action.message != null) {
           await handleNotificationReply(
             action.message!,
@@ -94,10 +96,16 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           );
         }
         break;
+      case 'menu':
+        debugPrint('NotificationCoordinator: action=menu session=${action.sessionId}');
+        await MiniMenuService.instance.openMiniMenu(sessionId: action.sessionId);
+        break;
       case 'touchThrough':
+        debugPrint('NotificationCoordinator: action=touchThrough session=${action.sessionId}');
         await Live2DQuickToggleService.instance.toggleTouchThrough();
         break;
       case 'cancelReply':
+        debugPrint('NotificationCoordinator: action=cancelReply session=${action.sessionId}');
         await _bridge.clearAll();
         await _syncNotificationState();
         break;
@@ -119,9 +127,52 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     String message, {
     String? sessionId,
   }) async {
+    await _handleNotificationReplyInternal(
+      message: message,
+      sessionId: sessionId,
+      images: const <ImageAttachment>[],
+    );
+  }
+
+  Future<Map<String, dynamic>> handleMiniMenuReply(
+    String message, {
+    String? sessionId,
+  }) async {
+    final response = await _handleNotificationReplyInternal(
+      message: message,
+      sessionId: sessionId,
+      images: const <ImageAttachment>[],
+    );
+    return {
+      'ok': response != null,
+      'response': response,
+    };
+  }
+
+  Future<Map<String, dynamic>> handleMiniMenuReplyWithImages({
+    required String message,
+    required List<ImageAttachment> images,
+    String? sessionId,
+  }) async {
+    final response = await _handleNotificationReplyInternal(
+      message: message,
+      sessionId: sessionId,
+      images: images,
+    );
+    return {
+      'ok': response != null,
+      'response': response,
+    };
+  }
+
+  Future<String?> _handleNotificationReplyInternal({
+    required String message,
+    String? sessionId,
+    required List<ImageAttachment> images,
+  }) async {
     if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
       debugPrint('NotificationCoordinator: Master OFF, reply ignored');
-      return;
+      return null;
     }
 
     cancelProactiveInFlight();
@@ -136,7 +187,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         settingsProvider == null ||
         promptProvider == null ||
         notificationSettings == null) {
-      return;
+      return null;
     }
 
     final resolvedSessionId = sessionId ?? sessionProvider.activeSessionId;
@@ -146,7 +197,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         message: '활성 세션이 없습니다. 앱에서 채팅 세션을 생성하세요.',
         isError: true,
       );
-      return;
+      return null;
     }
 
     final title = settingsProvider.character.name;
@@ -156,6 +207,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       sessionId: resolvedSessionId,
     );
 
+    String? assistantResponse;
     await sessionProvider.runSerialized(() async {
       final preparedInput = await _prepareUserInput(
         message,
@@ -168,14 +220,14 @@ class NotificationCoordinator implements GlobalRuntimeListener {
 
       sessionProvider.addMessageToSession(
         resolvedSessionId,
-        Message(role: MessageRole.user, content: preparedInput),
+        Message(
+          role: MessageRole.user,
+          content: preparedInput,
+          images: images,
+        ),
       );
 
-      final proactiveSettings =
-          _notificationSettingsProvider?.proactiveSettings;
-      final apiConfig = _resolveApiConfig(
-        proactiveSettings?.apiPresetId ?? notificationSettings.apiPresetId,
-      );
+      final apiConfig = _resolveApiConfig(notificationSettings.apiPresetId);
 
       final requestHandle = _apiService.createRequestHandle();
       _activeRequest = requestHandle;
@@ -191,6 +243,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           sessionId: resolvedSessionId,
           currentInput: preparedInput,
           apiConfig: apiConfig,
+          promptPresetId: notificationSettings.promptPresetId,
           requestHandle: requestHandle,
         );
 
@@ -213,6 +266,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           message: processedResponse,
           sessionId: resolvedSessionId,
         );
+        assistantResponse = processedResponse;
       } catch (e) {
         if (e is ApiCancelledException) {
           debugPrint('Notification reply cancelled');
@@ -230,6 +284,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         GlobalRuntimeRegistry.instance.unregister(cancelListener);
       }
     });
+    return assistantResponse;
   }
 
   Future<NotificationRequestResult> triggerProactiveResponse({
@@ -247,6 +302,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     final promptProvider = _promptBlockProvider;
     final notificationSettings =
         _notificationSettingsProvider?.notificationSettings;
+    final proactiveSettings = _notificationSettingsProvider?.proactiveSettings;
 
     if (sessionProvider == null ||
         settingsProvider == null ||
@@ -275,6 +331,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           sessionId: sessionId,
           currentInput: '',
           apiConfig: apiConfig,
+          promptPresetId: proactiveSettings?.promptPresetId,
           requestHandle: requestHandle,
           skipInputBlock: skipInputBlock,
         );
@@ -460,6 +517,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required String sessionId,
     required String currentInput,
     required ApiConfig? apiConfig,
+    required String? promptPresetId,
     required ApiRequestHandle requestHandle,
     bool skipInputBlock = false,
   }) async {
@@ -474,6 +532,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       hasFirstSystemPrompt: resolvedConfig.hasFirstSystemPrompt,
       requiresAlternateRole: resolvedConfig.requiresAlternateRole,
       skipInputBlock: skipInputBlock,
+      presetId: promptPresetId,
     );
 
     return _apiService.sendMessageWithConfig(

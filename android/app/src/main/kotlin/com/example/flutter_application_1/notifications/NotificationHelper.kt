@@ -64,7 +64,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val remoteInput = RemoteInput.Builder(NotificationConstants.REMOTE_INPUT_KEY)
-            .setLabel("Reply")
+            .setLabel("답장을 입력하세요")
             .build()
 
         val replyAction = NotificationCompat.Action.Builder(
@@ -76,38 +76,21 @@ object NotificationHelper {
             .setAllowGeneratedReplies(true)
             .build()
 
-        val cancelIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-            action = NotificationConstants.ACTION_CANCEL_REPLY
+        val menuIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            action = NotificationConstants.ACTION_MENU
             putExtra(NotificationConstants.EXTRA_SESSION_ID, sessionId)
             putExtra(NotificationConstants.EXTRA_TITLE, title)
         }
-        val cancelPendingIntent = PendingIntent.getBroadcast(
+        val menuPendingIntent = PendingIntent.getBroadcast(
             context,
-            2,
-            cancelIntent,
+            4,
+            menuIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val cancelAction = NotificationCompat.Action.Builder(
+        val menuAction = NotificationCompat.Action.Builder(
             R.mipmap.ic_launcher,
-            "Cancel",
-            cancelPendingIntent
-        ).build()
-
-        val touchIntent = Intent(context, NotificationActionReceiver::class.java).apply {
-            action = NotificationConstants.ACTION_TOUCH_THROUGH
-            putExtra(NotificationConstants.EXTRA_SESSION_ID, sessionId)
-            putExtra(NotificationConstants.EXTRA_TITLE, title)
-        }
-        val touchPendingIntent = PendingIntent.getBroadcast(
-            context,
-            3,
-            touchIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val touchAction = NotificationCompat.Action.Builder(
-            R.mipmap.ic_launcher,
-            "Touch-Through",
-            touchPendingIntent
+            "Menu",
+            menuPendingIntent
         ).build()
 
         val statusText = if (isError) "오류: $message" else message
@@ -122,8 +105,7 @@ object NotificationHelper {
             .setContentIntent(openPendingIntent)
             .setAutoCancel(true)
             .addAction(replyAction)
-            .addAction(cancelAction)
-            .addAction(touchAction)
+            .addAction(menuAction)
             .build()
     }
 
@@ -134,6 +116,7 @@ object NotificationHelper {
         isError: Boolean,
         sessionId: String?
     ) {
+        createChannels(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context,

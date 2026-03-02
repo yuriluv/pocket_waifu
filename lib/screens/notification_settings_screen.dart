@@ -3,11 +3,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/prompt_preset_reference.dart';
+import '../providers/chat_session_provider.dart';
 import '../providers/global_runtime_provider.dart';
 import '../providers/notification_settings_provider.dart';
 import '../providers/prompt_preset_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/api_config.dart';
+import '../services/notification_bridge.dart';
 import '../utils/ui_feedback.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
@@ -21,19 +23,25 @@ class NotificationSettingsScreen extends StatefulWidget {
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
   late TextEditingController _proactiveController;
+  late TextEditingController _testCharNameController;
+  late TextEditingController _testMessageController;
 
   @override
   void initState() {
     super.initState();
-    final provider = context
-        .read<NotificationSettingsProvider>()
-        .proactiveSettings;
+    final provider =
+        context.read<NotificationSettingsProvider>().proactiveSettings;
+    final characterName = context.read<SettingsProvider>().character.name;
     _proactiveController = TextEditingController(text: provider.scheduleText);
+    _testCharNameController = TextEditingController(text: characterName);
+    _testMessageController = TextEditingController();
   }
 
   @override
   void dispose() {
     _proactiveController.dispose();
+    _testCharNameController.dispose();
+    _testMessageController.dispose();
     super.dispose();
   }
 
@@ -75,7 +83,7 @@ class _NotificationSettingsScreenState
           _SectionTitle(title: '알림'),
           SwitchListTile(
             title: const Text('알림 사용'),
-            subtitle: const Text('선응답(프로액티브) 대화 알림을 사용합니다.'),
+            subtitle: const Text('알림 및 선응답(프로액티브) 기능을 사용합니다.'),
             value: notificationSettings.notificationsEnabled,
             onChanged: (value) async {
               final enabled = await settingsProvider.setNotificationsEnabled(
@@ -94,61 +102,132 @@ class _NotificationSettingsScreenState
             onChanged: settingsProvider.setOutputAsNewNotification,
           ),
           const Divider(height: 32),
-          _SectionTitle(title: '프로액티브 응답'),
-          SwitchListTile(
-            title: const Text('프로액티브 응답 사용'),
-            subtitle: const Text('랜덤 간격 응답을 활성화합니다.'),
-            value: proactiveSettings.enabled,
-            onChanged: settingsProvider.setProactiveEnabled,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _proactiveController,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: '프로액티브 스케줄',
-              border: OutlineInputBorder(),
-              helperText:
-                  '예: base=30m\ndeviation=10\noverlayon=-20m\nscreenlandscape=+20m\nscreenoff=inf',
+          _SectionTitle(title: '알림 답장 프리셋'),
+          Opacity(
+            opacity: notificationSettings.notificationsEnabled ? 1 : 0.5,
+            child: IgnorePointer(
+              ignoring: !notificationSettings.notificationsEnabled,
+              child: Column(
+                children: [
+                  _PresetDropdown(
+                    label: '답장 프롬프트 프리셋',
+                    value: notificationSettings.promptPresetId,
+                    presets: promptPresets,
+                    onChanged: settingsProvider.setNotificationPromptPreset,
+                  ),
+                  const SizedBox(height: 12),
+                  _ApiPresetDropdown(
+                    label: '답장 API 프리셋',
+                    value: notificationSettings.apiPresetId,
+                    apiConfigs: apiConfigs,
+                    onChanged: settingsProvider.setNotificationApiPreset,
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.check),
-                  label: const Text('검증 & 저장'),
-                  onPressed: () {
-                    try {
-                      settingsProvider.validateProactiveSchedule(
-                        _proactiveController.text.trim(),
-                      );
-                      settingsProvider.updateProactiveSchedule(
-                        _proactiveController.text.trim(),
-                      );
-                      context.showInfoSnackBar('프로액티브 스케줄 저장됨');
-                    } catch (e) {
-                      context.showErrorSnackBar(e.toString());
-                    }
-                  },
-                ),
+          const Divider(height: 32),
+          _SectionTitle(title: '프로액티브 응답'),
+          Opacity(
+            opacity: notificationSettings.notificationsEnabled ? 1 : 0.5,
+            child: IgnorePointer(
+              ignoring: !notificationSettings.notificationsEnabled,
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _proactiveController,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: '프로액티브 스케줄',
+                      border: OutlineInputBorder(),
+                      helperText:
+                          '예: base=30m\ndeviation=10\noverlayon=-20m\nscreenlandscape=+20m\nscreenoff=inf',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.check),
+                          label: const Text('검증 & 저장'),
+                          onPressed: () {
+                            try {
+                              settingsProvider.validateProactiveSchedule(
+                                _proactiveController.text.trim(),
+                              );
+                              settingsProvider.updateProactiveSchedule(
+                                _proactiveController.text.trim(),
+                              );
+                              context.showInfoSnackBar('프로액티브 스케줄 저장됨');
+                            } catch (e) {
+                              context.showErrorSnackBar(e.toString());
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _PresetDropdown(
+                    label: '프로액티브 프롬프트 프리셋',
+                    value: proactiveSettings.promptPresetId,
+                    presets: promptPresets,
+                    onChanged: settingsProvider.setProactivePromptPreset,
+                  ),
+                  const SizedBox(height: 12),
+                  _ApiPresetDropdown(
+                    label: '프로액티브 API 프리셋',
+                    value: proactiveSettings.apiPresetId,
+                    apiConfigs: apiConfigs,
+                    onChanged: settingsProvider.setProactiveApiPreset,
+                  ),
+                ],
               ),
-            ],
+            ),
+          ),
+          const Divider(height: 32),
+          _SectionTitle(title: '알림 테스트'),
+          TextField(
+            controller: _testCharNameController,
+            decoration: const InputDecoration(
+              labelText: '캐릭터 이름',
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 12),
-          _PresetDropdown(
-            label: '프로액티브 프롬프트 프리셋',
-            value: proactiveSettings.promptPresetId,
-            presets: promptPresets,
-            onChanged: settingsProvider.setProactivePromptPreset,
+          TextField(
+            controller: _testMessageController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: '메세지',
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 12),
-          _ApiPresetDropdown(
-            label: '프로액티브 API 프리셋',
-            value: proactiveSettings.apiPresetId,
-            apiConfigs: apiConfigs,
-            onChanged: settingsProvider.setProactiveApiPreset,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton(
+              onPressed: () async {
+                final charName = _testCharNameController.text.trim();
+                final message = _testMessageController.text.trim();
+                if (charName.isEmpty || message.isEmpty) {
+                  context.showErrorSnackBar('캐릭터 이름과 메세지를 입력하세요.');
+                  return;
+                }
+                final activeSessionId =
+                    context.read<ChatSessionProvider>().activeSessionId;
+                await NotificationBridge.instance.showPreResponseNotification(
+                  title: charName,
+                  message: message,
+                  sessionId: activeSessionId,
+                );
+                if (!context.mounted) return;
+                context.showInfoSnackBar('테스트 알림을 전송했습니다.');
+              },
+              child: const Text('테스트 알림 보내기'),
+            ),
           ),
                 ],
               ),

@@ -26,7 +26,6 @@ class Live2DOverlayService {
   double _scale = 1.0;
   double _opacity = 1.0;
   String? _currentModelPath;
-  void Function(Map<String, dynamic>)? _notificationContractCallback;
 
   // === Getter ===
   // WHY: isOverlayVisible returns cached state for synchronous access.
@@ -68,7 +67,6 @@ class Live2DOverlayService {
     }
     
     _bridge.setStateSyncCallback(_onStateSyncFromNative);
-    _bridge.setNotificationContractCallback(_onNotificationContractFromNative);
     
     await syncOverlayState();
     
@@ -92,16 +90,6 @@ class Live2DOverlayService {
     if (!isRunning && _currentModelPath != null) {
       _currentModelPath = null;
     }
-  }
-
-  void _onNotificationContractFromNative(Map<String, dynamic> data) {
-    _notificationContractCallback?.call(data);
-  }
-
-  void setNotificationContractCallback(
-    void Function(Map<String, dynamic>)? callback,
-  ) {
-    _notificationContractCallback = callback;
   }
 
   // ============================================================================
@@ -420,24 +408,11 @@ class Live2DOverlayService {
     return await _bridge.sendSignal(signalName, data: data);
   }
 
-  Future<bool> setNotificationResponse(String message, {String? sessionId}) async {
-    return await _bridge.setNotificationResponse(message, sessionId: sessionId);
-  }
-
-  Future<bool> setNotificationError(String errorMessage, {String? sessionId}) async {
-    return await _bridge.setNotificationError(errorMessage, sessionId: sessionId);
-  }
-
-  // ============================================================================
-  // ============================================================================
-
   Future<void> dispose() async {
     if (_isOverlayVisible) {
       await hideOverlay();
     }
     _currentModelPath = null;
-    _notificationContractCallback = null;
-    _bridge.setNotificationContractCallback(null);
     live2dLog.info(_tag, 'Live2D Overlay Service 정리됨');
   }
 }

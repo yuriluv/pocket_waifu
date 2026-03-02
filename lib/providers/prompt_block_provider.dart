@@ -382,9 +382,14 @@ class PromptBlockProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  String buildFinalPrompt(List<Message> pastMessages, String currentInput) {
+  String buildFinalPrompt(
+    List<Message> pastMessages,
+    String currentInput, {
+    String? presetId,
+  }) {
+    final blocks = _resolveBlocksForPreset(presetId);
     return _promptBuilder.buildFinalPrompt(
-      blocks: _workingBlocks,
+      blocks: blocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
     );
@@ -396,15 +401,31 @@ class PromptBlockProvider extends ChangeNotifier {
     bool hasFirstSystemPrompt = true,
     bool requiresAlternateRole = true,
     bool skipInputBlock = false,
+    String? presetId,
   }) {
+    final blocks = _resolveBlocksForPreset(presetId);
     return _promptBuilder.buildMessagesForApi(
-      blocks: _workingBlocks,
+      blocks: blocks,
       pastMessages: pastMessages,
       currentInput: currentInput,
       hasFirstSystemPrompt: hasFirstSystemPrompt,
       requiresAlternateRole: requiresAlternateRole,
       skipInputBlock: skipInputBlock,
     );
+  }
+
+  List<PromptBlock> _resolveBlocksForPreset(String? presetId) {
+    if (presetId == null || presetId == _activePresetId) {
+      return _workingBlocks;
+    }
+
+    for (final preset in _presets) {
+      if (preset.id == presetId) {
+        return preset.blocks;
+      }
+    }
+
+    return _workingBlocks;
   }
 
   Future<(bool, String?)> exportPresetToFile(PromptPreset preset) async {

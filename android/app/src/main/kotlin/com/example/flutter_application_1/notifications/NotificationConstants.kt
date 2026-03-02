@@ -5,8 +5,7 @@ object NotificationConstants {
     const val NOTIFICATION_ID_PRE_RESPONSE_BASE = 5200
 
     const val ACTION_REPLY = "com.example.flutter_application_1.notifications.REPLY"
-    const val ACTION_TOUCH_THROUGH = "com.example.flutter_application_1.notifications.TOUCH_THROUGH"
-    const val ACTION_CANCEL_REPLY = "com.example.flutter_application_1.notifications.CANCEL_REPLY"
+    const val ACTION_MENU = "com.example.flutter_application_1.notifications.MENU"
 
     const val EXTRA_SESSION_ID = "sessionId"
     const val EXTRA_MESSAGE = "message"

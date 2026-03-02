@@ -33,6 +33,7 @@ import java.io.InputStream
 import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import com.example.flutter_application_1.live2d.Live2DPlugin
+import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
 import com.example.flutter_application_1.notifications.NotificationActionStore
 import com.example.flutter_application_1.notifications.NotificationHelper
 
@@ -46,6 +47,7 @@ class MainActivity : FlutterActivity() {
         private const val TAG = "MainActivity"
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
         private const val NOTIFICATION_CHANNEL = "com.example.flutter_application_1/notifications"
+        private const val MINI_MENU_CHANNEL = "com.example.flutter_application_1/mini_menu"
         private const val SCREEN_CAPTURE_CHANNEL = "com.pocketwaifu/screen_capture"
         private const val ENGINE_ID = "main_engine"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
@@ -212,6 +214,33 @@ class MainActivity : FlutterActivity() {
                         result.success(actions)
                     }
                     "setNotificationsEnabled" -> {
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MINI_MENU_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openMiniMenu" -> {
+                        val sessionId = call.argument<String>("sessionId")
+                        val intent = Intent(this, Live2DOverlayService::class.java).apply {
+                            action = Live2DOverlayService.ACTION_OPEN_MINI_MENU
+                            putExtra("sessionId", sessionId)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        result.success(true)
+                    }
+                    "closeMiniMenu" -> {
+                        val intent = Intent(this, Live2DOverlayService::class.java).apply {
+                            action = Live2DOverlayService.ACTION_CLOSE_MINI_MENU
+                        }
+                        startService(intent)
                         result.success(true)
                     }
                     else -> result.notImplemented()
