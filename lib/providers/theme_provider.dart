@@ -3,7 +3,6 @@
 // ============================================================================
 
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -162,7 +161,7 @@ class ThemeProvider extends ChangeNotifier {
   ColorScheme getColorScheme(Brightness brightness) {
     final preset = _activePreset;
     final seedColor =
-        preset?.getColor(ThemePreset.COLOR_PRIMARY) ?? Colors.purple;
+        preset?.getColor(ThemePreset.colorPrimary) ?? Colors.purple;
     final schemeBrightness =
         preset?.isDarkMode == true ? Brightness.dark : brightness;
 
@@ -175,13 +174,11 @@ class ThemeProvider extends ChangeNotifier {
       return scheme;
     }
 
-    final secondary = preset.getColor(ThemePreset.COLOR_SECONDARY);
-    final background = preset.getColor(ThemePreset.COLOR_BACKGROUND);
-    final surface = preset.getColor(ThemePreset.COLOR_SURFACE);
+    final secondary = preset.getColor(ThemePreset.colorSecondary);
+    final surface = preset.getColor(ThemePreset.colorSurface);
 
     return scheme.copyWith(
       secondary: secondary ?? scheme.secondary,
-      background: background ?? scheme.background,
       surface: surface ?? scheme.surface,
     );
   }
@@ -194,7 +191,7 @@ class ThemeProvider extends ChangeNotifier {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: colorScheme.background,
+      scaffoldBackgroundColor: colorScheme.surface,
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,

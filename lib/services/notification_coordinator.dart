@@ -462,7 +462,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
 
     final directiveResult = await _directiveService.processAssistantOutput(
       output,
-      parsingEnabled: settings.live2dDirectiveParsingEnabled,
+      parsingEnabled: settings.live2dLlmIntegrationEnabled &&
+          settings.live2dDirectiveParsingEnabled,
     );
     output = directiveResult.cleanedText;
 

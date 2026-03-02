@@ -258,7 +258,7 @@ class _ThemePresetTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Color(
-      preset.colorOverrides['primary'] ?? Colors.blue.value,
+      preset.colorOverrides['primary'] ?? Colors.blue.toARGB32(),
     );
 
     return ListTile(
@@ -571,8 +571,8 @@ class _CreateThemeDialogState extends State<_CreateThemeDialog> {
           ? null
           : _descController.text.trim(),
       colorOverrides: {
-        'primary': _primaryColor.value,
-        'secondary': _secondaryColor.value,
+        'primary': _primaryColor.toARGB32(),
+        'secondary': _secondaryColor.toARGB32(),
       },
     );
 
@@ -604,10 +604,10 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
       text: widget.preset.description ?? '',
     );
     _primaryColor = Color(
-      widget.preset.colorOverrides['primary'] ?? Colors.blue.value,
+      widget.preset.colorOverrides['primary'] ?? Colors.blue.toARGB32(),
     );
     _secondaryColor = Color(
-      widget.preset.colorOverrides['secondary'] ?? Colors.teal.value,
+      widget.preset.colorOverrides['secondary'] ?? Colors.teal.toARGB32(),
     );
   }
 
@@ -683,8 +683,8 @@ class _EditThemeDialogState extends State<_EditThemeDialog> {
           ? null
           : _descController.text.trim(),
       colorOverrides: {
-        'primary': _primaryColor.value,
-        'secondary': _secondaryColor.value,
+        'primary': _primaryColor.toARGB32(),
+        'secondary': _secondaryColor.toARGB32(),
       },
     );
 

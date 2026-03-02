@@ -360,7 +360,7 @@ class _PresetBar extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: activeId,
+                  initialValue: activeId,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     isDense: true,
@@ -496,6 +496,7 @@ class _PresetBar extends StatelessWidget {
         ],
       ),
     );
+    if (!context.mounted) return;
 
     if (action == _PresetSwitchAction.save) {
       provider.saveActivePreset();
@@ -534,6 +535,7 @@ class _PresetBar extends StatelessWidget {
         ],
       ),
     );
+    if (!context.mounted) return;
 
     if (result != null) {
       provider.addPreset(result);
@@ -567,6 +569,7 @@ class _PresetBar extends StatelessWidget {
         ],
       ),
     );
+    if (!context.mounted) return;
 
     if (confirmed == true) {
       final success = provider.deletePreset(preset.id);
@@ -610,6 +613,7 @@ class _PresetBar extends StatelessWidget {
           ],
         ),
       );
+      if (!context.mounted) return;
 
       if (name != null) {
         provider.renamePreset(preset.id, name);
@@ -678,7 +682,7 @@ class _AddBlockDialogState extends State<_AddBlockDialog> {
             const Text('블록 타입', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _selectedType,
+              initialValue: _selectedType,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 isDense: true,

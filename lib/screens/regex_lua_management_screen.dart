@@ -604,7 +604,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                         decoration: const InputDecoration(labelText: '이름'),
                       ),
                       DropdownButtonFormField<RegexRuleType>(
-                        value: type,
+                        initialValue: type,
                         decoration: const InputDecoration(labelText: '타입'),
                         items: RegexRuleType.values
                             .map(
@@ -619,7 +619,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                         },
                       ),
                       DropdownButtonFormField<RegexRuleScope>(
-                        value: scope,
+                        initialValue: scope,
                         decoration: const InputDecoration(labelText: '스코프'),
                         items: RegexRuleScope.values
                             .map(
@@ -756,7 +756,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                         decoration: const InputDecoration(labelText: '이름'),
                       ),
                       DropdownButtonFormField<LuaScriptScope>(
-                        value: scope,
+                        initialValue: scope,
                         decoration: const InputDecoration(labelText: '스코프'),
                         items: LuaScriptScope.values
                             .map(

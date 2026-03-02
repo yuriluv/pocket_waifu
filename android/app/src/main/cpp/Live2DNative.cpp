@@ -280,6 +280,95 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
     return gModel ? static_cast<jint>(gModel->GetParameterCount()) : 0;
 }
 
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeGetParameterIds(
+    JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(gMutex);
+
+    const jclass stringClass = env->FindClass("java/lang/String");
+    if (!gModel || !stringClass) {
+        return env->NewObjectArray(0, stringClass, nullptr);
+    }
+
+    const csmInt32 count = gModel->GetParameterCount();
+    jobjectArray out = env->NewObjectArray(static_cast<jsize>(count), stringClass, nullptr);
+    if (!out) {
+        return env->NewObjectArray(0, stringClass, nullptr);
+    }
+
+    const auto ids = gModel->GetParameterIds();
+    for (csmInt32 i = 0; i < count; ++i) {
+        const char* id = reinterpret_cast<const char*>(ids[i]);
+        if (!id) {
+            continue;
+        }
+        jstring jId = env->NewStringUTF(id);
+        env->SetObjectArrayElement(out, static_cast<jsize>(i), jId);
+        env->DeleteLocalRef(jId);
+    }
+
+    return out;
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeGetParameterValue(
+    JNIEnv* env, jobject, jstring paramId) {
+    std::lock_guard<std::mutex> lock(gMutex);
+
+    if (!gModel || !paramId) {
+        return 0.0f;
+    }
+
+    const char* requested = env->GetStringUTFChars(paramId, nullptr);
+    if (!requested) {
+        return 0.0f;
+    }
+
+    const csmInt32 count = gModel->GetParameterCount();
+    const auto ids = gModel->GetParameterIds();
+    const auto values = gModel->GetParameterValues();
+
+    jfloat result = 0.0f;
+    for (csmInt32 i = 0; i < count; ++i) {
+        const char* id = reinterpret_cast<const char*>(ids[i]);
+        if (id && std::strcmp(id, requested) == 0) {
+            result = values[i];
+            break;
+        }
+    }
+
+    env->ReleaseStringUTFChars(paramId, requested);
+    return result;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeSetParameterValue(
+    JNIEnv* env, jobject, jstring paramId, jfloat value) {
+    std::lock_guard<std::mutex> lock(gMutex);
+
+    if (!gModel || !paramId) {
+        return;
+    }
+
+    const char* requested = env->GetStringUTFChars(paramId, nullptr);
+    if (!requested) {
+        return;
+    }
+
+    const csmInt32 count = gModel->GetParameterCount();
+    const auto ids = gModel->GetParameterIds();
+
+    for (csmInt32 i = 0; i < count; ++i) {
+        const char* id = reinterpret_cast<const char*>(ids[i]);
+        if (id && std::strcmp(id, requested) == 0) {
+            gModel->SetParameterValue(i, value);
+            break;
+        }
+    }
+
+    env->ReleaseStringUTFChars(paramId, requested);
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_nativeGetPartCount(
     JNIEnv*, jobject) {

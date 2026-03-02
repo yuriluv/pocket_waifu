@@ -30,13 +30,13 @@ class ThemePreset {
         colorOverrides = colorOverrides ?? {},
         createdAt = createdAt ?? DateTime.now();
 
-  static const String COLOR_PRIMARY = 'primary';
-  static const String COLOR_SECONDARY = 'secondary';
-  static const String COLOR_BACKGROUND = 'background';
-  static const String COLOR_SURFACE = 'surface';
-  static const String COLOR_USER_BUBBLE = 'userBubble';
-  static const String COLOR_AI_BUBBLE = 'aiBubble';
-  static const String COLOR_TEXT = 'text';
+  static const String colorPrimary = 'primary';
+  static const String colorSecondary = 'secondary';
+  static const String colorBackground = 'background';
+  static const String colorSurface = 'surface';
+  static const String colorUserBubble = 'userBubble';
+  static const String colorAiBubble = 'aiBubble';
+  static const String colorText = 'text';
 
   Color? getColor(String key) {
     final value = colorOverrides[key];
@@ -44,7 +44,7 @@ class ThemePreset {
   }
 
   void setColor(String key, Color color) {
-    colorOverrides[key] = color.value;
+    colorOverrides[key] = color.toARGB32();
   }
 
   Map<String, dynamic> toMap() {
@@ -110,13 +110,13 @@ class ThemePreset {
       isDarkMode: false,
       isBuiltIn: true,
       colorOverrides: {
-        COLOR_PRIMARY: Colors.purple.value,
-        COLOR_SECONDARY: Colors.purpleAccent.value,
-        COLOR_BACKGROUND: Colors.white.value,
-        COLOR_SURFACE: Colors.grey[100]!.value,
-        COLOR_USER_BUBBLE: Colors.purple.value,
-        COLOR_AI_BUBBLE: Colors.grey[200]!.value,
-        COLOR_TEXT: Colors.black87.value,
+        colorPrimary: Colors.purple.toARGB32(),
+        colorSecondary: Colors.purpleAccent.toARGB32(),
+        colorBackground: Colors.white.toARGB32(),
+        colorSurface: Colors.grey[100]!.toARGB32(),
+        colorUserBubble: Colors.purple.toARGB32(),
+        colorAiBubble: Colors.grey[200]!.toARGB32(),
+        colorText: Colors.black87.toARGB32(),
       },
     );
   }
@@ -129,13 +129,13 @@ class ThemePreset {
       isDarkMode: true,
       isBuiltIn: true,
       colorOverrides: {
-        COLOR_PRIMARY: Colors.purpleAccent.value,
-        COLOR_SECONDARY: Colors.purple.value,
-        COLOR_BACKGROUND: const Color(0xFF121212).value,
-        COLOR_SURFACE: const Color(0xFF1E1E1E).value,
-        COLOR_USER_BUBBLE: Colors.purpleAccent.value,
-        COLOR_AI_BUBBLE: const Color(0xFF2D2D2D).value,
-        COLOR_TEXT: Colors.white.value,
+        colorPrimary: Colors.purpleAccent.toARGB32(),
+        colorSecondary: Colors.purple.toARGB32(),
+        colorBackground: const Color(0xFF121212).toARGB32(),
+        colorSurface: const Color(0xFF1E1E1E).toARGB32(),
+        colorUserBubble: Colors.purpleAccent.toARGB32(),
+        colorAiBubble: const Color(0xFF2D2D2D).toARGB32(),
+        colorText: Colors.white.toARGB32(),
       },
     );
   }
@@ -148,13 +148,13 @@ class ThemePreset {
       isDarkMode: false,
       isBuiltIn: true,
       colorOverrides: {
-        COLOR_PRIMARY: Colors.pink.value,
-        COLOR_SECONDARY: Colors.pinkAccent.value,
-        COLOR_BACKGROUND: const Color(0xFFFFF0F5).value,
-        COLOR_SURFACE: const Color(0xFFFFE4E9).value,
-        COLOR_USER_BUBBLE: Colors.pink.value,
-        COLOR_AI_BUBBLE: const Color(0xFFFFD6E0).value,
-        COLOR_TEXT: Colors.black87.value,
+        colorPrimary: Colors.pink.toARGB32(),
+        colorSecondary: Colors.pinkAccent.toARGB32(),
+        colorBackground: const Color(0xFFFFF0F5).toARGB32(),
+        colorSurface: const Color(0xFFFFE4E9).toARGB32(),
+        colorUserBubble: Colors.pink.toARGB32(),
+        colorAiBubble: const Color(0xFFFFD6E0).toARGB32(),
+        colorText: Colors.black87.toARGB32(),
       },
     );
   }

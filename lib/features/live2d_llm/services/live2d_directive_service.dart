@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../live2d/data/models/live2d_parameter_preset.dart';
+import '../../live2d/data/models/parameter_alias_map.dart';
+import '../../live2d/data/repositories/live2d_settings_repository.dart';
 import '../../live2d/data/services/live2d_native_bridge.dart';
+import '../../live2d/data/services/model3_json_parser.dart';
 import '../models/live2d_emotion_preset.dart';
 import 'live2d_command_queue.dart';
 
@@ -23,6 +28,8 @@ class Live2DDirectiveService {
 
   final Live2DNativeBridge _bridge = Live2DNativeBridge();
   final Live2DCommandQueue _queue = Live2DCommandQueue.instance;
+  final Live2DSettingsRepository _settingsRepository = Live2DSettingsRepository();
+  final Model3JsonParser _model3JsonParser = Model3JsonParser();
 
   final Map<String, Live2DEmotionPreset> _defaultEmotions = {
     'happy': const Live2DEmotionPreset(
@@ -63,6 +70,8 @@ class Live2DDirectiveService {
   String _streamBuffer = '';
   String _streamCommittedText = '';
   bool _parameterBoundsLoaded = false;
+  String? _currentModelPath;
+  ParameterAliasMap? _aliasMap;
   final Map<String, _ParameterRange> _parameterBounds =
       <String, _ParameterRange>{};
 
@@ -120,7 +129,7 @@ class Live2DDirectiveService {
     final withXml = text.replaceAllMapped(xmlRegex, (match) {
       final block = match.group(1) ?? '';
       final commandRegex = RegExp(
-        r'<(param|motion|expression|emotion)\s+([^/>]*)/>',
+        r'<(param|motion|expression|emotion|wait|preset|reset)\b([^/>]*)/?>',
       );
       final chips = <String>[];
       for (final cmd in commandRegex.allMatches(block)) {
@@ -156,6 +165,12 @@ class Live2DDirectiveService {
           return 'param:${entry.key}=${entry.value}';
         }
         return 'param:?';
+      case 'wait':
+        return 'wait:${attrs['ms'] ?? attrs['duration'] ?? attrs['name'] ?? '?'}';
+      case 'preset':
+        return 'preset:${attrs['name'] ?? '?'}';
+      case 'reset':
+        return 'reset';
       default:
         return tag;
     }
@@ -222,13 +237,13 @@ class Live2DDirectiveService {
   }
 
   static final RegExp _inlineDirectiveRegex = RegExp(
-    r'\[(param|motion|expression|emotion):([^\]]+)\]',
+    r'\[(param|motion|expression|emotion|wait|preset|reset):([^\]]+)\]',
     caseSensitive: false,
   );
 
   Future<void> _executeDirectiveBlock(String block) async {
     final commandRegex = RegExp(
-      r'<(param|motion|expression|emotion)\s+([^/>]*)/>',
+      r'<(param|motion|expression|emotion|wait|preset|reset)\b([^/>]*)/?>',
     );
     final matches = commandRegex.allMatches(block).toList();
 
@@ -252,6 +267,9 @@ class Live2DDirectiveService {
       case 'param':
         await _runParam(attrs);
         break;
+      case 'wait':
+        await _runWait(attrs);
+        break;
       case 'motion':
         await _runMotion(attrs);
         break;
@@ -260,6 +278,12 @@ class Live2DDirectiveService {
         break;
       case 'emotion':
         await _runEmotion(attrs);
+        break;
+      case 'preset':
+        await _runPreset(attrs);
+        break;
+      case 'reset':
+        await _runReset(attrs);
         break;
       default:
         break;
@@ -332,24 +356,86 @@ class Live2DDirectiveService {
     _parameterBoundsLoaded = true;
 
     final modelInfo = await _bridge.getModelInfo();
-    final rawParams = modelInfo['parameters'];
-    if (rawParams is! List) {
-      return;
+    final path = modelInfo['path']?.toString();
+    if (path != null && path.isNotEmpty && path != _currentModelPath) {
+      _currentModelPath = path;
+      _aliasMap = await _settingsRepository.loadParameterAliases(path);
     }
 
-    for (final raw in rawParams) {
-      if (raw is! Map) {
-        continue;
+    final rawParams = modelInfo['parameters'];
+    if (rawParams is List) {
+      for (final raw in rawParams) {
+        if (raw is! Map) {
+          continue;
+        }
+        final map = Map<String, dynamic>.from(raw);
+        final id = (map['id'] ?? map['Id'])?.toString();
+        final min = _toDouble(map['min'] ?? map['Min']);
+        final max = _toDouble(map['max'] ?? map['Max']);
+        final def = _toDouble(map['default'] ?? map['Default'] ?? map['value']);
+        if (id == null || id.isEmpty || min == null || max == null) {
+          continue;
+        }
+        _parameterBounds[id] = _ParameterRange(
+          min: min,
+          max: max,
+          defaultValue: def ?? min,
+        );
       }
-      final map = Map<String, dynamic>.from(raw);
-      final id = (map['id'] ?? map['Id'])?.toString();
-      final min = _toDouble(map['min'] ?? map['Min']);
-      final max = _toDouble(map['max'] ?? map['Max']);
-      if (id == null || id.isEmpty || min == null || max == null) {
-        continue;
-      }
-      _parameterBounds[id] = _ParameterRange(min: min, max: max);
     }
+
+    if (_currentModelPath != null) {
+      final modelPath = _currentModelPath!;
+      if (await File(modelPath).exists()) {
+        final data = await _model3JsonParser.parseFile(modelPath);
+        if (data.parameters.isNotEmpty) {
+          final alias = await _ensureAliasesForModel(modelPath, data.parameters);
+          _aliasMap = alias;
+          for (final p in data.parameters) {
+            _parameterBounds[p.id] = _ParameterRange(
+              min: p.min,
+              max: p.max,
+              defaultValue: p.defaultValue,
+            );
+          }
+        }
+      }
+    }
+
+    if (_parameterBounds.isEmpty) {
+      final ids = await _bridge.getParameterIds();
+      for (final id in ids) {
+        final current = await _bridge.getParameter(id) ?? 0.0;
+        _parameterBounds[id] = _ParameterRange(
+          min: -1e9,
+          max: 1e9,
+          defaultValue: current,
+        );
+      }
+    }
+  }
+
+  Future<ParameterAliasMap> _ensureAliasesForModel(
+    String modelPath,
+    List<dynamic> parameters,
+  ) async {
+    final existing = await _settingsRepository.loadParameterAliases(modelPath);
+    if (existing != null && existing.aliasToReal.isNotEmpty) {
+      return existing;
+    }
+
+    final ids = parameters
+        .map((p) => (p as dynamic).id?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false)
+      ..sort();
+    final aliasToReal = <String, String>{};
+    for (var i = 0; i < ids.length; i++) {
+      aliasToReal['parameter${i + 1}'] = ids[i];
+    }
+    final generated = ParameterAliasMap.fromAliasToReal(aliasToReal);
+    await _settingsRepository.saveParameterAliases(modelPath, generated);
+    return generated;
   }
 
   double? _toDouble(dynamic value) {
@@ -375,22 +461,36 @@ class Live2DDirectiveService {
     if (id == null || value == null) return;
 
     await _ensureParameterBoundsLoaded();
+    var resolvedId = id;
+    final aliases = _aliasMap;
+    if (aliases != null && aliases.aliasToReal.containsKey(id)) {
+      resolvedId = aliases.aliasToReal[id]!;
+    }
+
     var clamped = value;
-    final range = _parameterBounds[id];
+    final range = _parameterBounds[resolvedId];
     if (range != null) {
       final bounded = value.clamp(range.min, range.max).toDouble();
       if ((bounded - value).abs() > 0.00001) {
         debugPrint(
-          '[Live2DDirectiveService] Param $id out of range ($value), clamped to $bounded',
+          '[Live2DDirectiveService] Param $resolvedId out of range ($value), clamped to $bounded',
         );
       }
       clamped = bounded;
     }
 
     final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
-    final ok = await _bridge.setParameter(id, clamped, durationMs: dur);
+    final ok = await _bridge.setParameter(resolvedId, clamped, durationMs: dur);
     if (!ok) {
-      debugPrint('[Live2DDirectiveService] Unknown parameter: $id');
+      debugPrint('[Live2DDirectiveService] Unknown parameter: $resolvedId');
+    }
+  }
+
+  Future<void> _runWait(Map<String, String> attrs) async {
+    final raw = attrs['ms'] ?? attrs['duration'] ?? attrs['name'] ?? '';
+    final ms = int.tryParse(raw) ?? 0;
+    if (ms > 0) {
+      await Future<void>.delayed(Duration(milliseconds: ms));
     }
   }
 
@@ -449,13 +549,57 @@ class Live2DDirectiveService {
       await _bridge.playMotion(preset.motionGroup!, preset.motionIndex!);
     }
   }
+
+  Future<void> _runPreset(Map<String, String> attrs) async {
+    await _ensureParameterBoundsLoaded();
+    final name = attrs['name'];
+    final modelPath = _currentModelPath;
+    if (name == null || name.isEmpty || modelPath == null || modelPath.isEmpty) {
+      return;
+    }
+
+    final presets = await _settingsRepository.loadParameterPresets(modelPath);
+    Live2DParameterPreset? target;
+    for (final preset in presets) {
+      if (preset.name == name) {
+        target = preset;
+        break;
+      }
+    }
+    if (target == null) {
+      debugPrint('[Live2DDirectiveService] Preset not found: $name');
+      return;
+    }
+
+    final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
+    for (final entry in target.overrides.entries) {
+      await _bridge.setParameter(entry.key, entry.value, durationMs: dur);
+    }
+  }
+
+  Future<void> _runReset(Map<String, String> attrs) async {
+    await _ensureParameterBoundsLoaded();
+    final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
+    for (final entry in _parameterBounds.entries) {
+      await _bridge.setParameter(
+        entry.key,
+        entry.value.defaultValue,
+        durationMs: dur,
+      );
+    }
+  }
 }
 
 class _ParameterRange {
-  const _ParameterRange({required this.min, required this.max});
+  const _ParameterRange({
+    required this.min,
+    required this.max,
+    required this.defaultValue,
+  });
 
   final double min;
   final double max;
+  final double defaultValue;
 }
 
 class _LuaBlockExtraction {

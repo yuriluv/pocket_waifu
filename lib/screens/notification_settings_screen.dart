@@ -218,6 +218,13 @@ class _NotificationSettingsScreenState
                 }
                 final activeSessionId =
                     context.read<ChatSessionProvider>().activeSessionId;
+                debugPrint(
+                  'Notification test: send title=$charName sessionId=$activeSessionId',
+                );
+                if (activeSessionId == null) {
+                  context.showErrorSnackBar('활성 세션이 없습니다. 채팅 세션을 먼저 생성하세요.');
+                  return;
+                }
                 await NotificationBridge.instance.showPreResponseNotification(
                   title: charName,
                   message: message,

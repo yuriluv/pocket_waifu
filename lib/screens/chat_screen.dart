@@ -79,13 +79,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     chatProvider.setSessionProvider(chatSessionProvider);
     _isProviderLinked = true;
 
-    debugPrint('>>> v2.0.5: Provider ?곌껐 ?꾨즺');
+    debugPrint('>>> v2.0.5: Provider 연결 완료');
   }
 
   void _captureCurrentSessionId() {
     final chatSessionProvider = context.read<ChatSessionProvider>();
     _currentSessionId = chatSessionProvider.activeSessionId;
-    debugPrint('>>> v2.0.5: ?몄뀡 ID 罹≪쿂?? $_currentSessionId');
+    debugPrint('>>> v2.0.5: 세션 ID 캡처됨: $_currentSessionId');
   }
 
   @override
@@ -95,7 +95,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final newSessionId = chatSessionProvider.activeSessionId;
     if (newSessionId != null && newSessionId != _currentSessionId) {
       _currentSessionId = newSessionId;
-      debugPrint('>>> v2.0.5: ?몄뀡 ID ?낅뜲?댄듃?? $_currentSessionId');
+      debugPrint('>>> v2.0.5: 세션 ID 업데이트됨: $_currentSessionId');
     }
     _syncProactiveEnvironment();
   }
@@ -155,7 +155,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final sessionId = _currentSessionId ?? chatSessionProvider.activeSessionId;
     if (sessionId == null) {
-      context.showErrorSnackBar('?쒖꽦 ?몄뀡???놁뒿?덈떎.');
+      context.showErrorSnackBar('활성 세션이 없습니다.');
       return;
     }
 
@@ -173,7 +173,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final activeApiConfig = settingsProvider.activeApiConfig;
 
-    debugPrint('>>> _sendMessage - ?몄뀡 ID: $sessionId');
+    debugPrint('>>> _sendMessage - 세션 ID: $sessionId');
 
     chatProvider.sendMessage(
       userMessage: text,
@@ -262,9 +262,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               currentMessages[idx].id,
               targetSessionId: sessionId,
             );
-            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜???젣?덉뒿?덈떎.');
+            context.showInfoSnackBar('${command.index}번 메시지를 삭제했습니다.');
           } else {
-            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         } else if (command.index != null && command.endIndex != null) {
           final start = command.index! - 1;
@@ -277,10 +277,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               );
             }
             context.showInfoSnackBar(
-              '${command.index}~${command.endIndex}踰?硫붿떆吏瑜???젣?덉뒿?덈떎.',
+              '${command.index}~${command.endIndex}번 메시지를 삭제했습니다.',
             );
           } else {
-            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰붿쐞?낅땲??');
+            context.showErrorSnackBar('잘못된 메시지 범위입니다.');
           }
         }
         break;
@@ -291,7 +291,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             Message(role: MessageRole.user, content: command.content!),
             targetSessionId: sessionId,
           );
-          context.showInfoSnackBar('硫붿떆吏媛 湲곕줉??異붽??섏뿀?듬땲??');
+          context.showInfoSnackBar('메시지가 기록에 추가되었습니다.');
           _scrollToBottom();
         }
         break;
@@ -305,9 +305,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               command.content!,
               targetSessionId: sessionId,
             );
-            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜??섏젙?덉뒿?덈떎.');
+            context.showInfoSnackBar('${command.index}번 메시지를 수정했습니다.');
           } else {
-            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         }
         break;
@@ -319,9 +319,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             Clipboard.setData(
               ClipboardData(text: currentMessages[idx].content),
             );
-            context.showInfoSnackBar('${command.index}踰?硫붿떆吏瑜?蹂듭궗?덉뒿?덈떎.');
+            context.showInfoSnackBar('${command.index}번 메시지를 복사했습니다.');
           } else {
-            context.showErrorSnackBar('?섎せ??硫붿떆吏 踰덊샇?낅땲??');
+            context.showErrorSnackBar('잘못된 메시지 번호입니다.');
           }
         }
         break;
@@ -332,7 +332,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           userName: settingsProvider.userName,
           targetSessionId: sessionId,
         );
-        context.showInfoSnackBar('??붽? 珥덇린?붾릺?덉뒿?덈떎.');
+        context.showInfoSnackBar('대화가 초기화되었습니다.');
         break;
 
       case 'export':
@@ -354,7 +354,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             Icon(Icons.download),
             SizedBox(width: 8),
-            Text('????대낫?닿린'),
+            Text('대화 내보내기'),
           ],
         ),
         content: SizedBox(
@@ -373,11 +373,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               context.copyToClipboard(json);
             },
             icon: const Icon(Icons.copy, size: 18),
-            label: const Text('蹂듭궗'),
+            label: const Text('복사'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('?リ린'),
+            child: const Text('닫기'),
           ),
         ],
       ),
@@ -434,7 +434,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           setState(() {
             _currentSessionId = activeSessionId;
           });
-          debugPrint('>>> v2.0.5: ?몄뀡 蹂寃?媛먯? - $_currentSessionId');
+          debugPrint('>>> v2.0.5: 세션 변경 감지 - $_currentSessionId');
         }
       });
     }
@@ -482,7 +482,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           actions: [
             IconButton(
               icon: const Icon(Icons.settings),
-              tooltip: '?ㅼ젙',
+              tooltip: '설정',
               onPressed: () {
                 Navigator.push(
                   context,
@@ -508,7 +508,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   TextButton(
                     onPressed: () => chatProvider.clearError(),
                     child: const Text(
-                      '?リ린',
+                      '닫기',
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -533,7 +533,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               child: chatProvider.messages.isEmpty
                   ? EmptyStateView(
                       icon: Icons.chat_bubble_outline,
-                      title: '${character.name}?(怨? ??붾? ?쒖옉?대낫?몄슂!',
+                      title: '${character.name}와(과) 대화를 시작해보세요!',
                       action: ElevatedButton(
                         onPressed: () {
                           chatProvider.initializeChat(
@@ -541,7 +541,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                             userName: settingsProvider.userName,
                           );
                         },
-                        child: const Text('????쒖옉'),
+                        child: const Text('대화 시작'),
                       ),
                     )
                   : ListView.builder(
@@ -575,7 +575,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      '${character.name}??媛) ?낅젰 以?..',
+                      '${character.name}이(가) 입력 중..',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
@@ -762,6 +762,7 @@ class _MessageBubble extends StatelessWidget {
   Widget _buildImageThumb(BuildContext context, ImageAttachment image) {
     final filePath = image.thumbnailPath;
     final hasFile = filePath != null && filePath.isNotEmpty;
+    final hasBase64 = image.base64Data.isNotEmpty;
 
     return GestureDetector(
       onTap: () => _showImagePreview(context, image),
@@ -792,19 +793,21 @@ class _MessageBubble extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) => _brokenImage(context),
               )
-            : Image.memory(
-                base64Decode(image.base64Data),
-                width: 96,
-                height: 96,
-                fit: BoxFit.cover,
-                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                  if (wasSynchronouslyLoaded || frame != null) {
-                    return child;
-                  }
-                  return _loadingImage(context);
-                },
-                errorBuilder: (context, error, stackTrace) => _brokenImage(context),
-              ),
+            : hasBase64
+                ? Image.memory(
+                    base64Decode(image.base64Data),
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                      if (wasSynchronouslyLoaded || frame != null) {
+                        return child;
+                      }
+                      return _loadingImage(context);
+                    },
+                    errorBuilder: (context, error, stackTrace) => _brokenImage(context),
+                  )
+                : _brokenImage(context),
       ),
     );
   }
@@ -836,6 +839,14 @@ class _MessageBubble extends StatelessWidget {
   void _showImagePreview(BuildContext context, ImageAttachment image) {
     final filePath = image.thumbnailPath;
     final hasFile = filePath != null && filePath.isNotEmpty;
+    final hasBase64 = image.base64Data.isNotEmpty;
+
+    if (!hasFile && !hasBase64) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미지 데이터를 찾을 수 없습니다.')),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -919,12 +930,38 @@ class _MessageInput extends StatelessWidget {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            base64Decode(image.base64Data),
-                            width: 72,
-                            height: 72,
-                            fit: BoxFit.cover,
-                          ),
+                          child: image.base64Data.isNotEmpty
+                              ? Image.memory(
+                                  base64Decode(image.base64Data),
+                                  width: 72,
+                                  height: 72,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, error, stackTrace) => Container(
+                                    width: 72,
+                                    height: 72,
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                    child: const Icon(Icons.broken_image_outlined, size: 24),
+                                  ),
+                                )
+                              : image.thumbnailPath != null && image.thumbnailPath!.isNotEmpty
+                                  ? Image.file(
+                                      File(image.thumbnailPath!),
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (ctx, error, stackTrace) => Container(
+                                        width: 72,
+                                        height: 72,
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        child: const Icon(Icons.broken_image_outlined, size: 24),
+                                      ),
+                                    )
+                                  : Container(
+                                      width: 72,
+                                      height: 72,
+                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                      child: const Icon(Icons.broken_image_outlined, size: 24),
+                                    ),
                         ),
                         Positioned(
                           top: -6,

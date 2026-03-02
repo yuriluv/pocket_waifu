@@ -42,6 +42,7 @@ object NotificationHelper {
         isError: Boolean,
         sessionId: String?
     ): android.app.Notification {
+        Log.d(TAG, "buildPreResponseNotification sessionId=$sessionId isError=$isError")
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -61,7 +62,7 @@ object NotificationHelper {
             context,
             1,
             replyIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
         val remoteInput = RemoteInput.Builder(NotificationConstants.REMOTE_INPUT_KEY)
             .setLabel("답장을 입력하세요")
@@ -116,6 +117,7 @@ object NotificationHelper {
         isError: Boolean,
         sessionId: String?
     ) {
+        Log.d(TAG, "notifyPreResponse sessionId=$sessionId title=$title")
         createChannels(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(

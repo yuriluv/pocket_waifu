@@ -95,7 +95,7 @@ class OverlayToggleTile extends StatelessWidget {
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: isEnabled
                                 ? theme.colorScheme.onPrimaryContainer
-                                    .withOpacity(0.8)
+                                    .withValues(alpha: 0.8)
                                 : theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
@@ -120,7 +120,7 @@ class OverlayToggleTile extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withOpacity(0.5),
+                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(

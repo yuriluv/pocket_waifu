@@ -102,7 +102,7 @@ class _Task {
   }
 
   factory _Task.fromJson(Map<String, dynamic> json) {
-    DateTime _parseDate(dynamic value, DateTime fallback) {
+    DateTime parseDate(dynamic value, DateTime fallback) {
       if (value is String) {
         final parsed = DateTime.tryParse(value);
         if (parsed != null) {
@@ -112,7 +112,7 @@ class _Task {
       return fallback;
     }
 
-    DateTime? _parseNullableDate(dynamic value) {
+    DateTime? parseNullableDate(dynamic value) {
       if (value is String) {
         final parsed = DateTime.tryParse(value);
         return parsed?.toUtc();
@@ -160,8 +160,8 @@ class _Task {
       status: parseStatus(json['status']),
       priority: (json['priority'] as int?) ?? 50,
       retryCount: (json['retryCount'] as int?) ?? 0,
-      updatedAt: _parseDate(json['updatedAt'], now),
-      blockedSince: _parseNullableDate(json['blockedSince']),
+      updatedAt: parseDate(json['updatedAt'], now),
+      blockedSince: parseNullableDate(json['blockedSince']),
       failureReason: json['failureReason'] as String?,
       failureCategory: parseCategory(json['failureCategory']),
       verificationPassed: json['verificationPassed'] as bool? ?? false,

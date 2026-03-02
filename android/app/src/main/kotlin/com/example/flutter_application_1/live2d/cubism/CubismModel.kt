@@ -291,6 +291,23 @@ class CubismModel(
      */
     fun getInfo(): Map<String, Any> {
         val p = parser
+        val parameterInfo = mutableListOf<Map<String, Any>>()
+        if (isSdkMode) {
+            try {
+                val ids = Live2DNativeBridge.nativeGetParameterIds()
+                for (id in ids) {
+                    val current = Live2DNativeBridge.nativeGetParameterValue(id)
+                    parameterInfo.add(
+                        mapOf(
+                            "id" to id,
+                            "value" to current.toDouble(),
+                        )
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+
         return mapOf(
             "name" to modelName,
             "path" to modelPath,
@@ -300,6 +317,7 @@ class CubismModel(
             "textureCount" to (p?.textures?.size ?: 0),
             "motionGroups" to (p?.motionGroups?.mapValues { it.value.size } ?: emptyMap()),
             "expressions" to (p?.expressions?.map { it.name } ?: emptyList()),
+            "parameters" to parameterInfo,
             "currentMotion" to "${currentMotionGroup ?: "none"}[$currentMotionIndex]",
             "position" to mapOf("x" to posX, "y" to posY),
             "scale" to scale,

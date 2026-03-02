@@ -5,6 +5,7 @@ import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
+import '../features/live2d/data/repositories/live2d_settings_repository.dart';
 import '../features/live2d/data/services/live2d_native_bridge.dart';
 import '../features/live2d_llm/services/live2d_directive_service.dart';
 import '../features/lua/services/lua_scripting_service.dart';
@@ -26,6 +27,8 @@ class ChatProvider extends ChangeNotifier {
   final Live2DDirectiveService _directiveService =
       Live2DDirectiveService.instance;
   final Live2DNativeBridge _live2dBridge = Live2DNativeBridge();
+  final Live2DSettingsRepository _live2dSettingsRepository =
+      Live2DSettingsRepository();
 
   ChatSessionProvider? _sessionProvider;
 
@@ -355,9 +358,20 @@ class ChatProvider extends ChangeNotifier {
     }
 
     final modelInfo = await _live2dBridge.getModelInfo();
-    final params = (modelInfo['parameters'] as List<dynamic>? ?? const [])
-        .map((item) => item.toString())
-        .toList();
+    final params = <String>[];
+    final rawParams = modelInfo['parameters'];
+    if (rawParams is List) {
+      for (final raw in rawParams) {
+        if (raw is Map) {
+          final id = raw['id']?.toString();
+          if (id != null && id.isNotEmpty) {
+            params.add(id);
+            continue;
+          }
+        }
+        params.add(raw.toString());
+      }
+    }
     final expressions = (modelInfo['expressions'] as List<dynamic>? ?? const [])
         .map((item) => item.toString())
         .toList();
@@ -378,11 +392,27 @@ class ChatProvider extends ChangeNotifier {
       }
     }
 
+    final aliasLines = <String>[];
+    final modelPath = modelInfo['path']?.toString();
+    if (modelPath != null && modelPath.isNotEmpty) {
+      final aliases = await _live2dSettingsRepository.loadParameterAliases(
+        modelPath,
+      );
+      if (aliases != null) {
+        aliasLines.addAll(
+          aliases.aliasToReal.entries
+              .map((e) => '${e.key}=${e.value}')
+              .toList(growable: false),
+        );
+      }
+    }
+
     final capability = [
       '[Live2D Capability]',
       'Parameters: ${params.isEmpty ? '(none)' : params.join(', ')}',
       'Motions: ${motions.isEmpty ? '(none)' : motions.join(', ')}',
       'Expressions: ${expressions.isEmpty ? '(none)' : expressions.join(', ')}',
+      'Aliases: ${aliasLines.isEmpty ? '(none)' : aliasLines.join(', ')}',
       'Use <live2d> blocks only for visible animation cues.',
     ].join('\n');
 

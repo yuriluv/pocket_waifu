@@ -20,6 +20,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.util.TypedValue
+import android.view.inputmethod.InputMethodManager
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -204,6 +205,7 @@ class Live2DOverlayService : Service() {
     private var miniMenuParams: WindowManager.LayoutParams? = null
     private var miniMenuSessionId: String? = null
     private var miniMenuMessagesContainer: LinearLayout? = null
+    private var miniMenuMessagesScrollView: ScrollView? = null
     private var miniMenuInputField: EditText? = null
     private var miniMenuStatusText: TextView? = null
     private var miniMenuScreenshotText: EditText? = null
@@ -1322,6 +1324,12 @@ class Live2DOverlayService : Service() {
             generalTab.visibility = if (index == 0) View.VISIBLE else View.GONE
             inputTab.visibility = if (index == 1) View.VISIBLE else View.GONE
             settingsTab.visibility = if (index == 2) View.VISIBLE else View.GONE
+            if (index == 0) {
+                refreshMiniMenuFromFlutter()
+            }
+            if (index == 1) {
+                refreshMessages()
+            }
         }
         generalButton.setOnClickListener { showTab(0) }
         inputButton.setOnClickListener { showTab(1) }
@@ -1365,6 +1373,7 @@ class Live2DOverlayService : Service() {
 
         try {
             windowManager.addView(root, params)
+            miniMenuTouchToggle?.isChecked = touchThroughEnabled
             startMiniMenuPolling()
             refreshMiniMenuFromFlutter()
         } catch (e: Exception) {
@@ -1376,6 +1385,7 @@ class Live2DOverlayService : Service() {
 
     private fun closeMiniMenu() {
         stopMiniMenuPolling()
+        hideMiniMenuKeyboard()
         miniMenuOverlayView?.let {
             try {
                 windowManager.removeView(it)
@@ -1386,11 +1396,26 @@ class Live2DOverlayService : Service() {
         miniMenuCardView = null
         miniMenuParams = null
         miniMenuMessagesContainer = null
+        miniMenuMessagesScrollView = null
         miniMenuInputField = null
         miniMenuStatusText = null
         miniMenuScreenshotText = null
         miniMenuTouchToggle = null
         miniMenuNotificationToggle = null
+    }
+
+    private fun hideMiniMenuKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        val screenshotToken = miniMenuScreenshotText?.windowToken
+        val inputToken = miniMenuInputField?.windowToken
+        if (screenshotToken != null) {
+            imm?.hideSoftInputFromWindow(screenshotToken, 0)
+        }
+        if (inputToken != null) {
+            imm?.hideSoftInputFromWindow(inputToken, 0)
+        }
+        miniMenuScreenshotText?.clearFocus()
+        miniMenuInputField?.clearFocus()
     }
 
     private fun startMiniMenuPolling() {
@@ -1435,24 +1460,31 @@ class Live2DOverlayService : Service() {
 
         miniMenuTouchToggle = Switch(this).apply {
             text = "터치스루"
+            isChecked = touchThroughEnabled
             setOnCheckedChangeListener { _, _ ->
-                invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { result ->
-                    val enabled = result as? Boolean ?: false
-                    post {
-                        setOnCheckedChangeListener(null)
-                        isChecked = enabled
-                        setOnCheckedChangeListener { _, _ ->
-                            invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
-                                val now = r as? Boolean ?: false
-                                post {
-                                    setOnCheckedChangeListener(null)
-                                    isChecked = now
-                                    setOnCheckedChangeListener { _, _ -> }
-                                }
-                            })
+                invokeMiniMenuMethod(
+                    "miniMenuToggleTouchThrough",
+                    onSuccess = { result ->
+                        val enabled = result as? Boolean ?: false
+                        touchThroughEnabled = enabled
+                        post {
+                            setOnCheckedChangeListener(null)
+                            isChecked = enabled
+                            setOnCheckedChangeListener { _, _ ->
+                                invokeMiniMenuMethod("miniMenuToggleTouchThrough")
+                            }
                         }
-                    }
-                })
+                    },
+                    onError = {
+                        post {
+                            setOnCheckedChangeListener(null)
+                            isChecked = touchThroughEnabled
+                            setOnCheckedChangeListener { _, _ ->
+                                invokeMiniMenuMethod("miniMenuToggleTouchThrough")
+                            }
+                        }
+                    },
+                )
             }
         }
 
@@ -1473,6 +1505,8 @@ class Live2DOverlayService : Service() {
                 invokeMiniMenuMethod(
                     "miniMenuSetNotificationEnabled",
                     mapOf("enabled" to isChecked),
+                    onSuccess = { refreshMiniMenuFromFlutter() },
+                    onError = { refreshMiniMenuFromFlutter() },
                 )
             }
         }
@@ -1492,6 +1526,7 @@ class Live2DOverlayService : Service() {
         }
 
         val scrollView = ScrollView(this)
+        miniMenuMessagesScrollView = scrollView
         miniMenuMessagesContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -1555,26 +1590,27 @@ class Live2DOverlayService : Service() {
     }
 
     private fun refreshMiniMenuFromFlutter() {
-        invokeMiniMenuMethod("miniMenuGetTouchThroughEnabled", onSuccess = { result ->
-            val enabled = result as? Boolean ?: false
-            miniMenuTouchToggle?.let { toggle ->
-                toggle.setOnCheckedChangeListener(null)
-                toggle.isChecked = enabled
-                toggle.setOnCheckedChangeListener { _, _ ->
-                    invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
-                        val next = r as? Boolean ?: false
-                        toggle.post {
-                            toggle.setOnCheckedChangeListener(null)
-                            toggle.isChecked = next
-                            toggle.setOnCheckedChangeListener { _, _ -> }
+        miniMenuTouchToggle?.let { toggle ->
+            toggle.setOnCheckedChangeListener(null)
+            toggle.isChecked = touchThroughEnabled
+            toggle.setOnCheckedChangeListener { _, _ ->
+                invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
+                    val next = r as? Boolean ?: false
+                    touchThroughEnabled = next
+                    toggle.post {
+                        toggle.setOnCheckedChangeListener(null)
+                        toggle.isChecked = next
+                        toggle.setOnCheckedChangeListener { _, _ ->
+                            invokeMiniMenuMethod("miniMenuToggleTouchThrough")
                         }
-                    })
-                }
+                    }
+                })
             }
-        })
+        }
 
         invokeMiniMenuMethod("miniMenuGetNotificationEnabled", onSuccess = { result ->
             val enabled = result as? Boolean ?: false
+            Live2DLogger.Overlay.d("미니 메뉴 알림 상태 동기화", "enabled=$enabled")
             miniMenuNotificationToggle?.let { toggle ->
                 toggle.setOnCheckedChangeListener(null)
                 toggle.isChecked = enabled
@@ -1631,6 +1667,9 @@ class Live2DOverlayService : Service() {
                 gravity = if (role == "assistant") Gravity.START else Gravity.END
             }
             container.addView(bubble, params)
+        }
+        miniMenuMessagesScrollView?.post {
+            miniMenuMessagesScrollView?.fullScroll(View.FOCUS_DOWN)
         }
     }
     

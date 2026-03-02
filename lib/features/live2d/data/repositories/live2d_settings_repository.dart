@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/auto_motion_config.dart';
 import '../models/gesture_motion_mapping.dart';
 import '../models/live2d_parameter_preset.dart';
+import '../models/parameter_alias_map.dart';
 
 class Live2DSettingsRepository {
   Live2DSettingsRepository._internal();
@@ -18,6 +19,7 @@ class Live2DSettingsRepository {
   static const String _motionEnabledPrefix = 'live2d_motion_enabled_';
   static const String _autoMotionPrefix = 'live2d_auto_motion_config_';
   static const String _gestureMappingPrefix = 'live2d_gesture_mapping_config_';
+  static const String _parameterAliasPrefix = 'live2d_parameter_alias_map_';
 
   String _modelKey(String modelPath) {
     final normalized = modelPath.replaceAll('\\', '/').toLowerCase();
@@ -37,6 +39,10 @@ class Live2DSettingsRepository {
 
   String _gestureMappingKey(String modelPath) {
     return '$_gestureMappingPrefix${_modelKey(modelPath)}';
+  }
+
+  String _parameterAliasKey(String modelPath) {
+    return '$_parameterAliasPrefix${_modelKey(modelPath)}';
   }
 
   Future<AutoMotionConfig?> loadAutoMotionConfig(String modelPath) async {
@@ -135,6 +141,28 @@ class Live2DSettingsRepository {
     await file.parent.create(recursive: true);
     final encoded = jsonEncode(presets.map((e) => e.toJson()).toList(growable: false));
     await file.writeAsString(encoded);
+  }
+
+  Future<ParameterAliasMap?> loadParameterAliases(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_parameterAliasKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return null;
+      }
+      return ParameterAliasMap.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveParameterAliases(String modelPath, ParameterAliasMap map) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_parameterAliasKey(modelPath), jsonEncode(map.toJson()));
   }
 
   Future<String> exportParameterPresets(

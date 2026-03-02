@@ -372,11 +372,13 @@ class _ApiPresetCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              Radio<bool>(
-                value: true,
-                groupValue: isActive,
-                onChanged: (_) => onTap(),
+              Icon(
+                isActive ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: isActive
+                    ? colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
               ),
+              const SizedBox(width: 8),
 
               Expanded(
                 child: Column(
@@ -650,7 +652,7 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                     const SizedBox(height: 16),
 
                     DropdownButtonFormField<ApiFormat>(
-                      value: _format,
+                      initialValue: _format,
                       decoration: const InputDecoration(
                         labelText: 'API 규격',
                         border: OutlineInputBorder(),
@@ -1271,7 +1273,7 @@ class _ImageCacheManagementSectionState
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _maxResolution,
+                  initialValue: _maxResolution,
                   decoration: const InputDecoration(
                     labelText: 'Max resolution',
                     border: OutlineInputBorder(),

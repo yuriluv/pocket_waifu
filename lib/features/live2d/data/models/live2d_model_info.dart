@@ -124,7 +124,8 @@ class Live2DModelInfo {
           }
         }
       }
-    } catch (e) {
+    } catch (_) {
+      return null;
     }
 
     return null;

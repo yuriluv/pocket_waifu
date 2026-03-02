@@ -52,6 +52,7 @@ class LAppModel(
     private var blinkProgress = 0f
     
     private var breathTime = 0f
+    private val availableParameterIds = mutableSetOf<String>()
     
     /**
      * 
@@ -120,6 +121,7 @@ class LAppModel(
                     Live2DLogger.d("$TAG: [Phase7-2] Canvas size: ${canvasWidth}x${canvasHeight}", null)
 
                     isSdkRenderingActive = true
+                    refreshAvailableParameterIds()
                     Live2DLogger.i("$TAG: [Phase7-2] SDK rendering mode ACTIVATED", null)
                 }
             } else {
@@ -335,6 +337,7 @@ class LAppModel(
             }
 
             isSdkRenderingActive = false
+            availableParameterIds.clear()
             
             mocBuffer = null
             
@@ -387,10 +390,20 @@ class LAppModel(
         
         if (isBlinking) {
             blinkProgress += dt * 10f
+            val blinkValue = if (blinkProgress < 0.5f) {
+                1f - (blinkProgress * 2f)
+            } else {
+                (blinkProgress - 0.5f) * 2f
+            }.coerceIn(0f, 1f)
+            applyParameterIfExists("ParamEyeLOpen", blinkValue)
+            applyParameterIfExists("ParamEyeROpen", blinkValue)
+
             if (blinkProgress >= 1f) {
                 isBlinking = false
                 eyeBlinkTime = 0f
                 nextBlinkTime = 2f + (Math.random() * 4f).toFloat()
+                applyParameterIfExists("ParamEyeLOpen", 1f)
+                applyParameterIfExists("ParamEyeROpen", 1f)
             }
         }
     }
@@ -399,6 +412,27 @@ class LAppModel(
      */
     private fun updateBreathTimer(dt: Float) {
         breathTime += dt
+        val breathValue = ((kotlin.math.sin(breathTime * 1.57f) + 1f) / 2f).coerceIn(0f, 1f)
+        applyParameterIfExists("ParamBreath", breathValue)
+    }
+
+    private fun refreshAvailableParameterIds() {
+        availableParameterIds.clear()
+        try {
+            availableParameterIds.addAll(Live2DNativeBridge.nativeGetParameterIds())
+        } catch (e: Exception) {
+            Live2DLogger.w("$TAG: Failed to query parameter IDs", e.message)
+        }
+    }
+
+    private fun applyParameterIfExists(paramId: String, value: Float) {
+        if (!isSdkRenderingActive) return
+        if (!availableParameterIds.contains(paramId)) return
+        try {
+            Live2DNativeBridge.nativeSetParameterValue(paramId, value)
+        } catch (e: Exception) {
+            Live2DLogger.w("$TAG: Failed to set parameter $paramId", e.message)
+        }
     }
     
     // ============================================

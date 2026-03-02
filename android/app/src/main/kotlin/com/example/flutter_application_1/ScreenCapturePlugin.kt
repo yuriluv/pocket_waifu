@@ -21,18 +21,21 @@ class ScreenCapturePlugin(
 ) {
     companion object {
         const val REQUEST_CODE = 1002
+        @Volatile
+        private var sharedProjectionResultCode: Int? = null
+
+        @Volatile
+        private var sharedProjectionResultData: Intent? = null
     }
 
     private val mediaProjectionManager =
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
     private var mediaProjection: MediaProjection? = null
-    private var projectionResultCode: Int? = null
-    private var projectionResultData: Intent? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingCaptureResult: MethodChannel.Result? = null
 
     fun hasPermission(): Boolean {
-        return projectionResultCode == Activity.RESULT_OK && projectionResultData != null
+        return sharedProjectionResultCode == Activity.RESULT_OK && sharedProjectionResultData != null
     }
 
     fun isAvailable(): Boolean {
@@ -85,8 +88,8 @@ class ScreenCapturePlugin(
 
         val ok = resultCode == Activity.RESULT_OK && data != null
         if (ok) {
-            projectionResultCode = resultCode
-            projectionResultData = data
+            sharedProjectionResultCode = resultCode
+            sharedProjectionResultData = data
             pendingPermissionResult?.success(true)
             pendingPermissionResult = null
 
@@ -112,13 +115,13 @@ class ScreenCapturePlugin(
     fun release() {
         mediaProjection?.stop()
         mediaProjection = null
-        projectionResultCode = null
-        projectionResultData = null
+        sharedProjectionResultCode = null
+        sharedProjectionResultData = null
     }
 
     private fun captureWithPermission(result: MethodChannel.Result) {
-        val code = projectionResultCode
-        val data = projectionResultData
+        val code = sharedProjectionResultCode
+        val data = sharedProjectionResultData
         val manager = mediaProjectionManager
         if (code == null || data == null || manager == null) {
             result.error("PERMISSION_REQUIRED", "Screen capture permission required", null)

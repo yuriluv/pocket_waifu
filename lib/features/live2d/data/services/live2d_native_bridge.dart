@@ -32,8 +32,9 @@ class Live2DNativeBridge {
 
   Stream<InteractionEvent> get eventStream =>
       _eventChannel.receiveBroadcastStream().map((event) {
-        if (event is! Map)
+        if (event is! Map) {
           return InteractionEvent.now(type: InteractionType.unknown);
+        }
         return InteractionEvent.fromMap(Map<String, dynamic>.from(event));
       });
 
@@ -426,7 +427,7 @@ class Live2DNativeBridge {
     try {
       final result = await _methodChannel.invokeMethod<bool>(
         'setNotificationResponse',
-        {'message': message, if (sessionId != null) 'sessionId': sessionId},
+        {'message': message, 'sessionId': ?sessionId},
       );
       return result ?? false;
     } on PlatformException catch (e) {
@@ -444,7 +445,7 @@ class Live2DNativeBridge {
     try {
       final result = await _methodChannel.invokeMethod<bool>(
         'setNotificationError',
-        {'error': errorMessage, if (sessionId != null) 'sessionId': sessionId},
+        {'error': errorMessage, 'sessionId': ?sessionId},
       );
       return result ?? false;
     } on PlatformException catch (e) {

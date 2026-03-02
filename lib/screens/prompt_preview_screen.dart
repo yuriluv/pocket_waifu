@@ -72,7 +72,7 @@ class _PromptPreviewScreenState extends State<PromptPreviewScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String>(
-                value: preset.id,
+                initialValue: preset.id,
                 decoration: const InputDecoration(
                   labelText: '프리셋 선택',
                   border: OutlineInputBorder(),

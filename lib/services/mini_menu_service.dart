@@ -21,7 +21,10 @@ typedef MiniMenuToggleTouchThrough = Future<bool> Function();
 typedef MiniMenuGetTouchThroughEnabled = Future<bool> Function();
 
 class MiniMenuService {
-  MiniMenuService._internal();
+  MiniMenuService._internal() {
+    _channel.setMethodCallHandler(_handleMethodCall);
+    debugPrint('MiniMenuService: method handler registered eagerly');
+  }
 
   static final MiniMenuService instance = MiniMenuService._internal();
 
@@ -33,7 +36,6 @@ class MiniMenuService {
 
   Stream<Map<String, dynamic>> get events => _events.stream;
 
-  bool _initialized = false;
   MiniMenuGetActiveSessionId? _getActiveSessionId;
   MiniMenuGetMessages? _getMessages;
   MiniMenuSendMessage? _sendMessage;
@@ -53,6 +55,7 @@ class MiniMenuService {
     required MiniMenuToggleTouchThrough toggleTouchThrough,
     required MiniMenuGetTouchThroughEnabled getTouchThroughEnabled,
   }) {
+    debugPrint('MiniMenuService: configure() called');
     _getActiveSessionId = getActiveSessionId;
     _getMessages = getMessages;
     _sendMessage = sendMessage;
@@ -61,10 +64,6 @@ class MiniMenuService {
     _setNotificationsEnabled = setNotificationsEnabled;
     _toggleTouchThrough = toggleTouchThrough;
     _getTouchThroughEnabled = getTouchThroughEnabled;
-
-    if (_initialized) return;
-    _initialized = true;
-    _channel.setMethodCallHandler(_handleMethodCall);
   }
 
   Future<void> openMiniMenu({String? sessionId}) async {

@@ -228,29 +228,45 @@ class PocketWaifuApp extends StatelessWidget {
                     return result;
                   },
                   captureAndSend: (sessionId, text) async {
-                    final captureService = ScreenCaptureService();
-                    final hasPermission = await captureService.hasPermission();
-                    if (!hasPermission) {
-                      final granted = await captureService.requestPermission();
-                      if (!granted) {
+                    try {
+                      debugPrint(
+                        'MiniMenu: captureAndSend called sessionId=$sessionId',
+                      );
+                      final captureService = ScreenCaptureService();
+                      final hasPermission = await captureService.hasPermission();
+                      debugPrint('MiniMenu: hasPermission=$hasPermission');
+                      if (!hasPermission) {
+                        debugPrint('MiniMenu: requesting capture permission');
+                        final granted = await captureService.requestPermission();
+                        debugPrint('MiniMenu: permission granted=$granted');
+                        if (!granted) {
+                          return {
+                            'ok': false,
+                            'error': 'capture_permission_denied',
+                          };
+                        }
+                      }
+                      debugPrint('MiniMenu: capturing screen');
+                      final image = await captureService.capture();
+                      debugPrint('MiniMenu: capture result available=${image != null}');
+                      if (image == null) {
                         return {
                           'ok': false,
-                          'error': 'capture_permission_denied',
+                          'error': 'capture_failed',
                         };
                       }
-                    }
-                    final image = await captureService.capture();
-                    if (image == null) {
+                      return coordinator.handleMiniMenuReplyWithImages(
+                        message: text,
+                        images: [image],
+                        sessionId: sessionId,
+                      );
+                    } catch (e) {
+                      debugPrint('MiniMenu: captureAndSend exception=$e');
                       return {
                         'ok': false,
-                        'error': 'capture_failed',
+                        'error': 'capture_exception',
                       };
                     }
-                    return coordinator.handleMiniMenuReplyWithImages(
-                      message: text,
-                      images: [image],
-                      sessionId: sessionId,
-                    );
                   },
                   getNotificationsEnabled: () =>
                       notificationSettingsProvider

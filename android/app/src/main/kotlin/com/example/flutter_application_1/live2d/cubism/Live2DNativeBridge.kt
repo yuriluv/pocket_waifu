@@ -43,6 +43,7 @@ object Live2DNativeBridge {
 
     external fun nativeReleaseModel()
 
-    fun nativeGetParameterValue(paramId: String): Float = 0f
-    fun nativeGetParameterIds(): Array<String> = emptyArray()
+    external fun nativeSetParameterValue(paramId: String, value: Float)
+    external fun nativeGetParameterValue(paramId: String): Float
+    external fun nativeGetParameterIds(): Array<String>
 }

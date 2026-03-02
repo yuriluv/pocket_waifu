@@ -468,6 +468,256 @@ The final API call structure has **three distinct invocation methods**, each wit
 
 ---
 
+## Post1. Live Testing Results & Bug Fixes
+
+> **Context:** All §1–§8 tasks have been marked complete (code written). Live device testing revealed the following results. This section captures the **bugs found** and the **detailed fix plan** for each.
+
+### Live Test Results Summary
+
+| Feature | Result | Notes |
+|---------|--------|-------|
+| Notification Test | ✅ **Pass** | Test notification fires correctly with Reply/Menu actions |
+| Proactive Response | ✅ **Pass** | Timer triggers API call, notification appears correctly |
+| Notification Reply | ✅ **Pass** | Inline reply sends message, receives LLM response |
+| Reply Re-notification (Proactive) | ✅ **Pass** | After replying to proactive notification, response notification fires and allows further replies |
+| Reply Re-notification (Test) | ❌ **Fail** | After replying to a test notification, the response notification does NOT allow another reply cycle |
+| Menu Button | ✅ **Pass** | Menu opens the popup mini menu overlay correctly |
+| Screenshot Feature | ❌ **Fail** | Permission not requested, capture fails, image+message send fails |
+| Touch-Through Toggle (Menu) | ❌ **Fail** | State not synced with actual overlay touch-through state |
+| Notification Toggle (Menu) | ❌ **Fail** | State not synced with actual notification settings |
+| Input Tab — Send Message | ❌ **Fail** | Returns `not_implemented` error — handler not connected |
+| Input Tab — Chat History | ❌ **Fail** | Chat history display not populating |
+
+---
+
+### 9. Bug Fixes (Priority Phase)
+
+> **Principle:** Use the successfully working features (notification reply, proactive, menu open) as reference implementations to fix the broken features.
+
+#### 9.1 Test Notification Reply Re-send Failure
+
+> **Symptom:** Replying to a proactive notification works end-to-end (reply → LLM response → new notification → can reply again). But replying to a *test* notification succeeds once, and the response notification cannot be replied to again.
+
+> **Root Cause Analysis:** The response notification is posted by `_handleNotificationReplyInternal()` at line 242–246 of `notification_coordinator.dart` via `_bridge.showPreResponseNotification()`. This calls `NotificationHelper.notifyPreResponse()` which generates a unique notification ID (`NOTIFICATION_ID_PRE_RESPONSE_BASE + time % 1000`, line 133–134 of `NotificationHelper.kt`). The `sessionId` passed to the response notification must be correct for the next reply to work. If the test notification was sent without a `sessionId`, the reply chain breaks because subsequent replies can't resolve the session.
+
+- [x] **9.1.1** **Debug the test notification `sessionId` flow:**
+  - In `notification_settings_screen.dart`, verify that the test notification button sends `sessionId: activeSessionId` to `NotificationBridge.showPreResponseNotification()`.
+  - Check `ChatSessionProvider.activeSessionId` is non-null when the test button is pressed.
+  - Add `debugPrint` to trace: test button → `showPreResponseNotification(sessionId)` → Android `notifyPreResponse(sessionId)` → `buildPreResponseNotification(sessionId)` → reply Intent extras contain `sessionId`.
+
+- [x] **9.1.2** **Verify the reply chain preserves `sessionId`:**
+  - After the first reply, `_handleNotificationReplyInternal()` calls `_bridge.showPreResponseNotification(sessionId: resolvedSessionId)` (line 242–246).
+  - Confirm this `resolvedSessionId` is propagated to the new notification's reply action Intent extra (`NotificationConstants.EXTRA_SESSION_ID`).
+  - In `NotificationHelper.buildPreResponseNotification()` (line 38–109), verify `sessionId` is included in `replyIntent.putExtra()` (line 57).
+
+- [x] **9.1.3** **Fix if `sessionId` is null in test notifications:**
+  - In the notification settings screen test button handler, ensure `activeSessionId` is resolved from `ChatSessionProvider`:
+    ```dart
+    final sessionProvider = context.read<ChatSessionProvider>();
+    final activeSessionId = sessionProvider.activeSessionId;
+    // Pass to showPreResponseNotification
+    ```
+  - If `activeSessionId` is null, show an error toast instead of sending the test notification.
+
+- [x] **9.1.4** **Verify re-reply works end-to-end after fix:** Test notification → reply → response notification → reply again → second response.
+
+#### 9.2 Screenshot Feature Fix (Permission + Capture + Send)
+
+> **Symptom:** The screenshot button in the General tab does nothing. No permission prompt appears, no capture occurs, and no image is sent.
+>
+> **Root Cause Analysis:** The `captureAndSend` handler in `main.dart` (line 230–254) creates a **new** `ScreenCaptureService()` instance each time. This service uses the `com.pocketwaifu/screen_capture` MethodChannel which routes to `ScreenCapturePlugin` in `MainActivity.kt`. The critical issue is that `ScreenCapturePlugin.requestPermission()` and `captureScreen()` both use `startActivityForResult()` — **but when the mini menu triggers the capture, the method channel call originates from `Live2DOverlayService`'s Flutter engine, which goes to `MainActivity`'s registered handler. If `MainActivity` is not in the foreground, `startActivityForResult()` may fail silently or the permission dialog may not appear.**
+
+- [x] **9.2.1** **Modularize permission check to work from background/service context:**
+  - The `ScreenCapturePlugin.requestPermission()` (line 45–62 of `ScreenCapturePlugin.kt`) requires `startActivityForResult` which needs a visible Activity.
+  - **Option A (Recommended):** Before calling `captureAndSend`, bring `MainActivity` to the foreground briefly for permission, then return to the overlay context:
+    ```dart
+    // In captureAndSend handler:
+    if (!hasPermission) {
+      // Launch MainActivity for permission, wait, then check again
+      await captureService.requestPermission(); // This triggers startActivityForResult
+      // Wait for result
+    }
+    ```
+  - **Option B:** Store the MediaProjection permission result globally so that even if the Activity is not visible, the stored result code + data can be reused for subsequent captures.
+
+- [x] **9.2.2** **Verify the MethodChannel is correctly registered from the overlay context:**
+  - The `SCREEN_CAPTURE_CHANNEL` is registered in `MainActivity.configureFlutterEngine()` (line 249–270).
+  - When the mini menu calls `miniMenuCaptureAndSendScreenshot`, this invokes `_captureAndSend()` in Dart, which calls `ScreenCaptureService().capture()`.
+  - `ScreenCaptureService` uses `MethodChannel('com.pocketwaifu/screen_capture')` — this should work if the FlutterEngine is the same one registered in `MainActivity`.
+  - **Verify:** The `FlutterEngineCache.getInstance().get(ENGINE_ID)` used by `Live2DOverlayService.miniMenuChannel()` returns the same engine as `MainActivity.flutterEngine`. If they share the engine, the MethodChannel handler should be the same.
+
+- [x] **9.2.3** **Handle the "permission already granted" case:**
+  - If `ScreenCapturePlugin.hasPermission()` returns `true` (projectionResultCode is OK and projectionResultData is non-null), the capture should proceed without requiring `startActivityForResult`.
+  - **Problem:** The `projectionResultCode` and `projectionResultData` are instance fields of `ScreenCapturePlugin` — they reset if `MainActivity` is recreated. Ensure the plugin instance is persistent across the Activity lifecycle.
+  - **Check:** `screenCapturePlugin` is initialized in `configureFlutterEngine()` (line 72 of `MainActivity.kt`). If the Activity is recreated, the permission state is lost. Consider persisting permission state in SharedPreferences or a companion object.
+
+- [x] **9.2.4** **Implement screenshot flow resilience:**
+  - Step 1: Add `debugPrint` at every stage in `captureAndSend` in `main.dart`:
+    ```dart
+    captureAndSend: (sessionId, text) async {
+      debugPrint('MiniMenu: captureAndSend called, sessionId=$sessionId');
+      final captureService = ScreenCaptureService();
+      final hasPermission = await captureService.hasPermission();
+      debugPrint('MiniMenu: hasPermission=$hasPermission');
+      if (!hasPermission) {
+        debugPrint('MiniMenu: requesting permission...');
+        final granted = await captureService.requestPermission();
+        debugPrint('MiniMenu: permission granted=$granted');
+        if (!granted) {
+          return {'ok': false, 'error': 'capture_permission_denied'};
+        }
+      }
+      debugPrint('MiniMenu: capturing screen...');
+      final image = await captureService.capture();
+      debugPrint('MiniMenu: capture result=${image != null}');
+      // ...
+    }
+    ```
+  - Step 2: Test on device and trace where the pipeline breaks.
+  - Step 3: Fix the identified issue.
+
+- [x] **9.2.5** **Alternative approach — Reuse ScreenShareProvider's permission:**
+  - The user notes that `ScreenShareSettings` has a working permission grant flow.
+  - Check `ScreenShareProvider` → how it requests MediaProjection permission.
+  - If `ScreenShareProvider` already has a granted projection, reuse that projection for screenshot capture instead of requesting a new one.
+  - This may require exposing the `MediaProjection` or its result code/data from `ScreenShareProvider` / its Android plugin.
+
+- [x] **9.2.6** **Ensure the image attachment is correctly sent to the LLM:**
+  - After capture, `captureAndSend` calls `coordinator.handleMiniMenuReplyWithImages()`.
+  - This calls `_handleNotificationReplyInternal(images: [image])`.
+  - The image is attached to a `Message(role: user, images: [image])`.
+  - Verify the API configuration supports image attachments (vision models like GPT-4o, Claude).
+  - Verify the message builder correctly serializes `ImageAttachment.base64Data` in the API request body.
+
+- [x] **9.2.7** **Test the full screenshot flow end-to-end after fix:**
+  1. Open mini menu → General tab → enter optional message → click Screenshot.
+  2. Menu closes → 300ms delay → permission dialog (if first time) → capture.
+  3. Image + message sent to LLM → assistant response → notification with response.
+
+#### 9.3 Mini Menu State Synchronization Fix
+
+> **Symptom:** The Touch-Through toggle and Notification toggle in the General tab do not reflect the actual current state when the mini menu is opened. The toggles start in a default (unchecked) state instead of the actual state.
+>
+> **Root Cause Analysis:** The `refreshMiniMenuFromFlutter()` method (line 1557–1591 of `Live2DOverlayService.kt`) correctly calls `miniMenuGetTouchThroughEnabled` and `miniMenuGetNotificationEnabled` via the method channel. However, the Dart-side handlers may not be returning the correct state, or the response may arrive after the UI renders.
+
+- [x] **9.3.1** **Debug the touch-through state sync:**
+  - Dart handler in `main.dart` (line 267–269): `getTouchThroughEnabled` calls `Live2DSettings.load()` which reads from persistent storage.
+  - **Problem:** `Live2DSettings.load()` is an async file read. If the saved state doesn't match the runtime state of the overlay, the toggle will be wrong.
+  - **Fix:** Instead of loading from persistent storage, read the **actual runtime state** from `Live2DOverlayService`. The overlay service already has `touchThroughEnabled` as a field — use it directly in the `refreshMiniMenuFromFlutter()` method instead of calling Dart:
+    ```kotlin
+    // In refreshMiniMenuFromFlutter():
+    miniMenuTouchToggle?.let { toggle ->
+        toggle.setOnCheckedChangeListener(null)
+        toggle.isChecked = touchThroughEnabled  // Use the service's actual field directly
+        // Re-attach listener...
+    }
+    ```
+  - This eliminates the need for the method channel round-trip for touch-through state.
+
+- [x] **9.3.2** **Debug the notification enabled state sync:**
+  - Dart handler in `main.dart` (line 255–258): `getNotificationsEnabled` reads `notificationSettingsProvider.notificationSettings.notificationsEnabled`.
+  - **Verify:** This provider may not be updated when the method channel call arrives from the overlay service, because the ProxyProvider may not have rebuilt yet.
+  - **Fix:** Add `debugPrint` to confirm the returned value matches expectations.
+  - If the value is stale, consider calling `notificationSettingsProvider.loadSettings()` before returning the value.
+
+- [x] **9.3.3** **Set initial toggle states synchronously on menu open:**
+  - In `showMiniMenuWindow()` (line 1284–1375), set the touch-through toggle immediately from the service's own state before the async refresh:
+    ```kotlin
+    // After building the UI, before calling refreshMiniMenuFromFlutter():
+    miniMenuTouchToggle?.isChecked = touchThroughEnabled
+    ```
+  - For the notification toggle, call `refreshMiniMenuFromFlutter()` and accept the small delay.
+
+- [x] **9.3.4** **Ensure toggle changes propagate back correctly:**
+  - Touch-through toggle change → calls `miniMenuToggleTouchThrough` → Dart `Live2DQuickToggleService.instance.toggleTouchThrough()` → this should update both the overlay state AND persist the change.
+  - Notification toggle change → calls `miniMenuSetNotificationEnabled` → Dart `notificationSettingsProvider.setNotificationsEnabled()` → this should save the setting and (if disabling) stop the proactive timer.
+  - **Verify:** After toggling, call `refreshMiniMenuFromFlutter()` to re-read the state and confirm propagation.
+
+- [x] **9.3.5** **Test sync end-to-end:**
+  1. Enable touch-through from main app → open menu → verify toggle is ON.
+  2. Disable touch-through from menu → close menu → verify overlay is no longer touch-through.
+  3. Disable notifications from main app → open menu → verify notification toggle is OFF.
+  4. Enable notifications from menu → close menu → verify proactive starts firing.
+
+#### 9.4 Input Tab Send Message Fix
+
+> **Symptom:** Clicking "Send" in the Input tab shows `not_implemented` error. This means the `miniMenuSendMessage` method channel call from Android reaches Flutter but `_handleMethodCall` returns `notImplemented()`.
+>
+> **Root Cause Analysis:** The `MiniMenuService._handleMethodCall()` dispatches to `_sendMessage` (line 100 of `mini_menu_service.dart`). The `_sendMessage` callback is set in `configure()` (line 58) with a handler that calls `coordinator.handleMiniMenuReply()`. The `not_implemented` return means **either:**
+> 1. `configure()` was never called (so `_sendMessage` is null and the handler returns null), OR
+> 2. The method channel call is being routed to a different `MethodChannel` handler that doesn't have the method registered.
+>
+> **Most likely:** The method channel `com.example.flutter_application_1/mini_menu` is registered in both `MainActivity` (line 223–246) and `Live2DOverlayService` (line 1226–1228). The Android side of the mini menu calls methods via `Live2DOverlayService.miniMenuChannel()`, which creates a `MethodChannel` using the `FlutterEngineCache` engine. But the Dart side `MiniMenuService` registers its handler on the **same** channel name. If the Dart handler is set up correctly via `_channel.setMethodCallHandler(_handleMethodCall)`, then any method call from Android should route to it.
+>
+> The issue may be that `MiniMenuService.configure()` (which calls `_channel.setMethodCallHandler`) hasn't been called yet when the first method call arrives. The `configure()` is called inside a `ProxyProvider4.update()` in `main.dart` — this only runs when one of the dependencies changes. **If the mini menu is opened before any provider updates, `configure()` may not have run yet.**
+
+- [x] **9.4.1** **Verify `MiniMenuService.configure()` is called on app startup:**
+  - Add `debugPrint('MiniMenuService: configure() called, _initialized=$_initialized')` at the start of `configure()`.
+  - Check if `configure()` runs before the mini menu is opened.
+  - **Fix if not called:** Move the `setMethodCallHandler` registration to the `MiniMenuService` constructor or `MiniMenuService.instance` initialization, so the handler is always registered regardless of whether `configure()` has been called.
+
+- [x] **9.4.2** **Handle the case where `_sendMessage` is null:**
+  - In `_handleMethodCall`, the `miniMenuSendMessage` case returns `_sendMessage?.call(...)` — if `_sendMessage` is null, it returns `null`. But `null` is NOT the same as `notImplemented()`.
+  - The `notImplemented()` callback in `invokeMiniMenuMethod()` (line 1250–1252 of `Live2DOverlayService.kt`) is triggered when the **Dart side explicitly returns `notImplemented`** — this happens when NO handler is set on the channel at all (`_channel.setMethodCallHandler` was never called).
+  - **Confirm:** This means `_initialized` is `false` and `setMethodCallHandler` hasn't been called.
+
+- [x] **9.4.3** **Fix: Register method handler eagerly in MiniMenuService:**
+  ```dart
+  class MiniMenuService {
+    MiniMenuService._internal() {
+      // Register handler immediately on construction
+      _channel.setMethodCallHandler(_handleMethodCall);
+    }
+    // ...
+    // In configure(), remove the _initialized guard for setMethodCallHandler
+    void configure({...}) {
+      _getActiveSessionId = getActiveSessionId;
+      _getMessages = getMessages;
+      _sendMessage = sendMessage;
+      _captureAndSend = captureAndSend;
+      // ... set all handlers
+      // No longer need to call setMethodCallHandler here
+    }
+  }
+  ```
+  This ensures the Dart side always has a handler for the method channel, even if the specific callbacks haven't been configured yet. If a callback is null, it returns a meaningful error (`handler_unavailable`) instead of `notImplemented`.
+
+- [x] **9.4.4** **Ensure `handleMiniMenuReply` works correctly:**
+  - The `sendMessage` callback in `main.dart` (line 223–229) calls `coordinator.handleMiniMenuReply()`.
+  - `handleMiniMenuReply()` (line 137–150 of `notification_coordinator.dart`) calls `_handleNotificationReplyInternal()`.
+  - This is the **same pipeline** as notification reply — verify it works with the same preset resolution (Path 3 in F4: `notificationSettings.apiPresetId` and `notificationSettings.promptPresetId`).
+
+- [x] **9.4.5** **Test the Input tab Send:**
+  1. Open mini menu → Input tab.
+  2. Type a message → click Send.
+  3. Verify "Responding..." status appears.
+  4. Verify assistant response appears in the chat history.
+  5. Verify the message appears in the main chat screen.
+
+#### 9.5 Input Tab Chat History Fix
+
+> **Symptom:** The Input tab's message list is empty even when there are messages in the active session.
+>
+> **Root Cause Analysis:** Same as §9.4 — `miniMenuGetMessages` is also routed through the method channel, and if `_handleMethodCall` is not registered, the call returns `notImplemented`. Additionally, `refreshMessages()` (line 1593–1608 of `Live2DOverlayService.kt`) calls the method channel and then `renderMessages()`.
+
+- [x] **9.5.1** After applying fix **9.4.3** (eager handler registration), verify that `miniMenuGetMessages` returns the correct message list.
+
+- [x] **9.5.2** **Verify message serialization:**
+  - The `getMessages` handler in `main.dart` (line 210–222) maps each `Message` to `{'id', 'role', 'content', 'timestamp'}`.
+  - `renderMessages()` in `Live2DOverlayService.kt` (line 1611–1634) reads `role` and `content` from the returned list.
+  - Verify the Dart→Android serialization doesn't lose data (Dart `List<Map>` → Android `List<Map<*, *>>`).
+
+- [x] **9.5.3** **Verify auto-scroll works:**
+  - After `renderMessages()` populates the `miniMenuMessagesContainer`, the `ScrollView` parent should auto-scroll to the bottom.
+  - Add `scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }` after rendering, if not already present.
+
+- [x] **9.5.4** **Verify real-time updates:**
+  - The mini menu polls every 2 seconds via `startMiniMenuPolling()` (line 1396–1406) calling `refreshMiniMenuFromFlutter()` which calls `refreshMessages()`.
+  - After a message is sent (§9.4), the polling should pick up the new messages.
+  - Test: Send a message → wait 2 seconds → verify the new user+assistant messages appear.
+
+---
+
 ## Implementation Order (Recommended)
 
 | Phase | Tasks | Dependencies |
@@ -482,6 +732,17 @@ The final API call structure has **three distinct invocation methods**, each wit
 | **Phase 6** | Main1 §6 (General tab) | Phase 5 |
 | **Phase 7** | Main1 §7 (Input tab / mini chat) | Phase 5, Phase 3 |
 | **Phase 8** | Main1 §8 (Settings tab placeholder) | Phase 5 |
+| **Phase 9** | Post1 §9 (Bug fixes from live testing) | Phase 6, 7, 8 |
+
+### Phase 9 — Recommended Sub-Order
+
+| Sub-Phase | Task | Rationale |
+|-----------|------|-----------|
+| **9a** | §9.4 (Input tab Send fix — eager handler) | Unblocks §9.5 and likely fixes §9.3 state sync too. Highest impact single fix. |
+| **9b** | §9.5 (Input tab Chat History) | Depends on §9.4. Should work after handler registration fix. |
+| **9c** | §9.3 (State sync — touch-through & notification toggles) | Independent fix. Use direct service field for touch-through. |
+| **9d** | §9.1 (Test notification re-reply) | Investigate sessionId flow. Relatively isolated. |
+| **9e** | §9.2 (Screenshot full pipeline) | Most complex. Requires permission flow rework. Do last. |
 
 ---
 
@@ -495,6 +756,7 @@ The final API call structure has **three distinct invocation methods**, each wit
 | `lib/services/notification_bridge.dart` | Dart ↔ Android method channel bridge for standalone notifications |
 | `lib/services/notification_coordinator.dart` | Central coordinator for reply handling & proactive triggering |
 | `lib/services/proactive_response_service.dart` | Timer-based proactive response service |
+| `lib/services/mini_menu_service.dart` | Dart-side mini menu method channel handler & callbacks |
 | `lib/screens/notification_settings_screen.dart` | Notification settings UI screen |
 | `lib/services/screen_capture_service.dart` | Screen capture method channel service |
 | `lib/providers/screen_capture_provider.dart` | Screen capture state management |
@@ -505,7 +767,8 @@ The final API call structure has **three distinct invocation methods**, each wit
 | `android/.../notifications/NotificationActionReceiver.kt` | Handles notification reply/menu actions |
 | `android/.../notifications/NotificationActionStore.kt` | Queues pending actions for Flutter |
 | `android/.../notifications/NotificationConstants.kt` | Notification channel/action constants |
-| `android/.../live2d/overlay/Live2DOverlayService.kt` | Overlay foreground service — simplified to basic indicator |
+| `android/.../live2d/overlay/Live2DOverlayService.kt` | Overlay foreground service + mini menu overlay + method channel calls |
+| `android/.../ScreenCapturePlugin.kt` | MediaProjection-based screen capture (permission + capture logic) |
 | `android/.../MainActivity.kt` | Flutter engine + method channel registration |
 | `lib/features/live2d/data/services/live2d_overlay_service.dart` | Dart-side overlay service wrapper |
 
@@ -533,3 +796,7 @@ The final API call structure has **three distinct invocation methods**, each wit
 7. **Preset isolation (Finding F4):** The three API call paths (main chat, proactive, reply) must each resolve their own presets independently. This is a critical correctness requirement — mixing presets across paths would cause unexpected behavior (e.g., proactive using the reply API key or vice versa).
 
 8. **Backward compatibility of overlay notification removal:** The `Live2DOverlayService` (Dart-side) calls `setNotificationResponse()` / `setNotificationError()` to update the overlay notification content. After migration, these calls need to be redirected to update the **standalone** notification instead, or removed entirely if the standalone notification already handles this via `NotificationBridge.showPreResponseNotification()`.
+
+9. **Screenshot permission from Service context (§9.2):** `ScreenCapturePlugin.requestPermission()` requires `startActivityForResult()` which only works from an Activity. When the mini menu triggers capture from `Live2DOverlayService`, the Activity may not be visible. The recommended approach is to either (a) bring `MainActivity` to foreground briefly for permission, or (b) reuse the already-stored MediaProjection result code/data from a previous `ScreenShareProvider` permission grant. If neither is available, the screenshot feature must gracefully show an error telling the user to grant permission from the main app first.
+
+10. **MiniMenuService method handler registration timing (§9.4):** The `setMethodCallHandler` must be registered before any method call arrives from Android. The current implementation defers registration to `configure()` which may not have been called yet. Moving registration to the constructor ensures it's always ready.

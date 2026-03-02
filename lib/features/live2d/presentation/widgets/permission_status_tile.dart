@@ -30,8 +30,8 @@ class PermissionStatusTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: allPermissionsGranted
-          ? theme.colorScheme.primaryContainer.withOpacity(0.3)
-          : theme.colorScheme.errorContainer.withOpacity(0.3),
+          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+          : theme.colorScheme.errorContainer.withValues(alpha: 0.3),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -160,8 +160,8 @@ class _PermissionRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isGranted
-              ? Colors.green.withOpacity(0.5)
-              : theme.colorScheme.error.withOpacity(0.5),
+              ? Colors.green.withValues(alpha: 0.5)
+              : theme.colorScheme.error.withValues(alpha: 0.5),
         ),
       ),
       child: Row(
@@ -171,7 +171,7 @@ class _PermissionRow extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: isGranted
-                  ? Colors.green.withOpacity(0.2)
+                  ? Colors.green.withValues(alpha: 0.2)
                   : theme.colorScheme.errorContainer,
               borderRadius: BorderRadius.circular(8),
             ),
@@ -201,7 +201,7 @@ class _PermissionRow extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.2),
+                          color: Colors.green.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(

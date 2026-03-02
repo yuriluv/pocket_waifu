@@ -58,6 +58,9 @@ class NotificationBridge {
     String? sessionId,
   }) async {
     // Notification pipeline diagnostics: last Dart-side stage before Android native dispatch.
+    debugPrint(
+      'NotificationBridge: showPreResponseNotification session=$sessionId error=$isError',
+    );
     await _channel.invokeMethod('showPreResponseNotification', {
       'title': title,
       'message': message,

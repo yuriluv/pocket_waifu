@@ -9,6 +9,7 @@ import com.example.flutter_application_1.live2d.core.Live2DManager
 import com.example.flutter_application_1.live2d.core.Live2DModel
 import com.example.flutter_application_1.live2d.cubism.CubismFrameworkManager
 import com.example.flutter_application_1.live2d.cubism.CubismModel
+import com.example.flutter_application_1.live2d.cubism.Live2DNativeBridge
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -21,6 +22,14 @@ import javax.microedition.khronos.opengles.GL10
  * 
  */
 class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
+
+    data class ParameterUpdate(
+        val paramId: String,
+        val targetValue: Float,
+        val durationMs: Int,
+        var startValue: Float? = null,
+        var elapsedMs: Float = 0f
+    )
     
     companion object {
         private const val TAG = "Live2DGLRenderer"
@@ -119,6 +128,8 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     
     private var enableFpsLimit = true
     private var lowPowerMode = false
+
+    private val pendingParameterUpdates = mutableListOf<ParameterUpdate>()
     
     @Volatile private var fboPathLogged = false
     
@@ -238,6 +249,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
         
         val deltaTime = (elapsed.coerceIn(1L, 100L) / 1000f)
+        processPendingParameterUpdates(deltaTime * 1000f)
         
         GLES20.glClearColor(0f, 0f, 0f, 0f)
         GLES20.glEnable(GLES20.GL_BLEND)
@@ -593,7 +605,41 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
      */
     fun setParameterValue(paramId: String, value: Float, durationMs: Int) {
         Live2DLogger.Renderer.d("파라미터 설정", "$paramId = $value ($durationMs ms)")
-        // live2DModel?.setParameterValue(paramId, value, durationMs)
+        pendingParameterUpdates.removeAll { it.paramId == paramId }
+        pendingParameterUpdates.add(
+            ParameterUpdate(
+                paramId = paramId,
+                targetValue = value,
+                durationMs = durationMs.coerceAtLeast(0)
+            )
+        )
+    }
+
+    private fun processPendingParameterUpdates(deltaMs: Float) {
+        if (pendingParameterUpdates.isEmpty()) return
+        val iterator = pendingParameterUpdates.iterator()
+        while (iterator.hasNext()) {
+            val update = iterator.next()
+            if (update.durationMs <= 0) {
+                Live2DNativeBridge.nativeSetParameterValue(update.paramId, update.targetValue)
+                iterator.remove()
+                continue
+            }
+
+            if (update.startValue == null) {
+                update.startValue = Live2DNativeBridge.nativeGetParameterValue(update.paramId)
+            }
+
+            update.elapsedMs += deltaMs
+            val progress = (update.elapsedMs / update.durationMs.toFloat()).coerceIn(0f, 1f)
+            val start = update.startValue ?: update.targetValue
+            val currentValue = start + ((update.targetValue - start) * progress)
+            Live2DNativeBridge.nativeSetParameterValue(update.paramId, currentValue)
+
+            if (progress >= 1f) {
+                iterator.remove()
+            }
+        }
     }
     
     /**
@@ -661,6 +707,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             
             currentModel?.dispose()
             currentModel = null
+            pendingParameterUpdates.clear()
             
             placeholderShader?.dispose()
             placeholderShader = null

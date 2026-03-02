@@ -11,6 +11,7 @@ import '../../data/services/gesture_motion_mapper.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/model3_json_parser.dart';
 import '../../domain/entities/interaction_event.dart';
+import 'live2d_function_test_screen.dart';
 
 class Live2DAdvancedSettingsScreen extends StatefulWidget {
   const Live2DAdvancedSettingsScreen({
@@ -87,6 +88,20 @@ class _Live2DAdvancedSettingsScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Live2D 고급 설정'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.science),
+            tooltip: 'Live2D Function Test',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => Live2DFunctionTestScreen(modelPath: widget.model3Path),
+                ),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

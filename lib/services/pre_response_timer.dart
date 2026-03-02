@@ -143,6 +143,9 @@ class PreResponseTimer {
 
     final elapsed = DateTime.now().difference(_cycleStartedAt!);
     final newRemaining = newTotal - elapsed;
+    if (newRemaining.inSeconds == oldRemaining.inSeconds) {
+      return;
+    }
     if (newRemaining <= Duration.zero) {
       debugPrint(
         'Timer recalculated: was ${oldRemaining.inMinutes}m remaining, now overdue. Firing now '
