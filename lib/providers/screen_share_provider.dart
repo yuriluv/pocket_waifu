@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/screen_share_settings.dart';
+import '../services/adb_screen_capture_service.dart';
 import '../services/screen_capture_service.dart';
 
 class ScreenShareProvider extends ChangeNotifier {
   static const String _prefsKey = 'screen_share_settings_v1';
 
   final ScreenCaptureService _captureService = ScreenCaptureService();
+  final AdbScreenCaptureService _adbCaptureService = AdbScreenCaptureService();
 
   ScreenShareSettings _settings = const ScreenShareSettings();
   bool _isLoading = false;
@@ -35,6 +37,10 @@ class ScreenShareProvider extends ChangeNotifier {
       }
       final hasPermission = await _captureService.hasPermission();
       _settings = _settings.copyWith(isPermissionGranted: hasPermission);
+      if (_settings.captureMethod == CaptureMethod.adb) {
+        final shizukuConnected = await _adbCaptureService.isShizukuRunning();
+        _settings = _settings.copyWith(isAdbConnected: shizukuConnected);
+      }
     } catch (e) {
       debugPrint('ScreenShareProvider load failed: $e');
     } finally {
@@ -98,6 +104,33 @@ class ScreenShareProvider extends ChangeNotifier {
 
   Future<void> setMaxResolution(int resolution) async {
     _settings = _settings.copyWith(maxResolution: resolution);
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> setCaptureMethod(CaptureMethod method) async {
+    var isAdbConnected = _settings.isAdbConnected;
+    if (method == CaptureMethod.adb) {
+      isAdbConnected = await _adbCaptureService.isShizukuRunning();
+    }
+    _settings = _settings.copyWith(
+      captureMethod: method,
+      isAdbConnected: isAdbConnected,
+    );
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> requestAdbPermission() async {
+    final granted = await _adbCaptureService.requestPermission();
+    final connected = await _adbCaptureService.isShizukuRunning();
+    _settings = _settings.copyWith(
+      isAdbConnected: connected && granted,
+      isPermissionGranted:
+          _settings.captureMethod == CaptureMethod.mediaProjection
+          ? _settings.isPermissionGranted
+          : granted,
+    );
     await _persist();
     notifyListeners();
   }

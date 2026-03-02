@@ -49,6 +49,7 @@ class MainActivity : FlutterActivity() {
         private const val NOTIFICATION_CHANNEL = "com.example.flutter_application_1/notifications"
         private const val MINI_MENU_CHANNEL = "com.example.flutter_application_1/mini_menu"
         private const val SCREEN_CAPTURE_CHANNEL = "com.pocketwaifu/screen_capture"
+        private const val ADB_CAPTURE_CHANNEL = "com.pocketwaifu/adb_screen_capture"
         private const val ENGINE_ID = "main_engine"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
         private const val REQUEST_SCREEN_CAPTURE_PERMISSION = 1002
@@ -63,6 +64,7 @@ class MainActivity : FlutterActivity() {
     private var modelRootPath: String? = null
     private val localServer = Live2DLocalServer.getInstance()
     private lateinit var screenCapturePlugin: ScreenCapturePlugin
+    private lateinit var adbScreenCapturePlugin: AdbScreenCapturePlugin
     
     val serverUrl: String get() = "http://$SERVER_HOST:$SERVER_PORT"
     
@@ -70,6 +72,7 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
 
         screenCapturePlugin = ScreenCapturePlugin(this, ::runOnUiThread)
+        adbScreenCapturePlugin = AdbScreenCapturePlugin(this)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -264,6 +267,59 @@ class MainActivity : FlutterActivity() {
                     }
                     "release" -> {
                         screenCapturePlugin.release()
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ADB_CAPTURE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isShizukuInstalled" -> {
+                        result.success(adbScreenCapturePlugin.isShizukuInstalled())
+                    }
+                    "isShizukuRunning" -> {
+                        result.success(adbScreenCapturePlugin.isShizukuRunning())
+                    }
+                    "hasPermission" -> {
+                        result.success(adbScreenCapturePlugin.hasShizukuPermission())
+                    }
+                    "requestPermission" -> {
+                        adbScreenCapturePlugin.requestShizukuPermission { granted ->
+                            runOnUiThread {
+                                result.success(granted)
+                            }
+                        }
+                    }
+                    "captureScreen" -> {
+                        Thread {
+                            val maxResolution = call.argument<Int>("maxResolution") ?: 0
+                            val data = adbScreenCapturePlugin.captureScreen(maxResolution)
+                            runOnUiThread {
+                                if (data != null) {
+                                    result.success(data)
+                                } else {
+                                    result.error("CAPTURE_FAILED", "ADB screencap failed", null)
+                                }
+                            }
+                        }.start()
+                    }
+                    "getConnectionStatus" -> {
+                        result.success(
+                            mapOf(
+                                "installed" to adbScreenCapturePlugin.isShizukuInstalled(),
+                                "running" to adbScreenCapturePlugin.isShizukuRunning(),
+                                "permission" to adbScreenCapturePlugin.hasShizukuPermission(),
+                            ),
+                        )
+                    }
+                    "openShizukuPlayStore" -> {
+                        adbScreenCapturePlugin.openShizukuPlayStore()
+                        result.success(true)
+                    }
+                    "openShizukuApp" -> {
+                        adbScreenCapturePlugin.openShizukuApp()
                         result.success(true)
                     }
                     else -> result.notImplemented()

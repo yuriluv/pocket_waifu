@@ -137,8 +137,23 @@ class Model3JsonParser {
     Map<String, dynamic> root,
     String source,
   ) {
-    final parameterRoot = root['Parameters'];
+    // Check multiple locations where parameters might be defined
+    final parameterRoot = root['Parameters']
+        ?? (root['FileReferences'] is Map<String, dynamic>
+            ? (root['FileReferences'] as Map<String, dynamic>)['Parameters']
+            : null);
+
     if (parameterRoot is! List) {
+      // Try to find parameter groups (CDI3 format)
+      final groups = root['Groups'];
+      if (groups is List) {
+        final paramGroup = groups.whereType<Map<String, dynamic>>()
+            .where((g) => g['Target'] == 'Parameter')
+            .toList();
+        if (paramGroup.isNotEmpty) {
+          live2dLog.debug(_tag, 'Found parameter groups but no parameter definitions', details: source);
+        }
+      }
       live2dLog.warning(_tag, 'No parameter definitions found in model3.json', details: source);
       return const <Model3Parameter>[];
     }

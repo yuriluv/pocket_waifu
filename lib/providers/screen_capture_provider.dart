@@ -1,12 +1,14 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/message.dart';
-import '../services/screen_capture_service.dart';
+import '../models/screen_share_settings.dart';
+import '../services/unified_capture_service.dart';
 
 enum ScreenCapturePermissionStatus { unknown, denied, granted, unavailable }
 
 class ScreenCaptureProvider extends ChangeNotifier {
-  final ScreenCaptureService _service = ScreenCaptureService();
+  final UnifiedCaptureService _service = UnifiedCaptureService();
+  ScreenShareSettings _settings = const ScreenShareSettings();
 
   ScreenCapturePermissionStatus _permissionStatus =
       ScreenCapturePermissionStatus.unknown;
@@ -19,15 +21,12 @@ class ScreenCaptureProvider extends ChangeNotifier {
   bool get isCapturing => _isCapturing;
   ImageAttachment? get lastCapture => _lastCapture;
 
-  Future<void> refreshPermission() async {
-    final available = await _service.isAvailable();
-    if (!available) {
-      _permissionStatus = ScreenCapturePermissionStatus.unavailable;
-      notifyListeners();
-      return;
-    }
+  void syncSettings(ScreenShareSettings settings) {
+    _settings = settings;
+  }
 
-    final granted = await _service.hasPermission();
+  Future<void> refreshPermission() async {
+    final granted = await _service.hasPermission(_settings.captureMethod);
     _permissionStatus = granted
         ? ScreenCapturePermissionStatus.granted
         : ScreenCapturePermissionStatus.denied;
@@ -35,14 +34,7 @@ class ScreenCaptureProvider extends ChangeNotifier {
   }
 
   Future<void> requestPermission() async {
-    final available = await _service.isAvailable();
-    if (!available) {
-      _permissionStatus = ScreenCapturePermissionStatus.unavailable;
-      notifyListeners();
-      return;
-    }
-
-    final granted = await _service.requestPermission();
+    final granted = await _service.requestPermission(_settings.captureMethod);
     _permissionStatus = granted
         ? ScreenCapturePermissionStatus.granted
         : ScreenCapturePermissionStatus.denied;
@@ -53,7 +45,7 @@ class ScreenCaptureProvider extends ChangeNotifier {
     _isCapturing = true;
     notifyListeners();
     try {
-      _lastCapture = await _service.capture();
+      _lastCapture = await _service.capture(_settings);
       return _lastCapture;
     } finally {
       _isCapturing = false;

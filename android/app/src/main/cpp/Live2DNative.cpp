@@ -14,6 +14,7 @@
 // inside namespace Live2D::Cubism::Core. Including the raw C header first would
 // put types in the global namespace and block the namespace wrapper via #pragma once.
 #include "CubismFramework.hpp"
+#include "Id/CubismId.hpp"
 #include "Model/CubismMoc.hpp"
 #include "Model/CubismModel.hpp"
 #include "Math/CubismMatrix44.hpp"
@@ -286,7 +287,10 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
     std::lock_guard<std::mutex> lock(gMutex);
 
     const jclass stringClass = env->FindClass("java/lang/String");
-    if (!gModel || !stringClass) {
+    if (!stringClass) {
+        return nullptr;
+    }
+    if (!gModel) {
         return env->NewObjectArray(0, stringClass, nullptr);
     }
 
@@ -296,9 +300,9 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
         return env->NewObjectArray(0, stringClass, nullptr);
     }
 
-    const auto ids = gModel->GetParameterIds();
     for (csmInt32 i = 0; i < count; ++i) {
-        const char* id = reinterpret_cast<const char*>(ids[i]);
+        const CubismIdHandle idHandle = gModel->GetParameterId(static_cast<csmUint32>(i));
+        const char* id = (idHandle != nullptr) ? idHandle->GetString().GetRawString() : nullptr;
         if (!id) {
             continue;
         }
@@ -325,14 +329,13 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
     }
 
     const csmInt32 count = gModel->GetParameterCount();
-    const auto ids = gModel->GetParameterIds();
-    const auto values = gModel->GetParameterValues();
 
     jfloat result = 0.0f;
     for (csmInt32 i = 0; i < count; ++i) {
-        const char* id = reinterpret_cast<const char*>(ids[i]);
+        const CubismIdHandle idHandle = gModel->GetParameterId(static_cast<csmUint32>(i));
+        const char* id = (idHandle != nullptr) ? idHandle->GetString().GetRawString() : nullptr;
         if (id && std::strcmp(id, requested) == 0) {
-            result = values[i];
+            result = gModel->GetParameterValue(i);
             break;
         }
     }
@@ -356,10 +359,10 @@ Java_com_example_flutter_1application_11_live2d_cubism_Live2DNativeBridge_native
     }
 
     const csmInt32 count = gModel->GetParameterCount();
-    const auto ids = gModel->GetParameterIds();
 
     for (csmInt32 i = 0; i < count; ++i) {
-        const char* id = reinterpret_cast<const char*>(ids[i]);
+        const CubismIdHandle idHandle = gModel->GetParameterId(static_cast<csmUint32>(i));
+        const char* id = (idHandle != nullptr) ? idHandle->GetString().GetRawString() : nullptr;
         if (id && std::strcmp(id, requested) == 0) {
             gModel->SetParameterValue(i, value);
             break;

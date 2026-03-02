@@ -19,8 +19,9 @@ import 'providers/notification_settings_provider.dart';
 import 'providers/prompt_preset_provider.dart';
 import 'providers/screen_share_provider.dart';
 import 'providers/screen_capture_provider.dart';
+import 'models/screen_share_settings.dart';
 import 'services/release_log_service.dart';
-import 'services/screen_capture_service.dart';
+import 'services/unified_capture_service.dart';
 import 'services/notification_bridge.dart';
 import 'services/notification_coordinator.dart';
 import 'services/proactive_response_service.dart';
@@ -96,7 +97,14 @@ class PocketWaifuApp extends StatelessWidget {
 
         ChangeNotifierProvider(create: (_) => ScreenShareProvider()),
 
-        ChangeNotifierProvider(create: (_) => ScreenCaptureProvider()),
+        ChangeNotifierProxyProvider<ScreenShareProvider, ScreenCaptureProvider>(
+          create: (_) => ScreenCaptureProvider(),
+          update: (_, screenShareProvider, screenCaptureProvider) {
+            final provider = screenCaptureProvider ?? ScreenCaptureProvider();
+            provider.syncSettings(screenShareProvider.settings);
+            return provider;
+          },
+        ),
 
         ChangeNotifierProxyProvider<PromptBlockProvider, PromptPresetProvider>(
           create: (_) => PromptPresetProvider(),
@@ -194,6 +202,7 @@ class PocketWaifuApp extends StatelessWidget {
           SettingsProvider,
           MiniMenuService
         >(
+          lazy: false,
           create: (_) => MiniMenuService.instance,
           update:
               (
@@ -230,41 +239,66 @@ class PocketWaifuApp extends StatelessWidget {
                   captureAndSend: (sessionId, text) async {
                     try {
                       debugPrint(
-                        'MiniMenu: captureAndSend called sessionId=$sessionId',
+                        'MiniMenu: captureAndSend called sessionId=$sessionId text="${text.length > 20 ? text.substring(0, 20) : text}"',
                       );
-                      final captureService = ScreenCaptureService();
-                      final hasPermission = await captureService.hasPermission();
+                      final settings = context.read<ScreenShareProvider>().settings;
+                      final captureService = UnifiedCaptureService();
+                      final hasPermission = await captureService.hasPermission(
+                        settings.captureMethod,
+                      );
                       debugPrint('MiniMenu: hasPermission=$hasPermission');
                       if (!hasPermission) {
-                        debugPrint('MiniMenu: requesting capture permission');
-                        final granted = await captureService.requestPermission();
-                        debugPrint('MiniMenu: permission granted=$granted');
-                        if (!granted) {
+                        try {
+                          debugPrint('MiniMenu: requesting capture permission from overlay');
+                          final granted = await captureService.requestPermission(
+                            settings.captureMethod,
+                          );
+                          debugPrint('MiniMenu: permission granted=$granted');
+                          if (!granted) {
+                            return {
+                              'ok': false,
+                              'error': 'capture_permission_denied',
+                              'message': settings.captureMethod == CaptureMethod.adb
+                                  ? 'Shizuku 권한이 없습니다. 설정에서 Shizuku 연결을 확인하세요.'
+                                  : '화면 캡처 권한이 없습니다. 앱에서 Screen Share 설정을 확인하세요.',
+                            };
+                          }
+                        } catch (permError) {
+                          debugPrint('MiniMenu: permission request failed (likely no Activity): $permError');
                           return {
                             'ok': false,
-                            'error': 'capture_permission_denied',
+                            'error': 'capture_permission_unavailable',
+                            'message': '앱에서 먼저 화면 캡처 권한을 허용해 주세요.',
                           };
                         }
                       }
-                      debugPrint('MiniMenu: capturing screen');
-                      final image = await captureService.capture();
+                      debugPrint('MiniMenu: capturing screen...');
+                      final image = await captureService.capture(settings);
                       debugPrint('MiniMenu: capture result available=${image != null}');
                       if (image == null) {
+                        debugPrint('MiniMenu: capture returned null - MediaProjection may have expired');
                         return {
                           'ok': false,
                           'error': 'capture_failed',
+                          'message': '화면 캡처에 실패했습니다. 앱에서 Screen Share를 재설정하세요.',
                         };
                       }
-                      return coordinator.handleMiniMenuReplyWithImages(
+                      debugPrint('MiniMenu: sending screenshot to coordinator '
+                          'imageId=${image.id} size=${image.width}x${image.height}');
+                      final result = await coordinator.handleMiniMenuReplyWithImages(
                         message: text,
                         images: [image],
                         sessionId: sessionId,
                       );
-                    } catch (e) {
+                      debugPrint('MiniMenu: coordinator result=$result');
+                      return result;
+                    } catch (e, stack) {
                       debugPrint('MiniMenu: captureAndSend exception=$e');
+                      debugPrint('MiniMenu: captureAndSend stack=$stack');
                       return {
                         'ok': false,
                         'error': 'capture_exception',
+                        'message': '스크린샷 처리 중 오류: $e',
                       };
                     }
                   },

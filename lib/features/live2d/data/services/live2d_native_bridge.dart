@@ -593,6 +593,28 @@ class Live2DNativeBridge {
     }
   }
 
+  Future<Map<String, double>> getRuntimeParameterValues() async {
+    try {
+      final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getRuntimeParameterValues',
+      );
+      if (result == null) return {};
+      final map = <String, double>{};
+      result.forEach((key, value) {
+        final parsed = (value as num?)?.toDouble();
+        if (key != null && parsed != null) {
+          map[key.toString()] = parsed;
+        }
+      });
+      return map;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getRuntimeParameterValues 실패', error: e);
+      return {};
+    } on MissingPluginException {
+      return {};
+    }
+  }
+
   Future<bool> setPosition(double x, double y) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setPosition', {

@@ -14,9 +14,11 @@ import '../providers/prompt_block_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/global_runtime_registry.dart';
+import '../services/image_cache_manager.dart';
 import '../services/live2d_quick_toggle_service.dart';
 import '../services/mini_menu_service.dart';
 import '../services/notification_bridge.dart';
+import '../services/prompt_builder.dart';
 
 enum NotificationRequestOrigin { reply, proactive }
 
@@ -28,6 +30,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
 
   final NotificationBridge _bridge;
   final ApiService _apiService = ApiService();
+  final PromptBuilder _promptBuilder = PromptBuilder();
   final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
   final Live2DDirectiveService _directiveService =
@@ -242,6 +245,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           sessionProvider: sessionProvider,
           sessionId: resolvedSessionId,
           currentInput: preparedInput,
+          currentImages: images,
           apiConfig: apiConfig,
           promptPresetId: notificationSettings.promptPresetId,
           requestHandle: requestHandle,
@@ -330,6 +334,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           sessionProvider: sessionProvider,
           sessionId: sessionId,
           currentInput: '',
+          currentImages: const <ImageAttachment>[],
           apiConfig: apiConfig,
           promptPresetId: proactiveSettings?.promptPresetId,
           requestHandle: requestHandle,
@@ -517,6 +522,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required ChatSessionProvider sessionProvider,
     required String sessionId,
     required String currentInput,
+    required List<ImageAttachment> currentImages,
     required ApiConfig? apiConfig,
     required String? promptPresetId,
     required ApiRequestHandle requestHandle,
@@ -535,6 +541,30 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       skipInputBlock: skipInputBlock,
       presetId: promptPresetId,
     );
+
+    if (currentInput.trim().isNotEmpty || currentImages.isNotEmpty) {
+      final hydratedImages = <ImageAttachment>[];
+      for (final image in currentImages) {
+        if (image.base64Data.isNotEmpty) {
+          hydratedImages.add(image);
+          continue;
+        }
+        final filePath = image.thumbnailPath;
+        if (filePath != null && filePath.isNotEmpty) {
+          final base64 = await ImageCacheManager.instance.loadBase64(filePath);
+          if (base64 != null && base64.isNotEmpty) {
+            hydratedImages.add(image.copyWith(base64Data: base64));
+            continue;
+          }
+        }
+        hydratedImages.add(image);
+      }
+
+      final dynamic userContent = hydratedImages.isEmpty
+          ? currentInput
+          : _promptBuilder.buildMultimodalContent(currentInput, hydratedImages);
+      formattedMessages.add({'role': 'user', 'content': userContent});
+    }
 
     return _apiService.sendMessageWithConfig(
       apiConfig: resolvedConfig,

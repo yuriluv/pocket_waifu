@@ -1255,6 +1255,23 @@ class Live2DOverlayService : Service() {
         })
     }
 
+    private fun withResolvedMiniMenuSessionId(onReady: (String?) -> Unit) {
+        if (!miniMenuSessionId.isNullOrBlank()) {
+            onReady(miniMenuSessionId)
+            return
+        }
+        invokeMiniMenuMethod(
+            "miniMenuGetActiveSessionId",
+            onSuccess = { result ->
+                miniMenuSessionId = result as? String
+                onReady(miniMenuSessionId)
+            },
+            onError = {
+                onReady(miniMenuSessionId)
+            },
+        )
+    }
+
     private fun openMiniMenu(sessionId: String?) {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(
@@ -1282,6 +1299,9 @@ class Live2DOverlayService : Service() {
         }
         showMiniMenuWindow()
     }
+
+    private var miniMenuTabButtons: List<Button>? = null
+    private var miniMenuCurrentTabIndex = 0
 
     private fun showMiniMenuWindow() {
         if (miniMenuOverlayView != null) return
@@ -1312,6 +1332,8 @@ class Live2DOverlayService : Service() {
         val generalButton = Button(this).apply { text = "General" }
         val inputButton = Button(this).apply { text = "Input" }
         val settingsButton = Button(this).apply { text = "설정" }
+        val tabButtonList = listOf(generalButton, inputButton, settingsButton)
+        miniMenuTabButtons = tabButtonList
         tabs.addView(generalButton)
         tabs.addView(inputButton)
         tabs.addView(settingsButton)
@@ -1320,10 +1342,24 @@ class Live2DOverlayService : Service() {
         val inputTab = buildInputTab()
         val settingsTab = buildSettingsTab()
 
+        fun updateTabStyle(selectedIndex: Int) {
+            for ((i, btn) in tabButtonList.withIndex()) {
+                if (i == selectedIndex) {
+                    btn.setBackgroundColor(0xFF2196F3.toInt())
+                    btn.setTextColor(Color.WHITE)
+                } else {
+                    btn.setBackgroundColor(Color.LTGRAY)
+                    btn.setTextColor(Color.BLACK)
+                }
+            }
+        }
+
         fun showTab(index: Int) {
+            miniMenuCurrentTabIndex = index
             generalTab.visibility = if (index == 0) View.VISIBLE else View.GONE
             inputTab.visibility = if (index == 1) View.VISIBLE else View.GONE
             settingsTab.visibility = if (index == 2) View.VISIBLE else View.GONE
+            updateTabStyle(index)
             if (index == 0) {
                 refreshMiniMenuFromFlutter()
             }
@@ -1385,6 +1421,9 @@ class Live2DOverlayService : Service() {
 
     private fun closeMiniMenu() {
         stopMiniMenuPolling()
+        // Clear focus first to avoid IME warnings
+        miniMenuInputField?.clearFocus()
+        miniMenuScreenshotText?.clearFocus()
         hideMiniMenuKeyboard()
         miniMenuOverlayView?.let {
             try {
@@ -1402,6 +1441,8 @@ class Live2DOverlayService : Service() {
         miniMenuScreenshotText = null
         miniMenuTouchToggle = null
         miniMenuNotificationToggle = null
+        miniMenuTabButtons = null
+        miniMenuCurrentTabIndex = 0
     }
 
     private fun hideMiniMenuKeyboard() {
@@ -1448,13 +1489,33 @@ class Live2DOverlayService : Service() {
             text = "스크린샷"
             setOnClickListener {
                 val text = miniMenuScreenshotText?.text?.toString()?.trim().orEmpty()
-                closeMiniMenu()
-                miniMenuHandler.postDelayed({
-                    invokeMiniMenuMethod(
-                        "miniMenuCaptureAndSendScreenshot",
-                        mapOf("sessionId" to miniMenuSessionId, "text" to text),
-                    )
-                }, 300)
+                miniMenuStatusText?.text = "Capturing..."
+                withResolvedMiniMenuSessionId { resolvedSessionId ->
+                    closeMiniMenu()
+                    miniMenuHandler.postDelayed({
+                        invokeMiniMenuMethod(
+                            "miniMenuCaptureAndSendScreenshot",
+                            mapOf("sessionId" to resolvedSessionId, "text" to text),
+                            onSuccess = { result ->
+                                val map = result as? Map<*, *>
+                                val ok = map?.get("ok") as? Boolean ?: false
+                                val error = map?.get("message")?.toString()
+                                    ?: map?.get("error")?.toString()
+                                if (!ok) {
+                                    miniMenuStatusText?.text = "오류: ${error ?: "unknown"}"
+                                    Live2DLogger.Overlay.w("스크린샷 전송 실패", error ?: "unknown")
+                                } else {
+                                    miniMenuStatusText?.text = ""
+                                    Live2DLogger.Overlay.d("스크린샷 전송 완료", null)
+                                }
+                            },
+                            onError = { err ->
+                                miniMenuStatusText?.text = "오류: $err"
+                                Live2DLogger.Overlay.w("스크린샷 캡처 오류", err)
+                            },
+                        )
+                    }, 500)
+                }
             }
         }
 
@@ -1549,18 +1610,29 @@ class Live2DOverlayService : Service() {
                 val text = miniMenuInputField?.text?.toString()?.trim().orEmpty()
                 if (text.isEmpty()) return@setOnClickListener
                 miniMenuStatusText?.text = "Responding..."
-                invokeMiniMenuMethod(
-                    "miniMenuSendMessage",
-                    mapOf("sessionId" to miniMenuSessionId, "message" to text),
-                    onSuccess = {
-                        miniMenuInputField?.setText("")
-                        miniMenuStatusText?.text = ""
-                        refreshMessages()
-                    },
-                    onError = {
-                        miniMenuStatusText?.text = "오류: $it"
-                    },
-                )
+                withResolvedMiniMenuSessionId { resolvedSessionId ->
+                    invokeMiniMenuMethod(
+                        "miniMenuSendMessage",
+                        mapOf("sessionId" to resolvedSessionId, "message" to text),
+                        onSuccess = { result ->
+                            val map = result as? Map<*, *>
+                            val ok = map?.get("ok") as? Boolean ?: false
+                            if (ok) {
+                                miniMenuInputField?.setText("")
+                                miniMenuStatusText?.text = ""
+                                refreshMessages()
+                                return@invokeMiniMenuMethod
+                            }
+                            val error = map?.get("message")?.toString()
+                                ?: map?.get("error")?.toString()
+                                ?: "send_failed"
+                            miniMenuStatusText?.text = "오류: $error"
+                        },
+                        onError = {
+                            miniMenuStatusText?.text = "오류: $it"
+                        },
+                    )
+                }
             }
         }
         inputRow.addView(miniMenuInputField)
@@ -1590,43 +1662,75 @@ class Live2DOverlayService : Service() {
     }
 
     private fun refreshMiniMenuFromFlutter() {
-        miniMenuTouchToggle?.let { toggle ->
-            toggle.setOnCheckedChangeListener(null)
-            toggle.isChecked = touchThroughEnabled
-            toggle.setOnCheckedChangeListener { _, _ ->
-                invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
-                    val next = r as? Boolean ?: false
-                    touchThroughEnabled = next
-                    toggle.post {
-                        toggle.setOnCheckedChangeListener(null)
-                        toggle.isChecked = next
-                        toggle.setOnCheckedChangeListener { _, _ ->
-                            invokeMiniMenuMethod("miniMenuToggleTouchThrough")
-                        }
+        // Query current touch-through state (GET, not TOGGLE)
+        invokeMiniMenuMethod("miniMenuGetTouchThroughEnabled", onSuccess = { result ->
+            val enabled = result as? Boolean ?: false
+            touchThroughEnabled = enabled
+            miniMenuTouchToggle?.let { toggle ->
+                toggle.post {
+                    toggle.setOnCheckedChangeListener(null)
+                    toggle.isChecked = enabled
+                    toggle.setOnCheckedChangeListener { _, _ ->
+                        invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r ->
+                            val next = r as? Boolean ?: false
+                            touchThroughEnabled = next
+                            updateTouchMode()
+                            refreshForegroundNotification()
+                            toggle.post {
+                                toggle.setOnCheckedChangeListener(null)
+                                toggle.isChecked = next
+                                toggle.setOnCheckedChangeListener { _, _ ->
+                                    invokeMiniMenuMethod("miniMenuToggleTouchThrough", onSuccess = { r2 ->
+                                        val next2 = r2 as? Boolean ?: false
+                                        touchThroughEnabled = next2
+                                        updateTouchMode()
+                                        refreshForegroundNotification()
+                                        toggle.post {
+                                            toggle.setOnCheckedChangeListener(null)
+                                            toggle.isChecked = next2
+                                        }
+                                    })
+                                }
+                            }
+                        })
                     }
-                })
+                }
             }
-        }
+        }, onError = {
+            // Fallback: use local value
+            miniMenuTouchToggle?.let { toggle ->
+                toggle.post {
+                    toggle.setOnCheckedChangeListener(null)
+                    toggle.isChecked = touchThroughEnabled
+                }
+            }
+        })
 
         invokeMiniMenuMethod("miniMenuGetNotificationEnabled", onSuccess = { result ->
             val enabled = result as? Boolean ?: false
             Live2DLogger.Overlay.d("미니 메뉴 알림 상태 동기화", "enabled=$enabled")
             miniMenuNotificationToggle?.let { toggle ->
-                toggle.setOnCheckedChangeListener(null)
-                toggle.isChecked = enabled
-                toggle.setOnCheckedChangeListener { _, isChecked ->
-                    invokeMiniMenuMethod(
-                        "miniMenuSetNotificationEnabled",
-                        mapOf("enabled" to isChecked),
-                    )
+                toggle.post {
+                    toggle.setOnCheckedChangeListener(null)
+                    toggle.isChecked = enabled
+                    toggle.setOnCheckedChangeListener { _, isChecked ->
+                        invokeMiniMenuMethod(
+                            "miniMenuSetNotificationEnabled",
+                            mapOf("enabled" to isChecked),
+                        )
+                    }
                 }
             }
         })
 
-        refreshMessages()
+        // Only refresh messages if the input tab is currently visible
+        if (miniMenuCurrentTabIndex == 1) {
+            refreshMessages()
+        }
     }
 
     private fun refreshMessages() {
+        miniMenuStatusText?.post { miniMenuStatusText?.text = "Loading..." }
         invokeMiniMenuMethod(
             "miniMenuGetMessages",
             mapOf("sessionId" to miniMenuSessionId),
@@ -1639,7 +1743,14 @@ class Live2DOverlayService : Service() {
                         }
                     }
                     ?: emptyList()
+                miniMenuStatusText?.post { miniMenuStatusText?.text = "" }
                 renderMessages(list)
+            },
+            onError = { error ->
+                Live2DLogger.Overlay.w("메시지 로딩 실패", error)
+                miniMenuStatusText?.post {
+                    miniMenuStatusText?.text = "메시지 로딩 실패. 앱으로 이동하여 확인하세요."
+                }
             },
         )
     }

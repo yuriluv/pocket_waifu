@@ -61,6 +61,7 @@ class Live2DMethodHandler(
                 "setParameter" -> setParameter(call, result)
                 "getParameter" -> getParameter(call, result)
                 "getParameterIds" -> getParameterIds(result)
+                "getRuntimeParameterValues" -> getRuntimeParameterValues(result)
                 
                 "setEyeBlink" -> setEyeBlink(call, result)
                 "setBreathing" -> setBreathing(call, result)
@@ -516,6 +517,21 @@ class Live2DMethodHandler(
             result.success(ids.toList())
         } catch (e: Exception) {
             Live2DLogger.e("파라미터 ID 조회 실패", e)
+            result.error("PARAM_ERROR", e.message, null)
+        }
+    }
+
+    private fun getRuntimeParameterValues(result: MethodChannel.Result) {
+        try {
+            val ids = Live2DNativeBridge.nativeGetParameterIds()
+            val values = mutableMapOf<String, Double>()
+            for (id in ids) {
+                val value = Live2DNativeBridge.nativeGetParameterValue(id)
+                values[id] = value.toDouble()
+            }
+            result.success(values)
+        } catch (e: Exception) {
+            Live2DLogger.e("런타임 파라미터 값 조회 실패", e)
             result.error("PARAM_ERROR", e.message, null)
         }
     }

@@ -18,8 +18,10 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
   final TextEditingController _templateController = TextEditingController();
 
   Timer? _modelWatchTimer;
+  bool _modelWatchInProgress = false;
   String _lastModelSignature = '';
   String _generatedPreview = '';
+  Map<String, double> _runtimeParameterValues = const <String, double>{};
   bool _loading = false;
 
   @override
@@ -41,13 +43,18 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
   void _startModelWatcher() {
     _modelWatchTimer?.cancel();
     _modelWatchTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (!mounted) return;
-      final signature = await _buildModelSignature();
-      if (signature == _lastModelSignature) {
-        return;
+      if (!mounted || _modelWatchInProgress) return;
+      _modelWatchInProgress = true;
+      try {
+        final signature = await _buildModelSignature();
+        if (signature == _lastModelSignature) {
+          return;
+        }
+        _lastModelSignature = signature;
+        await _reloadPreview();
+      } finally {
+        _modelWatchInProgress = false;
       }
-      _lastModelSignature = signature;
-      await _reloadPreview();
     });
   }
 
@@ -56,7 +63,13 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
     final motions = await _bridge.getMotionGroups();
     final expressions = await _bridge.getExpressions();
     final params = await _bridge.getParameterIds();
-    return '${info.hashCode}|${motions.join(',')}|${expressions.join(',')}|${params.join(',')}';
+    final runtimeValues = await _bridge.getRuntimeParameterValues();
+    final runtimeSignature = runtimeValues.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final runtimeSignatureText = runtimeSignature
+        .map((e) => '${e.key}:${e.value.toStringAsFixed(4)}')
+        .join('|');
+    return '${info.hashCode}|${motions.join(',')}|${expressions.join(',')}|${params.join(',')}|$runtimeSignatureText';
   }
 
   Future<void> _reloadPreview() async {
@@ -67,6 +80,7 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
     final motionGroups = await _bridge.getMotionGroups();
     final expressions = await _bridge.getExpressions();
     final parameterIds = await _bridge.getParameterIds();
+    final runtimeValues = await _bridge.getRuntimeParameterValues();
 
     final preview = _buildSystemPromptPreview(
       template: _templateController.text.trim().isEmpty
@@ -81,6 +95,7 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
     if (!mounted) return;
     setState(() {
       _generatedPreview = preview;
+      _runtimeParameterValues = runtimeValues;
       _loading = false;
     });
   }
@@ -200,6 +215,34 @@ class _Live2DLlmSettingsScreenState extends State<Live2DLlmSettingsScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : SelectableText(
                     _generatedPreview,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('Runtime parameter values'),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _reloadPreview,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Refresh'),
+              ),
+            ],
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: _runtimeParameterValues.isEmpty
+                ? const Text('(none)')
+                : SelectableText(
+                    _runtimeParameterValues.entries
+                        .map((e) => '${e.key}=${e.value.toStringAsFixed(3)}')
+                        .join('\n'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
           ),

@@ -820,14 +820,39 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     if (data == null) {
       return;
     }
-    final next = <String, double>{
-      for (final param in data.parameters) param.id: param.defaultValue,
-    };
-    setState(() {
-      _currentValues
-        ..clear()
-        ..addAll(next);
-    });
+    if (data.parameters.isNotEmpty) {
+      final next = <String, double>{
+        for (final param in data.parameters) param.id: param.defaultValue,
+      };
+      setState(() {
+        _currentValues
+          ..clear()
+          ..addAll(next);
+      });
+    } else {
+      // Fallback: fetch from native bridge
+      _initializeFromNative();
+    }
+  }
+
+  Future<void> _initializeFromNative() async {
+    try {
+      final paramIds = await _bridge.getParameterIds();
+      if (!mounted || paramIds.isEmpty) return;
+      final next = <String, double>{};
+      for (final id in paramIds) {
+        final value = await _bridge.getParameter(id);
+        next[id] = value ?? 0.0;
+      }
+      if (!mounted) return;
+      setState(() {
+        _currentValues
+          ..clear()
+          ..addAll(next);
+      });
+    } catch (e) {
+      debugPrint('InteractionTest: failed to load native params: $e');
+    }
   }
 
   Future<void> _playMotion(String group, int index) async {
@@ -1034,7 +1059,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
   }
 
   Future<void> _loadState() async {
-    final data = widget.model3Data;
+    var data = widget.model3Data;
     final modelPath = widget.modelPath;
     if (data == null || modelPath == null || modelPath.isEmpty) {
       if (!mounted) {
@@ -1046,15 +1071,47 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
       return;
     }
 
+    // If model3.json didn't have a Parameters section, try fetching from native
+    if (data.parameters.isEmpty) {
+      try {
+        final paramIds = await _bridge.getParameterIds();
+        if (paramIds.isNotEmpty) {
+          final nativeParams = <Model3Parameter>[];
+          for (final id in paramIds) {
+            final currentValue = await _bridge.getParameter(id);
+            nativeParams.add(Model3Parameter(
+              id: id,
+              name: id,
+              min: -30.0,
+              defaultValue: currentValue ?? 0.0,
+              max: 30.0,
+            ));
+          }
+          data = Model3Data(
+            motionGroups: data.motionGroups,
+            expressions: data.expressions,
+            parameters: nativeParams,
+            hitAreas: data.hitAreas,
+          );
+          debugPrint('MotionParamsTab: loaded ${nativeParams.length} parameters from native bridge');
+        }
+      } catch (e) {
+        debugPrint('MotionParamsTab: failed to load native parameters: $e');
+      }
+    }
+
+    // Re-promote to non-nullable after potential modification
+    final resolvedData = data!;
+
     final defaults = <String, bool>{
-      for (final entry in data.motionGroups.entries)
+      for (final entry in resolvedData.motionGroups.entries)
         for (var i = 0; i < entry.value.length; i++) '${entry.key}#$i': true,
     };
 
     final savedMotionEnabled = await _repo.loadMotionEnabled(modelPath);
     final presets = await _repo.loadParameterPresets(modelPath);
     final current = <String, double>{
-      for (final parameter in data.parameters) parameter.id: parameter.defaultValue,
+      for (final parameter in resolvedData.parameters) parameter.id: parameter.defaultValue,
     };
 
     if (!mounted) {

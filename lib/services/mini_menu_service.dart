@@ -44,6 +44,11 @@ class MiniMenuService {
   MiniMenuSetNotificationsEnabled? _setNotificationsEnabled;
   MiniMenuToggleTouchThrough? _toggleTouchThrough;
   MiniMenuGetTouchThroughEnabled? _getTouchThroughEnabled;
+  bool _isMiniMenuOpen = false;
+  String? _lastSessionId;
+
+  bool get isMiniMenuOpen => _isMiniMenuOpen;
+  String? get lastSessionId => _lastSessionId;
 
   void configure({
     required MiniMenuGetActiveSessionId getActiveSessionId,
@@ -69,6 +74,8 @@ class MiniMenuService {
   Future<void> openMiniMenu({String? sessionId}) async {
     try {
       await _channel.invokeMethod('openMiniMenu', {'sessionId': sessionId});
+      _isMiniMenuOpen = true;
+      _lastSessionId = sessionId ?? _lastSessionId;
     } on MissingPluginException {
       debugPrint('MiniMenuService: native mini menu channel unavailable');
     }
@@ -77,6 +84,7 @@ class MiniMenuService {
   Future<void> closeMiniMenu() async {
     try {
       await _channel.invokeMethod('closeMiniMenu');
+      _isMiniMenuOpen = false;
     } on MissingPluginException {
       debugPrint('MiniMenuService: native mini menu channel unavailable');
     }

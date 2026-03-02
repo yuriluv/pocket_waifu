@@ -107,6 +107,8 @@ android {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.9.0")
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
 
 flutter {

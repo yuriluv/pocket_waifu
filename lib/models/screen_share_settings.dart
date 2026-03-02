@@ -1,5 +1,7 @@
 enum ImageQuality { low, medium, high }
 
+enum CaptureMethod { mediaProjection, adb }
+
 class ScreenShareSettings {
   final bool enabled;
   final int captureInterval;
@@ -8,6 +10,8 @@ class ScreenShareSettings {
   final bool autoAttachToMessage;
   final ImageQuality imageQuality;
   final int maxResolution;
+  final CaptureMethod captureMethod;
+  final bool isAdbConnected;
 
   const ScreenShareSettings({
     this.enabled = false,
@@ -17,6 +21,8 @@ class ScreenShareSettings {
     this.autoAttachToMessage = false,
     this.imageQuality = ImageQuality.medium,
     this.maxResolution = 1080,
+    this.captureMethod = CaptureMethod.mediaProjection,
+    this.isAdbConnected = false,
   });
 
   ScreenShareSettings copyWith({
@@ -27,6 +33,8 @@ class ScreenShareSettings {
     bool? autoAttachToMessage,
     ImageQuality? imageQuality,
     int? maxResolution,
+    CaptureMethod? captureMethod,
+    bool? isAdbConnected,
   }) {
     return ScreenShareSettings(
       enabled: enabled ?? this.enabled,
@@ -36,6 +44,8 @@ class ScreenShareSettings {
       autoAttachToMessage: autoAttachToMessage ?? this.autoAttachToMessage,
       imageQuality: imageQuality ?? this.imageQuality,
       maxResolution: maxResolution ?? this.maxResolution,
+      captureMethod: captureMethod ?? this.captureMethod,
+      isAdbConnected: isAdbConnected ?? this.isAdbConnected,
     );
   }
 
@@ -48,6 +58,8 @@ class ScreenShareSettings {
       'autoAttachToMessage': autoAttachToMessage,
       'imageQuality': imageQuality.name,
       'maxResolution': maxResolution,
+      'captureMethod': captureMethod.name,
+      'isAdbConnected': isAdbConnected,
     };
   }
 
@@ -65,6 +77,8 @@ class ScreenShareSettings {
       maxResolution: map['maxResolution'] is int
           ? map['maxResolution'] as int
           : 1080,
+      captureMethod: _parseCaptureMethod(map['captureMethod']?.toString()),
+      isAdbConnected: map['isAdbConnected'] == true,
     );
   }
 
@@ -72,6 +86,13 @@ class ScreenShareSettings {
     return ImageQuality.values.firstWhere(
       (quality) => quality.name == raw,
       orElse: () => ImageQuality.medium,
+    );
+  }
+
+  static CaptureMethod _parseCaptureMethod(String? raw) {
+    return CaptureMethod.values.firstWhere(
+      (method) => method.name == raw,
+      orElse: () => CaptureMethod.mediaProjection,
     );
   }
 }
