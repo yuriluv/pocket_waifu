@@ -1,0 +1,20 @@
+c007557 chore(compose): update workspace mounts and add backup compose snapshot
+e5b2cab Bump version to v0.9.05
+a3237d7 Fix mobile input prompt command selection (#148)
+f368a2f Add agent color styling and session persistence
+13ebfc1 Update memory docs with Code Review agent
+89a508e Allow question tool for Code and Architect agents
+6dc8cab add Code Review agent with /review command support
+2b1dc9f document Code Review agent in memory package README and CHANGELOG
+f8ba586 Update memory plugin documentation for v0.0.9 changes
+7ee5bd3 Release v0.0.9 - add messages.transform hook and planning state improvements
+bedfc80 Restrict memory-planning-update and memory-planning-search to Memory subagent only
+4cb2ed7 Inject read-only reminder into Architect messages, use constant for agent name, defensive state re-read
+d149c94 Add memory-planning-search tool and make planning state sessionID optional
+f2d38f2 update tests for project-scoped storage and new features
+b684a05 update session hooks to use project-scoped storage
+48b64db add memory-planning-search tool and update architect workflow
+8323da1 add projectId parameter to session state storage
+567fa6f bump version to 0.0.8
+bc649d9 Add color property to agent definitions
+8567e9b Improve mobile table and heading styles in docs
