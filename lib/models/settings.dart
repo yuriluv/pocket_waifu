@@ -8,6 +8,11 @@ enum ApiProvider {
   copilot, // GitHub Copilot
 }
 
+enum LlmDirectiveTarget {
+  live2d,
+  imageOverlay,
+}
+
 class AppSettings {
   final ApiProvider apiProvider;
   final String openaiApiKey;
@@ -31,7 +36,9 @@ class AppSettings {
   final bool live2dShowRawDirectivesInChat;
   final bool runRegexBeforeLua;
   final String live2dSystemPromptTemplate;
+  final String imageOverlaySystemPromptTemplate;
   final int live2dSystemPromptTokenBudget;
+  final LlmDirectiveTarget llmDirectiveTarget;
 
   AppSettings({
     this.apiProvider = ApiProvider.openai,
@@ -55,7 +62,10 @@ class AppSettings {
     this.runRegexBeforeLua = true,
     this.live2dSystemPromptTemplate =
         '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+    this.imageOverlaySystemPromptTemplate =
+        '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nDo not mention directive tags in visible dialogue.',
     this.live2dSystemPromptTokenBudget = 500,
+    this.llmDirectiveTarget = LlmDirectiveTarget.live2d,
   });
 
   String get currentApiKey {
@@ -113,7 +123,9 @@ class AppSettings {
       'live2dShowRawDirectivesInChat': live2dShowRawDirectivesInChat,
       'runRegexBeforeLua': runRegexBeforeLua,
       'live2dSystemPromptTemplate': live2dSystemPromptTemplate,
+      'imageOverlaySystemPromptTemplate': imageOverlaySystemPromptTemplate,
       'live2dSystemPromptTokenBudget': live2dSystemPromptTokenBudget,
+      'llmDirectiveTarget': llmDirectiveTarget.name,
     };
   }
 
@@ -155,8 +167,15 @@ class AppSettings {
       live2dSystemPromptTemplate:
           map['live2dSystemPromptTemplate'] ??
           '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+      imageOverlaySystemPromptTemplate:
+          map['imageOverlaySystemPromptTemplate'] ??
+          '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nDo not mention directive tags in visible dialogue.',
       live2dSystemPromptTokenBudget:
           (map['live2dSystemPromptTokenBudget'] ?? 500) as int,
+      llmDirectiveTarget: switch (map['llmDirectiveTarget']) {
+        'imageOverlay' => LlmDirectiveTarget.imageOverlay,
+        _ => LlmDirectiveTarget.live2d,
+      },
     );
   }
 
@@ -181,7 +200,9 @@ class AppSettings {
     bool? live2dShowRawDirectivesInChat,
     bool? runRegexBeforeLua,
     String? live2dSystemPromptTemplate,
+    String? imageOverlaySystemPromptTemplate,
     int? live2dSystemPromptTokenBudget,
+    LlmDirectiveTarget? llmDirectiveTarget,
   }) {
     return AppSettings(
       apiProvider: apiProvider ?? this.apiProvider,
@@ -210,8 +231,11 @@ class AppSettings {
       runRegexBeforeLua: runRegexBeforeLua ?? this.runRegexBeforeLua,
       live2dSystemPromptTemplate:
           live2dSystemPromptTemplate ?? this.live2dSystemPromptTemplate,
+      imageOverlaySystemPromptTemplate:
+          imageOverlaySystemPromptTemplate ?? this.imageOverlaySystemPromptTemplate,
       live2dSystemPromptTokenBudget:
           live2dSystemPromptTokenBudget ?? this.live2dSystemPromptTokenBudget,
+      llmDirectiveTarget: llmDirectiveTarget ?? this.llmDirectiveTarget,
     );
   }
 }

@@ -203,8 +203,15 @@ class PromptBuilder {
     }
 
     if (settings.live2dPromptInjectionEnabled &&
+        settings.llmDirectiveTarget == LlmDirectiveTarget.live2d &&
         settings.live2dSystemPromptTemplate.trim().isNotEmpty) {
       promptParts.add(settings.live2dSystemPromptTemplate.trim());
+    }
+
+    if (settings.live2dPromptInjectionEnabled &&
+        settings.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay &&
+        settings.imageOverlaySystemPromptTemplate.trim().isNotEmpty) {
+      promptParts.add(settings.imageOverlaySystemPromptTemplate.trim());
     }
 
     // Note: systemPrompt from AppSettings is deprecated.

@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +29,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -79,6 +81,8 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_CHARACTER_OFFSET = "com.example.flutter_application_1.live2d.SET_CHARACTER_OFFSET"
         const val ACTION_SET_CHARACTER_ROTATION = "com.example.flutter_application_1.live2d.SET_CHARACTER_ROTATION"
         const val ACTION_SET_PARAMETER = "com.example.flutter_application_1.live2d.SET_PARAMETER"
+        const val ACTION_SET_OVERLAY_MODE = "com.example.flutter_application_1.live2d.SET_OVERLAY_MODE"
+        const val ACTION_LOAD_IMAGE = "com.example.flutter_application_1.live2d.LOAD_IMAGE"
         const val ACTION_OPEN_MINI_MENU = "com.example.flutter_application_1.live2d.OPEN_MINI_MENU"
         const val ACTION_CLOSE_MINI_MENU = "com.example.flutter_application_1.live2d.CLOSE_MINI_MENU"
 
@@ -115,6 +119,8 @@ class Live2DOverlayService : Service() {
         const val EXTRA_PARAMETER_ID = "parameter_id"
         const val EXTRA_PARAMETER_VALUE = "parameter_value"
         const val EXTRA_PARAMETER_DURATION = "parameter_duration"
+        const val EXTRA_OVERLAY_MODE = "overlay_mode"
+        const val EXTRA_IMAGE_PATH = "image_path"
         
         private const val CHANNEL_ID = "live2d_overlay_channel"
         private const val MINI_MENU_CHANNEL = "com.example.flutter_application_1/mini_menu"
@@ -155,6 +161,10 @@ class Live2DOverlayService : Service() {
             private set
 
         @Volatile
+        var currentOverlayMode: String = "live2d"
+            private set
+
+        @Volatile
         private var lastDisplayState: Map<String, Any> = emptyMap()
 
         fun getDisplayState(context: Context): Map<String, Any> {
@@ -171,11 +181,12 @@ class Live2DOverlayService : Service() {
     private var overlayView: View? = null
     private var overlayContainer: FrameLayout? = null
     private var glSurfaceView: Live2DGLSurfaceView? = null
-    @Volatile private var isHidingOverlay = false
+    private var imageOverlayView: ImageView? = null
     
     private var gestureDetector: GestureDetectorManager? = null
     
     private var currentModelPath: String? = null
+    private var currentImagePath: String? = null
     
     private var currentScale = 1f
     private var currentOpacity = 1f
@@ -355,6 +366,8 @@ class Live2DOverlayService : Service() {
                 intent.getFloatExtra(EXTRA_PARAMETER_VALUE, 0f),
                 intent.getIntExtra(EXTRA_PARAMETER_DURATION, 0)
             )
+            ACTION_SET_OVERLAY_MODE -> setOverlayMode(intent.getStringExtra(EXTRA_OVERLAY_MODE) ?: "live2d")
+            ACTION_LOAD_IMAGE -> loadImage(intent.getStringExtra(EXTRA_IMAGE_PATH) ?: "")
             ACTION_OPEN_MINI_MENU -> openMiniMenu(intent.getStringExtra("sessionId"))
             ACTION_CLOSE_MINI_MENU -> closeMiniMenu()
         }
@@ -407,34 +420,22 @@ class Live2DOverlayService : Service() {
             return
         }
         
-        Live2DLogger.Overlay.i("오버레이 표시 시작", "GLSurfaceView 생성")
+        Live2DLogger.Overlay.i("오버레이 표시 시작", "mode=$currentOverlayMode")
         
         // Note: startForeground() is already called in onCreate()
         // No need to call it again here
         Live2DLogger.Overlay.d("Foreground Service 이미 시작됨", "notificationId=$NOTIFICATION_ID")
         
-        glSurfaceView = Live2DGLSurfaceView(this)
-        
-        overlayContainer = FrameLayout(this).apply {
-            addView(glSurfaceView, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ))
-        }
+        overlayContainer = FrameLayout(this)
+        rebuildOverlayContent()
         overlayView = overlayContainer
-        Live2DLogger.Overlay.d("GLSurfaceView 생성됨", "크기: ${currentWidth}x${currentHeight}")
-        
-        glSurfaceView?.setBackgroundColor(0f, 0f, 0f, 0f)
-        
-        glSurfaceView?.apply {
-            isClickable = false
-            isFocusable = false
-            isFocusableInTouchMode = false
-        }
+        Live2DLogger.Overlay.d("오버레이 컨텐츠 생성됨", "mode=$currentOverlayMode, size=${currentWidth}x${currentHeight}")
         
         overlayParams.alpha = 1.0f
-        
-        applyDynamicSizing(currentScale)
+
+        if (currentOverlayMode == "live2d") {
+            applyDynamicSizing(currentScale)
+        }
         
         Live2DLogger.Overlay.d("터치스루 초기화", "enabled=$touchThroughEnabled, foreground=$isAppForeground")
         
@@ -457,14 +458,102 @@ class Live2DOverlayService : Service() {
             overlayView = null
         }
     }
-    
-    private fun hideOverlay() {
-        if (isHidingOverlay) {
-            Live2DLogger.Overlay.d("오버레이 숨김 스킵", "already in progress")
+
+    private fun rebuildOverlayContent() {
+        val container = overlayContainer ?: return
+        container.removeAllViews()
+
+        if (currentOverlayMode == "image") {
+            glSurfaceView?.onPause()
+            glSurfaceView?.dispose()
+            glSurfaceView = null
+
+            imageOverlayView = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                setBackgroundColor(Color.TRANSPARENT)
+                isClickable = false
+                isFocusable = false
+            }
+            container.addView(
+                imageOverlayView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            imageOverlayView?.alpha = characterOpacity
+            currentModelInfo = null
+            if (!currentImagePath.isNullOrBlank()) {
+                applyImageFile(currentImagePath!!)
+            }
             return
         }
-        isHidingOverlay = true
 
+        imageOverlayView = null
+        glSurfaceView = Live2DGLSurfaceView(this).also { gl ->
+            gl.setBackgroundColor(0f, 0f, 0f, 0f)
+            gl.isClickable = false
+            gl.isFocusable = false
+            gl.isFocusableInTouchMode = false
+            gl.setCharacterOpacity(characterOpacity)
+        }
+        container.addView(
+            glSurfaceView,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        if (!currentModelPath.isNullOrBlank()) {
+            loadModel(currentModelPath!!)
+        }
+    }
+
+    private fun setOverlayMode(mode: String) {
+        val normalized = if (mode.equals("image", ignoreCase = true)) {
+            "image"
+        } else {
+            "live2d"
+        }
+        if (normalized == currentOverlayMode) {
+            return
+        }
+
+        currentOverlayMode = normalized
+        if (overlayView != null) {
+            rebuildOverlayContent()
+            updateTouchMode()
+            updateDisplayState()
+        }
+    }
+
+    private fun loadImage(path: String) {
+        if (path.isBlank()) {
+            return
+        }
+        currentImagePath = path
+        if (currentOverlayMode != "image") {
+            currentOverlayMode = "image"
+            if (overlayView != null) {
+                rebuildOverlayContent()
+            }
+        }
+        applyImageFile(path)
+    }
+
+    private fun applyImageFile(path: String) {
+        val imageView = imageOverlayView ?: return
+        val bitmap = BitmapFactory.decodeFile(path)
+        if (bitmap == null) {
+            Live2DLogger.Overlay.w("이미지 로드 실패", path)
+            return
+        }
+        imageView.setImageBitmap(bitmap)
+        imageView.alpha = characterOpacity
+    }
+    
+    private fun hideOverlay() {
         closeMiniMenu()
         stopStateChecks()
         
@@ -491,6 +580,7 @@ class Live2DOverlayService : Service() {
         overlayView = null
         overlayContainer = null
         glSurfaceView = null
+        imageOverlayView = null
         isRunning = false
 
         try {
@@ -643,6 +733,13 @@ class Live2DOverlayService : Service() {
     
     private fun loadModel(path: String) {
         Live2DLogger.Model.i("모델 로드 요청", path)
+
+        if (currentOverlayMode != "live2d") {
+            currentOverlayMode = "live2d"
+            if (overlayView != null) {
+                rebuildOverlayContent()
+            }
+        }
         
         val modelName = path.substringAfterLast("/").substringBeforeLast(".")
         
@@ -736,6 +833,7 @@ class Live2DOverlayService : Service() {
         
         if (touchThroughEnabled && !isAppForeground) {
             glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
+            imageOverlayView?.alpha = touchThroughAlpha
         }
     }
     
@@ -746,6 +844,7 @@ class Live2DOverlayService : Service() {
         characterOpacity = opacity.coerceIn(0f, 1f)
         if (!(touchThroughEnabled && !isAppForeground)) {
             glSurfaceView?.setCharacterOpacity(characterOpacity)
+            imageOverlayView?.alpha = characterOpacity
         }
     }
     
@@ -932,13 +1031,16 @@ class Live2DOverlayService : Service() {
             if (isAppForeground) {
                 applyTouchReceiving()
                 glSurfaceView?.setCharacterOpacity(characterOpacity)
+                imageOverlayView?.alpha = characterOpacity
             } else {
                 applyTouchPassthrough()
                 glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
+                imageOverlayView?.alpha = touchThroughAlpha
             }
         } else {
             applyTouchReceiving()
             glSurfaceView?.setCharacterOpacity(characterOpacity)
+            imageOverlayView?.alpha = characterOpacity
         }
         
         overlayView?.let {
@@ -1029,6 +1131,7 @@ class Live2DOverlayService : Service() {
             "screenHeight" to metrics.heightPixels,
             "density" to metrics.density,
             "globalScale" to currentScale,
+            "overlayMode" to currentOverlayMode,
         )
         lastDisplayState = state
         Live2DEventStreamHandler.getInstance()?.sendSystemEvent(
@@ -1192,7 +1295,8 @@ class Live2DOverlayService : Service() {
                     "isRunning" to isRunning,
                     "modelLoaded" to hasModel,
                     "uptimeMs" to uptimeMs,
-                    "modelPath" to currentModelPath
+                    "modelPath" to currentModelPath,
+                    "overlayMode" to currentOverlayMode,
                 )
             )
             

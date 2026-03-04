@@ -35,6 +35,9 @@ class Live2DMethodHandler(
                 "showOverlay" -> showOverlay(result)
                 "hideOverlay" -> hideOverlay(result)
                 "isOverlayVisible" -> isOverlayVisible(result)
+                "setOverlayMode" -> setOverlayMode(call, result)
+                "getOverlayMode" -> getOverlayMode(result)
+                "loadOverlayImage" -> loadOverlayImage(call, result)
                 
                 "loadModel" -> loadModel(call, result)
                 "unloadModel" -> unloadModel(result)
@@ -198,6 +201,44 @@ class Live2DMethodHandler(
     
     private fun isOverlayVisible(result: MethodChannel.Result) {
         result.success(Live2DOverlayService.isRunning)
+    }
+
+    private fun setOverlayMode(call: MethodCall, result: MethodChannel.Result) {
+        val mode = call.argument<String>("mode") ?: "live2d"
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_OVERLAY_MODE
+                putExtra(Live2DOverlayService.EXTRA_OVERLAY_MODE, mode)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("오버레이 모드 설정 실패", e)
+            result.error("OVERLAY_MODE_ERROR", e.message, null)
+        }
+    }
+
+    private fun getOverlayMode(result: MethodChannel.Result) {
+        result.success(Live2DOverlayService.currentOverlayMode)
+    }
+
+    private fun loadOverlayImage(call: MethodCall, result: MethodChannel.Result) {
+        val path = call.argument<String>("path")
+        if (path.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "path is required", null)
+            return
+        }
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_LOAD_IMAGE
+                putExtra(Live2DOverlayService.EXTRA_IMAGE_PATH, path)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("오버레이 이미지 로드 실패", e)
+            result.error("OVERLAY_IMAGE_ERROR", e.message, null)
+        }
     }
     
     // ============================================================================

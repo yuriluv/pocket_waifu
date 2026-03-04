@@ -5,6 +5,9 @@ import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
+import '../features/image_overlay/data/models/image_overlay_settings.dart';
+import '../features/image_overlay/data/services/image_overlay_storage_service.dart';
+import '../features/image_overlay/services/image_overlay_directive_service.dart';
 import '../features/live2d/data/repositories/live2d_settings_repository.dart';
 import '../features/live2d/data/services/live2d_native_bridge.dart';
 import '../features/live2d_llm/services/live2d_directive_service.dart';
@@ -26,9 +29,13 @@ class ChatProvider extends ChangeNotifier {
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
   final Live2DDirectiveService _directiveService =
       Live2DDirectiveService.instance;
+  final ImageOverlayDirectiveService _imageDirectiveService =
+      ImageOverlayDirectiveService.instance;
   final Live2DNativeBridge _live2dBridge = Live2DNativeBridge();
   final Live2DSettingsRepository _live2dSettingsRepository =
       Live2DSettingsRepository();
+  final ImageOverlayStorageService _imageStorage =
+      ImageOverlayStorageService.instance;
 
   ChatSessionProvider? _sessionProvider;
 
@@ -263,13 +270,21 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    final directiveResult = await _directiveService.processAssistantOutput(
-      output,
-      parsingEnabled: settings.live2dLlmIntegrationEnabled &&
-          settings.live2dDirectiveParsingEnabled,
-      exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
-    );
-    output = directiveResult.cleanedText;
+    if (settings.live2dLlmIntegrationEnabled &&
+        settings.live2dDirectiveParsingEnabled) {
+      if (settings.llmDirectiveTarget == LlmDirectiveTarget.live2d) {
+        final directiveResult = await _directiveService.processAssistantOutput(
+          output,
+          parsingEnabled: true,
+          exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
+        );
+        output = directiveResult.cleanedText;
+      } else {
+        final directiveResult =
+            await _imageDirectiveService.processAssistantOutput(output);
+        output = directiveResult.cleanedText;
+      }
+    }
 
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyDisplayOnly(
@@ -326,7 +341,7 @@ class ChatProvider extends ChangeNotifier {
       userName: userName,
     );
 
-    apiMessages = await _injectLive2DCapabilities(apiMessages, settings);
+    apiMessages = await _injectDirectiveCapabilities(apiMessages, settings);
 
     if (apiConfig == null) {
       return _apiService.sendMessage(
@@ -349,13 +364,24 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  Future<List<Message>> _injectLive2DCapabilities(
+  Future<List<Message>> _injectDirectiveCapabilities(
     List<Message> messages,
     AppSettings settings,
   ) async {
     if (!settings.live2dPromptInjectionEnabled) {
       return messages;
     }
+
+    if (settings.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay) {
+      return _injectImageOverlayCapabilities(messages);
+    }
+
+    return _injectLive2DCapabilities(messages);
+  }
+
+  Future<List<Message>> _injectLive2DCapabilities(
+    List<Message> messages,
+  ) async {
 
     final modelInfo = await _live2dBridge.getModelInfo();
     final params = <String>[];
@@ -430,6 +456,49 @@ class ChatProvider extends ChangeNotifier {
     final updated = List<Message>.from(messages);
     updated[index] = system.copyWith(
       content: '${system.content}\n\n$capability',
+    );
+    return updated;
+  }
+
+  Future<List<Message>> _injectImageOverlayCapabilities(
+    List<Message> messages,
+  ) async {
+    final overlaySettings = await ImageOverlaySettings.load();
+    _imageStorage.restoreRootPath(overlaySettings.dataFolderPath);
+    final characters = await _imageStorage.scanCharacters();
+
+    final lines = <String>[];
+    for (final character in characters) {
+      final names = character.emotions
+          .map((emotion) => emotion.name)
+          .toList(growable: false)
+          .join(', ');
+      lines.add('${character.name}: ${names.isEmpty ? '(none)' : names}');
+    }
+
+    final capability = [
+      '[Image Overlay Capability]',
+      'Characters: ${lines.isEmpty ? '(none)' : lines.join(' | ')}',
+      'SelectedCharacterFolder: ${overlaySettings.selectedCharacterFolder ?? '(none)'}',
+      'SelectedEmotionFile: ${overlaySettings.selectedEmotionFile ?? '(none)'}',
+      'Use <overlay>...</overlay> blocks for image directives.',
+      'Supported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.',
+      'Inline directives: [img_move:x=100,y=200], [img_emotion:name=happy].',
+    ].join('\n');
+
+    final index = messages.indexWhere(
+      (message) => message.role == MessageRole.system,
+    );
+    if (index == -1) {
+      return [
+        Message(role: MessageRole.system, content: capability),
+        ...messages,
+      ];
+    }
+
+    final updated = List<Message>.from(messages);
+    updated[index] = messages[index].copyWith(
+      content: '${messages[index].content}\n\n$capability',
     );
     return updated;
   }

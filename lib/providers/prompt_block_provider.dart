@@ -183,6 +183,22 @@ class PromptBlockProvider extends ChangeNotifier {
 당신은 미카의 주인이며, 미카는 당신과 함께 사는 AI 동반자입니다.''',
       ),
       PromptBlock.pastMemory(title: 'Past Memory', range: '10'),
+      PromptBlock.prompt(
+        title: 'Command Block · Lua',
+        content: '''[Lua Command Handling]
+- Generate command-friendly output that can be post-processed by Lua hooks.
+- Keep user-visible dialogue natural, and put machine commands in directive blocks.
+- Prefer deterministic command patterns so Lua scripts can reliably transform text.
+- If command is not needed, return normal dialogue only.''',
+      ),
+      PromptBlock.prompt(
+        title: 'Command Block · Regex',
+        content: '''[Regex Command Handling]
+- Keep command tokens stable for regex matching.
+- Use explicit key/value style in directives for reliable extraction.
+- Avoid ambiguous formatting that can break regex replacement.
+- Preserve natural conversation text outside directive blocks.''',
+      ),
       PromptBlock.input(title: 'Input'),
     ];
 

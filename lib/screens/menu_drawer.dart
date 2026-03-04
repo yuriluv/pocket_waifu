@@ -16,6 +16,7 @@ import 'screen_share_settings_screen.dart';
 import 'notification_settings_screen.dart';
 import 'regex_lua_management_screen.dart';
 import '../features/live2d/live2d_module.dart';
+import '../features/image_overlay/presentation/screens/image_overlay_settings_screen.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import 'prompt_preview_screen.dart';
 import '../utils/ui_feedback.dart';
@@ -212,6 +213,21 @@ class MenuDrawer extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => const Live2DSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                _DrawerMenuItem(
+                  icon: Icons.image,
+                  title: '이미지 오버레이',
+                  subtitle: '캐릭터 폴더 기반 이미지 오버레이',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ImageOverlaySettingsScreen(),
                       ),
                     );
                   },

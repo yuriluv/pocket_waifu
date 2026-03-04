@@ -9,6 +9,11 @@ import '../features/lua/models/lua_script.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/models/regex_rule.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
+import '../features/live2d_llm/services/live2d_directive_service.dart';
+import '../features/image_overlay/services/image_overlay_directive_service.dart';
+import '../models/message.dart';
+import '../models/settings.dart';
+import '../services/prompt_builder.dart';
 import '../providers/settings_provider.dart';
 
 class RegexLuaManagementScreen extends StatefulWidget {
@@ -24,9 +29,15 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   late final TabController _tabController;
   final _regexService = RegexPipelineService.instance;
   final _luaService = LuaScriptingService.instance;
+  final _live2dDirectiveService = Live2DDirectiveService.instance;
+  final _imageDirectiveService = ImageOverlayDirectiveService.instance;
+  final _promptBuilder = PromptBuilder();
+  final TextEditingController _testInputController = TextEditingController();
 
   List<RegexRule> _regexRules = [];
   List<LuaScript> _luaScripts = [];
+  final List<String> _testChatLogs = [];
+  String _testOutput = '';
   bool _loading = true;
 
   @override
@@ -39,6 +50,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _testInputController.dispose();
     super.dispose();
   }
 
@@ -82,7 +94,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Live2D-LLM'),
+            Tab(text: 'LLM 연결'),
             Tab(text: 'Regex'),
             Tab(text: 'Lua'),
           ],
@@ -96,9 +108,37 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                 ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    DropdownButtonFormField<LlmDirectiveTarget>(
+                      initialValue: settings.llmDirectiveTarget,
+                      decoration: const InputDecoration(
+                        labelText: 'LLM 연결 대상',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: LlmDirectiveTarget.live2d,
+                          child: Text('Live2D'),
+                        ),
+                        DropdownMenuItem(
+                          value: LlmDirectiveTarget.imageOverlay,
+                          child: Text('이미지 오버레이'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          settingsProvider.setLlmDirectiveTarget(value);
+                          setState(() {});
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     SwitchListTile(
-                      title: const Text('Live2D 지시어 파싱 사용'),
-                      subtitle: const Text('AI 응답의 <live2d> 지시어 블록 실행'),
+                      title: const Text('지시어 파싱 사용'),
+                      subtitle: Text(
+                        settings.llmDirectiveTarget == LlmDirectiveTarget.live2d
+                            ? 'AI 응답의 <live2d> 지시어 블록 실행'
+                            : 'AI 응답의 <overlay> 지시어 블록 실행',
+                      ),
                       value: settings.live2dDirectiveParsingEnabled,
                       onChanged:
                           settingsProvider.setLive2DDirectiveParsingEnabled,
@@ -117,16 +157,33 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                       onChanged: settingsProvider.setRunRegexBeforeLua,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      initialValue: settings.live2dSystemPromptTemplate,
-                      minLines: 6,
-                      maxLines: 14,
-                      decoration: const InputDecoration(
-                        labelText: 'Live2D 시스템 프롬프트 템플릿',
-                        border: OutlineInputBorder(),
+                    if (settings.llmDirectiveTarget ==
+                        LlmDirectiveTarget.live2d)
+                      TextFormField(
+                        initialValue: settings.live2dSystemPromptTemplate,
+                        minLines: 6,
+                        maxLines: 14,
+                        decoration: const InputDecoration(
+                          labelText: 'Live2D 시스템 프롬프트 템플릿',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged:
+                            settingsProvider.setLive2DSystemPromptTemplate,
+                      )
+                    else
+                      TextFormField(
+                        initialValue: settings.imageOverlaySystemPromptTemplate,
+                        minLines: 6,
+                        maxLines: 14,
+                        decoration: const InputDecoration(
+                          labelText: '이미지 오버레이 시스템 프롬프트 템플릿',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: settingsProvider
+                            .setImageOverlaySystemPromptTemplate,
                       ),
-                      onChanged: settingsProvider.setLive2DSystemPromptTemplate,
-                    ),
+                    const SizedBox(height: 16),
+                    _buildTestChatPanel(settingsProvider),
                   ],
                 ),
                 _buildRegexTab(),
@@ -411,6 +468,351 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildTestChatPanel(SettingsProvider settingsProvider) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('테스트 채팅', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            const Text(
+              '@user: 유저 입력 파이프라인/LLM 전송 프롬프트 출력\n'
+              '@char: 캐릭터 출력 파이프라인/Lua·Regex 처리 결과 출력',
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _testInputController,
+              minLines: 2,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '@user 안녕 / @char <overlay><emotion name="happy"/></overlay> 반가워!',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                FilledButton.icon(
+                  onPressed: () => _runTestChat(settingsProvider),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('실행'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _testChatLogs.clear();
+                      _testOutput = '';
+                    });
+                  },
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('로그 지우기'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('테스트 결과'),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: SelectableText(
+                          _testOutput.isEmpty ? '(결과 없음)' : _testOutput,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('테스트 채팅 로그'),
+                      const SizedBox(height: 6),
+                      Container(
+                        height: 180,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: _testChatLogs.isEmpty
+                            ? const Center(child: Text('(로그 없음)'))
+                            : ListView.builder(
+                                itemCount: _testChatLogs.length,
+                                itemBuilder: (context, index) {
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      _testChatLogs[index],
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _runTestChat(SettingsProvider settingsProvider) async {
+    final raw = _testInputController.text.trim();
+    if (raw.isEmpty) {
+      return;
+    }
+
+    final settings = settingsProvider.settings;
+    final character = settingsProvider.character;
+    final userName = settingsProvider.userName;
+    const sessionId = 'regex_lua_test_session';
+
+    if (raw.startsWith('@user')) {
+      final input = raw.substring(5).trim();
+      if (input.isEmpty) {
+        return;
+      }
+      final processed = await _applyUserPipeline(
+        input,
+        settings: settings,
+        sessionId: sessionId,
+        characterId: character.id,
+        characterName: character.name,
+        userName: userName,
+      );
+
+      final messages = _promptBuilder.buildMessages(
+        character: character,
+        settings: settings,
+        chatHistory: [
+          Message(role: MessageRole.user, content: processed),
+        ],
+        userName: userName,
+      );
+
+      final promptText = messages
+          .map((m) => '[${m.roleString}]\n${m.content}')
+          .join('\n\n');
+
+      setState(() {
+        _testOutput = promptText;
+        _appendTestLog('USER pipeline -> prompt 생성 완료 (${settings.llmDirectiveTarget.name})');
+      });
+      return;
+    }
+
+    if (raw.startsWith('@char')) {
+      final input = raw.substring(5).trim();
+      if (input.isEmpty) {
+        return;
+      }
+
+      final result = await _applyAssistantPipelineForTest(
+        input,
+        settings: settings,
+        sessionId: sessionId,
+        characterId: character.id,
+        characterName: character.name,
+        userName: userName,
+      );
+
+      setState(() {
+        _testOutput = result;
+      });
+      return;
+    }
+
+    setState(() {
+      _appendTestLog('입력은 @user 또는 @char로 시작해야 합니다.');
+    });
+  }
+
+  Future<String> _applyUserPipeline(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
+
+    if (settings.runRegexBeforeLua) {
+      output = await _regexService.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      if (luaEnabled) {
+        output = await _luaService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+    } else {
+      if (luaEnabled) {
+        output = await _luaService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+      output = await _regexService.applyUserInput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    return output;
+  }
+
+  Future<String> _applyAssistantPipelineForTest(
+    String text, {
+    required AppSettings settings,
+    required String sessionId,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
+
+    if (settings.runRegexBeforeLua) {
+      output = await _regexService.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      if (luaEnabled) {
+        output = await _luaService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+    } else {
+      if (luaEnabled) {
+        output = await _luaService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+      output = await _regexService.applyAiOutput(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    final commandErrors = <String>[];
+    if (settings.live2dLlmIntegrationEnabled &&
+        settings.live2dDirectiveParsingEnabled) {
+      if (settings.llmDirectiveTarget == LlmDirectiveTarget.live2d) {
+        final result = await _live2dDirectiveService.processAssistantOutput(
+          output,
+          parsingEnabled: true,
+          exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
+        );
+        output = result.cleanedText;
+        commandErrors.addAll(result.errors);
+      } else {
+        final result = await _imageDirectiveService.processAssistantOutput(output);
+        output = result.cleanedText;
+        commandErrors.addAll(result.errors);
+      }
+    }
+
+    if (settings.runRegexBeforeLua) {
+      output = await _regexService.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+      if (luaEnabled) {
+        output = await _luaService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+    } else {
+      if (luaEnabled) {
+        output = await _luaService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
+      output = await _regexService.applyDisplayOnly(
+        output,
+        characterId: characterId,
+        sessionId: sessionId,
+      );
+    }
+
+    _appendTestLog('CHAR pipeline 처리 완료 (${settings.llmDirectiveTarget.name})');
+    if (commandErrors.isNotEmpty) {
+      _appendTestLog('명령 오류: ${commandErrors.join(' | ')}');
+    } else {
+      _appendTestLog('명령 실행 로그: 오류 없음');
+    }
+
+    return output;
+  }
+
+  void _appendTestLog(String text) {
+    final line = '[${DateTime.now().toIso8601String()}] $text';
+    _testChatLogs.add(line);
+    if (_testChatLogs.length > 200) {
+      _testChatLogs.removeAt(0);
+    }
   }
 
   Future<void> _importRegexRules() async {

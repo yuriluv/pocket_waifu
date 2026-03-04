@@ -203,6 +203,46 @@ class Live2DNativeBridge {
     }
   }
 
+  Future<bool> setOverlayMode(String mode) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setOverlayMode', {
+        'mode': mode,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setOverlayMode 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<String> getOverlayMode() async {
+    try {
+      final result = await _methodChannel.invokeMethod<String>('getOverlayMode');
+      return result ?? 'live2d';
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getOverlayMode 실패', error: e);
+      return 'live2d';
+    } on MissingPluginException {
+      return 'live2d';
+    }
+  }
+
+  Future<bool> loadOverlayImage(String imagePath) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('loadOverlayImage', {
+        'path': imagePath,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'loadOverlayImage 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   // ============================================================================
   // ============================================================================
 
@@ -427,7 +467,10 @@ class Live2DNativeBridge {
     try {
       final result = await _methodChannel.invokeMethod<bool>(
         'setNotificationResponse',
-        {'message': message, 'sessionId': ?sessionId},
+        {
+          'message': message,
+          if (sessionId != null) 'sessionId': sessionId,
+        },
       );
       return result ?? false;
     } on PlatformException catch (e) {
@@ -445,7 +488,10 @@ class Live2DNativeBridge {
     try {
       final result = await _methodChannel.invokeMethod<bool>(
         'setNotificationError',
-        {'error': errorMessage, 'sessionId': ?sessionId},
+        {
+          'error': errorMessage,
+          if (sessionId != null) 'sessionId': sessionId,
+        },
       );
       return result ?? false;
     } on PlatformException catch (e) {

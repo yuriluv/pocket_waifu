@@ -18,6 +18,7 @@ class Live2DGlobalRuntimeHandler implements GlobalRuntimeListener {
       final settings = await Live2DSettings.load();
       if (!settings.isEnabled) return;
       if (settings.selectedModelPath == null) return;
+      await _bridge.setOverlayMode('live2d');
       await _bridge.showOverlay();
       await _bridge.setScale(settings.scale);
       await _bridge.setCharacterOpacity(settings.opacity);

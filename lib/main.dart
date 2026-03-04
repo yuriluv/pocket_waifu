@@ -27,9 +27,12 @@ import 'services/notification_coordinator.dart';
 import 'services/proactive_response_service.dart';
 import 'services/mini_menu_service.dart';
 import 'services/live2d_global_runtime_handler.dart';
+import 'services/image_overlay_global_runtime_handler.dart';
 import 'services/global_runtime_registry.dart';
 import 'services/live2d_quick_toggle_service.dart';
 import 'features/live2d/data/models/live2d_settings.dart';
+import 'features/image_overlay/data/models/image_overlay_settings.dart';
+import 'features/live2d/data/services/live2d_native_bridge.dart';
 
 import 'screens/chat_screen.dart';
 
@@ -118,6 +121,16 @@ class PocketWaifuApp extends StatelessWidget {
         Provider(
           create: (_) {
             final handler = Live2DGlobalRuntimeHandler();
+            GlobalRuntimeRegistry.instance.register(handler);
+            return handler;
+          },
+          dispose: (_, handler) =>
+              GlobalRuntimeRegistry.instance.unregister(handler),
+        ),
+
+        Provider(
+          create: (_) {
+            final handler = ImageOverlayGlobalRuntimeHandler();
             GlobalRuntimeRegistry.instance.register(handler);
             return handler;
           },
@@ -315,6 +328,12 @@ class PocketWaifuApp extends StatelessWidget {
                     return Live2DQuickToggleService.instance.toggleTouchThrough();
                   },
                   getTouchThroughEnabled: () async {
+                    final bridge = Live2DNativeBridge();
+                    final mode = await bridge.getOverlayMode();
+                    if (mode == 'image') {
+                      final settings = await ImageOverlaySettings.load();
+                      return settings.touchThroughEnabled;
+                    }
                     final settings = await Live2DSettings.load();
                     return settings.touchThroughEnabled;
                   },

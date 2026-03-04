@@ -15,6 +15,7 @@ import '../../data/services/display_config_store.dart';
 import '../../data/services/live2d_overlay_state_service.dart';
 import '../../data/services/gesture_motion_mapper.dart';
 import '../../../../services/global_runtime_registry.dart';
+import '../../../image_overlay/data/models/image_overlay_settings.dart';
 
 enum Live2DControllerState { initial, loading, ready, error }
 
@@ -561,6 +562,11 @@ class Live2DController extends ChangeNotifier {
     live2dLog.info(_tag, '플로팅 뷰어 ${enabled ? '활성화' : '비활성화'} 요청');
 
     if (enabled) {
+      final imageSettings = await ImageOverlaySettings.load();
+      if (imageSettings.isEnabled) {
+        await imageSettings.copyWith(isEnabled: false).save();
+      }
+
       if (!GlobalRuntimeRegistry.instance.isEnabled) {
         _setError('전체 기능이 OFF 상태입니다. 먼저 전체 기능을 ON으로 전환하세요.');
         return false;
@@ -582,6 +588,8 @@ class Live2DController extends ChangeNotifier {
         _setError('오버레이 표시 실패');
         return false;
       }
+
+      await _nativeBridge.setOverlayMode('live2d');
 
       await _nativeBridge.setScale(_settings.scale);
       await _nativeBridge.setCharacterOpacity(_settings.opacity);

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/settings.dart';
+import '../features/image_overlay/data/services/image_overlay_character_sync_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _settingsKey = 'app_settings';
@@ -282,6 +283,12 @@ class SettingsProvider extends ChangeNotifier {
     updateSettings(_settings.copyWith(live2dSystemPromptTemplate: template));
   }
 
+  void setImageOverlaySystemPromptTemplate(String template) {
+    updateSettings(
+      _settings.copyWith(imageOverlaySystemPromptTemplate: template),
+    );
+  }
+
   void setLive2DSystemPromptTokenBudget(int budget) {
     updateSettings(
       _settings.copyWith(
@@ -290,8 +297,13 @@ class SettingsProvider extends ChangeNotifier {
     );
   }
 
+  void setLlmDirectiveTarget(LlmDirectiveTarget target) {
+    updateSettings(_settings.copyWith(llmDirectiveTarget: target));
+  }
+
   void setCharacterName(String name) {
     updateCharacter(_character.copyWith(name: name));
+    ImageOverlayCharacterSyncService.instance.syncFromSessionCharacterName(name);
   }
 
   void setCharacterDescription(String description) {
