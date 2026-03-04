@@ -101,6 +101,7 @@ jobs:
           EOF
 
       - name: Prepare local.properties for Cubism SDK
+        id: cubism
         shell: bash
         env:
           CUBISM_SDK_PATH: ${{ secrets.CUBISM_SDK_PATH }}
@@ -117,19 +118,28 @@ jobs:
             mkdir -p "$RUNNER_TEMP/cubism-sdk"
             echo "${CUBISM_SDK_ZIP_BASE64}" | base64 --decode > "$RUNNER_TEMP/cubism-sdk/cubism.zip"
             unzip -q "$RUNNER_TEMP/cubism-sdk/cubism.zip" -d "$RUNNER_TEMP/cubism-sdk/unpacked"
-            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -maxdepth 3 -type d | head -n 1)
+            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -mindepth 1 -maxdepth 3 -type d | head -n 1)
           elif [[ -n "${CUBISM_SDK_DOWNLOAD_URL}" ]]; then
             mkdir -p "$RUNNER_TEMP/cubism-sdk"
             curl -fsSL "${CUBISM_SDK_DOWNLOAD_URL}" -o "$RUNNER_TEMP/cubism-sdk/cubism.zip"
             unzip -q "$RUNNER_TEMP/cubism-sdk/cubism.zip" -d "$RUNNER_TEMP/cubism-sdk/unpacked"
-            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -maxdepth 3 -type d | head -n 1)
+            RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -mindepth 1 -maxdepth 3 -type d | head -n 1)
           fi
 
           if [[ -z "${RESOLVED_CUBISM_PATH}" ]]; then
-            echo "::warning::Missing Cubism SDK secret; building without native Cubism integration."
+            echo "cubism_native_enabled=false" >> "${GITHUB_OUTPUT}"
             rm -f android/local.properties
+
+            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+              echo "::error::Missing Cubism SDK secret for tag release. Aborting to prevent broken Live2D native build."
+              exit 1
+            fi
+
+            echo "::notice::Cubism SDK secret is missing; continuing without native Cubism integration (non-tag build)."
             exit 0
           fi
+
+          echo "cubism_native_enabled=true" >> "${GITHUB_OUTPUT}"
 
           cat > android/local.properties <<EOF
           cubism.sdk.path=${RESOLVED_CUBISM_PATH}
@@ -153,7 +163,8 @@ jobs:
             --build-number "${{ steps.version.outputs.version_code }}" \
             --dart-define=LOG_UPLOAD_ENABLED=${LOG_UPLOAD_ENABLED} \
             --dart-define=LOG_ENDPOINT="${LOG_INGEST_ENDPOINT}" \
-            --dart-define=LOG_AUTH_TOKEN="${LOG_INGEST_TOKEN}"
+            --dart-define=LOG_AUTH_TOKEN="${LOG_INGEST_TOKEN}" \
+            --dart-define=CUBISM_NATIVE_ENABLED=${{ steps.cubism.outputs.cubism_native_enabled }}
 
       - name: Generate checksum and SBOM
         shell: bash
