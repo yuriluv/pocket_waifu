@@ -23,6 +23,39 @@ object Live2DNativeBridge {
         }
     }
 
+    fun isNativeAvailable(): Boolean = isLoaded || ensureLoaded()
+
+    fun safeSetParameterValue(paramId: String, value: Float): Boolean {
+        if (!isNativeAvailable()) return false
+        return try {
+            nativeSetParameterValue(paramId, value)
+            true
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeSetParameterValue failed", t)
+            false
+        }
+    }
+
+    fun safeGetParameterValue(paramId: String): Float? {
+        if (!isNativeAvailable()) return null
+        return try {
+            nativeGetParameterValue(paramId)
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeGetParameterValue failed", t)
+            null
+        }
+    }
+
+    fun safeGetParameterIds(): Array<String> {
+        if (!isNativeAvailable()) return emptyArray()
+        return try {
+            nativeGetParameterIds()
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeGetParameterIds failed", t)
+            emptyArray()
+        }
+    }
+
     external fun nativeSetAssetManager(assetManager: android.content.res.AssetManager)
     external fun nativeInitializeFramework(): Boolean
     external fun nativeGetVersion(): Int

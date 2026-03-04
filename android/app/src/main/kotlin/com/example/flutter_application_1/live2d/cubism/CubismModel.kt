@@ -294,9 +294,9 @@ class CubismModel(
         val parameterInfo = mutableListOf<Map<String, Any>>()
         if (isSdkMode) {
             try {
-                val ids = Live2DNativeBridge.nativeGetParameterIds()
+                val ids = Live2DNativeBridge.safeGetParameterIds()
                 for (id in ids) {
-                    val current = Live2DNativeBridge.nativeGetParameterValue(id)
+                    val current = Live2DNativeBridge.safeGetParameterValue(id) ?: continue
                     parameterInfo.add(
                         mapOf(
                             "id" to id,
@@ -304,7 +304,7 @@ class CubismModel(
                         )
                     )
                 }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
             }
         }
 

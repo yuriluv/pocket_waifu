@@ -621,20 +621,20 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         while (iterator.hasNext()) {
             val update = iterator.next()
             if (update.durationMs <= 0) {
-                Live2DNativeBridge.nativeSetParameterValue(update.paramId, update.targetValue)
+                Live2DNativeBridge.safeSetParameterValue(update.paramId, update.targetValue)
                 iterator.remove()
                 continue
             }
 
             if (update.startValue == null) {
-                update.startValue = Live2DNativeBridge.nativeGetParameterValue(update.paramId)
+                update.startValue = Live2DNativeBridge.safeGetParameterValue(update.paramId) ?: update.targetValue
             }
 
             update.elapsedMs += deltaMs
             val progress = (update.elapsedMs / update.durationMs.toFloat()).coerceIn(0f, 1f)
             val start = update.startValue ?: update.targetValue
             val currentValue = start + ((update.targetValue - start) * progress)
-            Live2DNativeBridge.nativeSetParameterValue(update.paramId, currentValue)
+            Live2DNativeBridge.safeSetParameterValue(update.paramId, currentValue)
 
             if (progress >= 1f) {
                 iterator.remove()

@@ -503,36 +503,40 @@ class Live2DMethodHandler(
             return
         }
         try {
-            val value = Live2DNativeBridge.nativeGetParameterValue(id)
+            val value = Live2DNativeBridge.safeGetParameterValue(id)
+            if (value == null) {
+                result.error("NATIVE_UNAVAILABLE", "Cubism native bridge unavailable", null)
+                return
+            }
             result.success(value.toDouble())
-        } catch (e: Exception) {
-            Live2DLogger.e("파라미터 조회 실패", e)
-            result.error("PARAM_ERROR", e.message, null)
+        } catch (t: Throwable) {
+            Live2DLogger.e("파라미터 조회 실패", t)
+            result.error("PARAM_ERROR", t.message, null)
         }
     }
 
     private fun getParameterIds(result: MethodChannel.Result) {
         try {
-            val ids = Live2DNativeBridge.nativeGetParameterIds()
+            val ids = Live2DNativeBridge.safeGetParameterIds()
             result.success(ids.toList())
-        } catch (e: Exception) {
-            Live2DLogger.e("파라미터 ID 조회 실패", e)
-            result.error("PARAM_ERROR", e.message, null)
+        } catch (t: Throwable) {
+            Live2DLogger.e("파라미터 ID 조회 실패", t)
+            result.error("PARAM_ERROR", t.message, null)
         }
     }
 
     private fun getRuntimeParameterValues(result: MethodChannel.Result) {
         try {
-            val ids = Live2DNativeBridge.nativeGetParameterIds()
+            val ids = Live2DNativeBridge.safeGetParameterIds()
             val values = mutableMapOf<String, Double>()
             for (id in ids) {
-                val value = Live2DNativeBridge.nativeGetParameterValue(id)
+                val value = Live2DNativeBridge.safeGetParameterValue(id) ?: continue
                 values[id] = value.toDouble()
             }
             result.success(values)
-        } catch (e: Exception) {
-            Live2DLogger.e("런타임 파라미터 값 조회 실패", e)
-            result.error("PARAM_ERROR", e.message, null)
+        } catch (t: Throwable) {
+            Live2DLogger.e("런타임 파라미터 값 조회 실패", t)
+            result.error("PARAM_ERROR", t.message, null)
         }
     }
     

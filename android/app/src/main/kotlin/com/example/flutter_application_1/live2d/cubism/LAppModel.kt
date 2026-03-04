@@ -419,9 +419,9 @@ class LAppModel(
     private fun refreshAvailableParameterIds() {
         availableParameterIds.clear()
         try {
-            availableParameterIds.addAll(Live2DNativeBridge.nativeGetParameterIds())
-        } catch (e: Exception) {
-            Live2DLogger.w("$TAG: Failed to query parameter IDs", e.message)
+            availableParameterIds.addAll(Live2DNativeBridge.safeGetParameterIds())
+        } catch (t: Throwable) {
+            Live2DLogger.w("$TAG: Failed to query parameter IDs", t.message)
         }
     }
 
@@ -429,9 +429,9 @@ class LAppModel(
         if (!isSdkRenderingActive) return
         if (!availableParameterIds.contains(paramId)) return
         try {
-            Live2DNativeBridge.nativeSetParameterValue(paramId, value)
-        } catch (e: Exception) {
-            Live2DLogger.w("$TAG: Failed to set parameter $paramId", e.message)
+            Live2DNativeBridge.safeSetParameterValue(paramId, value)
+        } catch (t: Throwable) {
+            Live2DLogger.w("$TAG: Failed to set parameter $paramId", t.message)
         }
     }
     
