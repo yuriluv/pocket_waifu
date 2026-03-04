@@ -1,0 +1,3 @@
+c007557 chore(compose): update workspace mounts and add backup compose snapshot
+M	docker-compose.yml
+A	docker-compose.yml.bak.20260303-001326
