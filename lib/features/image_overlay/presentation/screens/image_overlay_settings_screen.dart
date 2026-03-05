@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/image_overlay_character.dart';
+import '../../data/models/image_overlay_preset.dart';
+import '../../data/models/image_overlay_settings.dart';
 import '../../presentation/controllers/image_overlay_controller.dart';
+import '../../../../providers/settings_provider.dart';
 
 class ImageOverlaySettingsScreen extends StatelessWidget {
   const ImageOverlaySettingsScreen({super.key});
@@ -10,7 +13,9 @@ class ImageOverlaySettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ImageOverlayController()..initialize(),
+      create: (context) => ImageOverlayController(
+        settingsProvider: context.read<SettingsProvider>(),
+      )..initialize(),
       child: const _ImageOverlaySettingsBody(),
     );
   }
@@ -37,26 +42,26 @@ class _ImageOverlaySettingsBody extends StatelessWidget {
       body: switch (controller.state) {
         ImageOverlayControllerState.loading ||
         ImageOverlayControllerState.initial => const Center(
-            child: CircularProgressIndicator(),
-          ),
+          child: CircularProgressIndicator(),
+        ),
         ImageOverlayControllerState.error => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(controller.errorMessage ?? '오류가 발생했습니다.'),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(controller.errorMessage ?? '오류가 발생했습니다.'),
           ),
+        ),
         ImageOverlayControllerState.ready => ListView(
-            padding: const EdgeInsets.only(bottom: 24),
-            children: const [
-              _FolderSection(),
-              _CharacterSection(),
-              _DisplaySection(),
-              _HitboxSection(),
-              _TouchThroughSection(),
-              _PresetSection(),
-              _AdvancedSection(),
-            ],
-          ),
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            const _FolderSection(),
+            const _CharacterSection(),
+            const _DisplaySection(),
+            if (controller.isAdvancedOverlayMode) const _HitboxSection(),
+            const _TouchThroughSection(),
+            if (controller.isAdvancedOverlayMode) const _PresetSection(),
+            const _AdvancedSection(),
+          ],
+        ),
       },
     );
   }
@@ -158,14 +163,16 @@ class _CharacterSection extends StatelessWidget {
                   border: OutlineInputBorder(),
                   labelText: '감정 이미지',
                 ),
-                items: (selectedCharacter?.emotions ?? const <ImageOverlayEmotion>[])
-                    .map(
-                      (e) => DropdownMenuItem<String>(
-                        value: e.filePath,
-                        child: Text(e.name),
-                      ),
-                    )
-                    .toList(growable: false),
+                items:
+                    (selectedCharacter?.emotions ??
+                            const <ImageOverlayEmotion>[])
+                        .map(
+                          (e) => DropdownMenuItem<String>(
+                            value: e.filePath,
+                            child: Text(e.name),
+                          ),
+                        )
+                        .toList(growable: false),
                 onChanged: (value) async {
                   if (value == null || selectedCharacter == null) return;
                   for (final emotion in selectedCharacter.emotions) {
@@ -233,7 +240,10 @@ class _DisplaySectionState extends State<_DisplaySection> {
     if (parsed == null) {
       return;
     }
-    final clamped = parsed.clamp(0.1, 5.0);
+    final clamped = parsed.clamp(
+      ImageOverlaySettings.minScale,
+      ImageOverlaySettings.maxScale,
+    );
     context.read<ImageOverlayController>().setImageScale(clamped);
     _scaleController.text = clamped.toStringAsFixed(2);
   }
@@ -252,6 +262,36 @@ class _DisplaySectionState extends State<_DisplaySection> {
           children: [
             Text('표시 설정', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
+            Text('오버레이 방식', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('편집 오버레이'),
+                  selected: controller.isAdvancedOverlayMode,
+                  onSelected: (_) => controller.setOverlayInteractionMode(
+                    ImageOverlaySettings.overlayModeAdvanced,
+                  ),
+                ),
+                ChoiceChip(
+                  label: const Text('기본 오버레이'),
+                  selected: controller.isBasicOverlayMode,
+                  onSelected: (_) => controller.setOverlayInteractionMode(
+                    ImageOverlaySettings.overlayModeBasic,
+                  ),
+                ),
+              ],
+            ),
+            if (controller.isBasicOverlayMode)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '기본 모드는 오버레이 내 편집 기능 없이 이미지 표시/터치스루 중심으로 동작합니다.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            const SizedBox(height: 10),
             Text('불투명도: ${(settings.opacity * 100).round()}%'),
             Slider(
               value: settings.opacity,
@@ -270,8 +310,9 @@ class _DisplaySectionState extends State<_DisplaySection> {
                   width: 120,
                   child: TextField(
                     controller: _scaleController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     textAlign: TextAlign.center,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
@@ -395,14 +436,20 @@ class _TouchThroughSectionState extends State<_TouchThroughSection> {
   @override
   void initState() {
     super.initState();
-    final alpha = context.read<ImageOverlayController>().settings.touchThroughAlpha;
+    final alpha = context
+        .read<ImageOverlayController>()
+        .settings
+        .touchThroughAlpha;
     _alphaController = TextEditingController(text: alpha.toString());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final alpha = context.watch<ImageOverlayController>().settings.touchThroughAlpha;
+    final alpha = context
+        .watch<ImageOverlayController>()
+        .settings
+        .touchThroughAlpha;
     _alphaController.text = alpha.toString();
   }
 
@@ -566,12 +613,23 @@ class _PresetSection extends StatelessWidget {
                     itemCount: controller.presets.length,
                     itemBuilder: (context, index) {
                       final preset = controller.presets[index];
+                      String linkedLabel = '없음';
+                      if (preset.linkedCharacterFolder != null) {
+                        for (final character in controller.characters) {
+                          if (character.folderPath ==
+                              preset.linkedCharacterFolder) {
+                            linkedLabel = character.name;
+                            break;
+                          }
+                        }
+                      }
                       return ListTile(
                         title: Text(preset.name),
                         subtitle: Text(
                           '크기: ${preset.overlayWidth}x${preset.overlayHeight} · '
                           '위치: ${(preset.positionX * 100).round()}%, ${(preset.positionY * 100).round()}% · '
-                          '배율: ${preset.imageScale.toStringAsFixed(2)}x',
+                          '배율: ${preset.imageScale.toStringAsFixed(2)}x · '
+                          '연동: $linkedLabel',
                         ),
                         trailing: Wrap(
                           spacing: 8,
@@ -584,6 +642,12 @@ class _PresetSection extends StatelessWidget {
                                 }
                               },
                               child: const Text('적용'),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  _showLinkDialog(context, controller, preset),
+                              icon: const Icon(Icons.link),
+                              tooltip: '연동',
                             ),
                             IconButton(
                               onPressed: () =>
@@ -606,6 +670,61 @@ class _PresetSection extends StatelessWidget {
       },
     );
   }
+
+  void _showLinkDialog(
+    BuildContext context,
+    ImageOverlayController controller,
+    ImageOverlayPreset preset,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('프리셋 연동'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: controller.characters.isEmpty
+                ? const Text('연동 가능한 캐릭터 폴더가 없습니다.')
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: controller.characters.length,
+                    itemBuilder: (context, index) {
+                      final character = controller.characters[index];
+                      return ListTile(
+                        title: Text(character.name),
+                        subtitle: Text(character.folderPath),
+                        onTap: () async {
+                          await controller.linkPresetToCharacter(
+                            preset.id,
+                            character.folderPath,
+                          );
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                          }
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await controller.unlinkPreset(preset.id);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('연동 해제'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('닫기'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _AdvancedSection extends StatelessWidget {
@@ -615,7 +734,8 @@ class _AdvancedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<ImageOverlayController>();
     final selectedCharacter = controller.selectedCharacter;
-    final emotions = selectedCharacter?.emotions ?? const <ImageOverlayEmotion>[];
+    final emotions =
+        selectedCharacter?.emotions ?? const <ImageOverlayEmotion>[];
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -647,7 +767,8 @@ class _AdvancedSection extends StatelessWidget {
                   subtitle: Text(emotion.filePath),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
-                    onPressed: () => _showRenameDialog(context, controller, emotion),
+                    onPressed: () =>
+                        _showRenameDialog(context, controller, emotion),
                   ),
                 ),
               ),

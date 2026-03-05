@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../live2d/data/models/live2d_settings.dart';
 import '../../../live2d/data/services/live2d_native_bridge.dart';
+import '../../../../providers/settings_provider.dart';
 import '../../data/models/image_overlay_character.dart';
 import '../../data/models/image_overlay_preset.dart';
 import '../../data/models/image_overlay_settings.dart';
@@ -12,8 +13,14 @@ enum ImageOverlayControllerState { initial, loading, ready, error }
 
 class ImageOverlayController extends ChangeNotifier {
   final Live2DNativeBridge _live2dBridge = Live2DNativeBridge();
-  final ImageOverlayNativeBridge _imageBridge = ImageOverlayNativeBridge.instance;
-  final ImageOverlayStorageService _storage = ImageOverlayStorageService.instance;
+  final ImageOverlayNativeBridge _imageBridge =
+      ImageOverlayNativeBridge.instance;
+  final ImageOverlayStorageService _storage =
+      ImageOverlayStorageService.instance;
+  final SettingsProvider? _settingsProvider;
+
+  ImageOverlayController({SettingsProvider? settingsProvider})
+    : _settingsProvider = settingsProvider;
 
   ImageOverlayControllerState _state = ImageOverlayControllerState.initial;
   ImageOverlaySettings _settings = const ImageOverlaySettings();
@@ -27,6 +34,9 @@ class ImageOverlayController extends ChangeNotifier {
   List<ImageOverlayCharacter> get characters => _characters;
   List<ImageOverlayPreset> get presets => _presets;
   bool get hitboxEditMode => _hitboxEditMode;
+  bool get isBasicOverlayMode =>
+      _settings.overlayInteractionMode == ImageOverlaySettings.overlayModeBasic;
+  bool get isAdvancedOverlayMode => !isBasicOverlayMode;
   bool get isLoading => _state == ImageOverlayControllerState.loading;
   String? get errorMessage => _errorMessage;
 
@@ -109,6 +119,9 @@ class ImageOverlayController extends ChangeNotifier {
       );
     }
     await _settings.save();
+    if (_settings.syncCharacterNameWithSession && _characters.isNotEmpty) {
+      await _syncCharacterNameToApp(_characters.first.name);
+    }
     if (_settings.isEnabled) {
       await _ensureImageOverlayVisible();
     }
@@ -145,6 +158,10 @@ class ImageOverlayController extends ChangeNotifier {
     );
     await _settings.save();
 
+    if (_settings.syncCharacterNameWithSession) {
+      await _syncCharacterNameToApp(character.name);
+    }
+
     if (_settings.isEnabled && _settings.selectedEmotionFile != null) {
       await _imageBridge.loadOverlayImage(_settings.selectedEmotionFile!);
     }
@@ -160,7 +177,10 @@ class ImageOverlayController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> renameEmotion(ImageOverlayEmotion emotion, String nextName) async {
+  Future<bool> renameEmotion(
+    ImageOverlayEmotion emotion,
+    String nextName,
+  ) async {
     final ok = await _storage.renameEmotionFile(
       originalPath: emotion.filePath,
       nextName: nextName,
@@ -205,12 +225,17 @@ class ImageOverlayController extends ChangeNotifier {
       final widthRatio = width / prevWidth;
       final heightRatio = height / prevHeight;
       final ratio = (widthRatio + heightRatio) / 2;
-      nextScale = (nextScale * ratio).clamp(0.1, 5.0);
+      nextScale = (nextScale * ratio).clamp(
+        ImageOverlaySettings.minScale,
+        ImageOverlaySettings.maxScale,
+      );
     }
 
     _settings = _settings.copyWith(
       overlayWidth: width,
       overlayHeight: height,
+      hitboxWidth: isBasicOverlayMode ? width : null,
+      hitboxHeight: isBasicOverlayMode ? height : null,
       imageScale: nextScale,
     );
     await _settings.save();
@@ -221,8 +246,13 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> setImageScale(double scale) async {
-    final clampedScale = scale.clamp(0.1, 5.0);
-    final previousScale = _settings.imageScale <= 0 ? 1.0 : _settings.imageScale;
+    final clampedScale = scale.clamp(
+      ImageOverlaySettings.minScale,
+      ImageOverlaySettings.maxScale,
+    );
+    final previousScale = _settings.imageScale <= 0
+        ? 1.0
+        : _settings.imageScale;
     final ratio = clampedScale / previousScale;
 
     final width = (_settings.overlayWidth * ratio).round();
@@ -232,10 +262,45 @@ class ImageOverlayController extends ChangeNotifier {
       imageScale: clampedScale,
       overlayWidth: width,
       overlayHeight: height,
+      hitboxWidth: isBasicOverlayMode ? width : null,
+      hitboxHeight: isBasicOverlayMode ? height : null,
     );
     await _settings.save();
     if (_settings.isEnabled) {
       await _applyOverlayGeometryToNative();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setOverlayInteractionMode(String mode) async {
+    final normalized = mode == ImageOverlaySettings.overlayModeBasic
+        ? ImageOverlaySettings.overlayModeBasic
+        : ImageOverlaySettings.overlayModeAdvanced;
+
+    if (normalized == _settings.overlayInteractionMode) {
+      return;
+    }
+
+    if (normalized == ImageOverlaySettings.overlayModeBasic &&
+        _hitboxEditMode) {
+      _hitboxEditMode = false;
+      await _live2dBridge.setCharacterPinned(false);
+      await _live2dBridge.setEditMode(false);
+    }
+
+    _settings = _settings.copyWith(
+      overlayInteractionMode: normalized,
+      hitboxWidth: normalized == ImageOverlaySettings.overlayModeBasic
+          ? _settings.overlayWidth
+          : null,
+      hitboxHeight: normalized == ImageOverlaySettings.overlayModeBasic
+          ? _settings.overlayHeight
+          : null,
+    );
+    await _settings.save();
+
+    if (_settings.isEnabled) {
+      await _ensureImageOverlayVisible();
     }
     notifyListeners();
   }
@@ -250,6 +315,9 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> setHitboxEditMode(bool enabled) async {
+    if (enabled && isBasicOverlayMode) {
+      return;
+    }
     _hitboxEditMode = enabled;
     await _live2dBridge.setEditMode(enabled);
     await _live2dBridge.setCharacterPinned(enabled);
@@ -263,8 +331,16 @@ class ImageOverlayController extends ChangeNotifier {
     final state = await _live2dBridge.getDisplayState();
     final screenWidth = _readInt(state, 'screenWidth', 0);
     final screenHeight = _readInt(state, 'screenHeight', 0);
-    final containerWidth = _readInt(state, 'containerWidth', _settings.overlayWidth);
-    final containerHeight = _readInt(state, 'containerHeight', _settings.overlayHeight);
+    final containerWidth = _readInt(
+      state,
+      'containerWidth',
+      _settings.hitboxWidth,
+    );
+    final containerHeight = _readInt(
+      state,
+      'containerHeight',
+      _settings.hitboxHeight,
+    );
     final containerX = _readInt(state, 'containerX', 0);
     final containerY = _readInt(state, 'containerY', 0);
 
@@ -272,26 +348,21 @@ class ImageOverlayController extends ChangeNotifier {
       return;
     }
 
-    final maxX = (screenWidth - containerWidth).clamp(0, screenWidth).toDouble();
-    final maxY = (screenHeight - containerHeight).clamp(0, screenHeight).toDouble();
+    final maxX = (screenWidth - containerWidth)
+        .clamp(0, screenWidth)
+        .toDouble();
+    final maxY = (screenHeight - containerHeight)
+        .clamp(0, screenHeight)
+        .toDouble();
 
     final ratioX = maxX <= 0 ? 0.0 : (containerX / maxX).clamp(0.0, 1.0);
     final ratioY = maxY <= 0 ? 0.0 : (containerY / maxY).clamp(0.0, 1.0);
 
-    var nextScale = _settings.imageScale;
-    if (_settings.overlayWidth > 0 && _settings.overlayHeight > 0) {
-      final widthRatio = containerWidth / _settings.overlayWidth;
-      final heightRatio = containerHeight / _settings.overlayHeight;
-      final ratio = (widthRatio + heightRatio) / 2;
-      nextScale = (nextScale * ratio).clamp(0.1, 5.0);
-    }
-
     _settings = _settings.copyWith(
-      overlayWidth: containerWidth,
-      overlayHeight: containerHeight,
+      hitboxWidth: containerWidth,
+      hitboxHeight: containerHeight,
       positionX: ratioX,
       positionY: ratioY,
-      imageScale: nextScale,
     );
     await _settings.save();
   }
@@ -304,6 +375,10 @@ class ImageOverlayController extends ChangeNotifier {
       final live2dSettings = await Live2DSettings.load();
       if (live2dSettings.isEnabled) {
         await live2dSettings.copyWith(isEnabled: false).save();
+      }
+
+      if (isBasicOverlayMode && _hitboxEditMode) {
+        _hitboxEditMode = false;
       }
 
       await _ensureImageOverlayVisible();
@@ -327,6 +402,9 @@ class ImageOverlayController extends ChangeNotifier {
   Future<void> setSyncCharacterNameWithSession(bool enabled) async {
     _settings = _settings.copyWith(syncCharacterNameWithSession: enabled);
     await _settings.save();
+    if (enabled && selectedCharacter != null) {
+      await _syncCharacterNameToApp(selectedCharacter!.name);
+    }
     notifyListeners();
   }
 
@@ -354,8 +432,8 @@ class ImageOverlayController extends ChangeNotifier {
         ImageOverlayPreset(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
           name: name,
-          overlayWidth: _settings.overlayWidth,
-          overlayHeight: _settings.overlayHeight,
+          overlayWidth: _settings.hitboxWidth,
+          overlayHeight: _settings.hitboxHeight,
           positionX: _settings.positionX,
           positionY: _settings.positionY,
           imageScale: _settings.imageScale,
@@ -369,6 +447,13 @@ class ImageOverlayController extends ChangeNotifier {
 
   Future<void> loadPreset(ImageOverlayPreset preset) async {
     ImageOverlayCharacter? linkedCharacter;
+    final previousScale = _settings.imageScale <= 0
+        ? 1.0
+        : _settings.imageScale;
+    final ratio = preset.imageScale / previousScale;
+    final scaledWidth = (_settings.overlayWidth * ratio).round();
+    final scaledHeight = (_settings.overlayHeight * ratio).round();
+
     if (preset.linkedCharacterFolder != null) {
       for (final character in _characters) {
         if (character.folderPath == preset.linkedCharacterFolder) {
@@ -379,16 +464,20 @@ class ImageOverlayController extends ChangeNotifier {
     }
 
     _settings = _settings.copyWith(
-      overlayWidth: preset.overlayWidth,
-      overlayHeight: preset.overlayHeight,
+      overlayWidth: scaledWidth,
+      overlayHeight: scaledHeight,
+      hitboxWidth: preset.overlayWidth,
+      hitboxHeight: preset.overlayHeight,
       imageScale: preset.imageScale,
       positionX: preset.positionX,
       positionY: preset.positionY,
       selectedCharacterFolder: linkedCharacter?.folderPath,
-      selectedEmotionFile: linkedCharacter != null && linkedCharacter.emotions.isNotEmpty
+      selectedEmotionFile:
+          linkedCharacter != null && linkedCharacter.emotions.isNotEmpty
           ? linkedCharacter.emotions.first.filePath
           : _settings.selectedEmotionFile,
     );
+
     await _settings.save();
 
     if (_settings.isEnabled) {
@@ -397,6 +486,9 @@ class ImageOverlayController extends ChangeNotifier {
       if (selectedFile != null) {
         await _imageBridge.loadOverlayImage(selectedFile);
       }
+    }
+    if (_settings.syncCharacterNameWithSession && linkedCharacter != null) {
+      await _syncCharacterNameToApp(linkedCharacter.name);
     }
     notifyListeners();
   }
@@ -445,8 +537,14 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> _ensureImageOverlayVisible() async {
-    await _imageBridge.setOverlayMode('image');
+    await _imageBridge.setOverlayMode(
+      isBasicOverlayMode ? 'image_basic' : 'image',
+    );
     await _live2dBridge.showOverlay();
+    if (isBasicOverlayMode) {
+      await _live2dBridge.setCharacterPinned(false);
+      await _live2dBridge.setEditMode(false);
+    }
     await _applyOverlayGeometryToNative();
     await _live2dBridge.setCharacterOpacity(_settings.opacity);
     await _live2dBridge.setTouchThroughEnabled(_settings.touchThroughEnabled);
@@ -458,7 +556,14 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> _applyOverlayGeometryToNative() async {
-    await _live2dBridge.setSize(_settings.overlayWidth, _settings.overlayHeight);
+    await _live2dBridge.setSize(
+      _settings.overlayWidth,
+      _settings.overlayHeight,
+    );
+    await _live2dBridge.setHitboxSize(
+      isBasicOverlayMode ? _settings.overlayWidth : _settings.hitboxWidth,
+      isBasicOverlayMode ? _settings.overlayHeight : _settings.hitboxHeight,
+    );
 
     final state = await _live2dBridge.getDisplayState();
     final screenWidth = _readInt(state, 'screenWidth', 0);
@@ -468,12 +573,29 @@ class ImageOverlayController extends ChangeNotifier {
       return;
     }
 
-    final maxX = (screenWidth - _settings.overlayWidth).clamp(0, screenWidth);
-    final maxY = (screenHeight - _settings.overlayHeight).clamp(0, screenHeight);
+    final hitboxWidth = isBasicOverlayMode
+        ? _settings.overlayWidth
+        : _settings.hitboxWidth;
+    final hitboxHeight = isBasicOverlayMode
+        ? _settings.overlayHeight
+        : _settings.hitboxHeight;
+    final maxX = (screenWidth - hitboxWidth).clamp(0, screenWidth);
+    final maxY = (screenHeight - hitboxHeight).clamp(0, screenHeight);
     final targetX = (maxX * _settings.positionX).round();
     final targetY = (maxY * _settings.positionY).round();
 
     await _live2dBridge.setPosition(targetX.toDouble(), targetY.toDouble());
+  }
+
+  Future<void> _syncCharacterNameToApp(String nextName) async {
+    final provider = _settingsProvider;
+    if (provider == null) {
+      return;
+    }
+    if (provider.character.name == nextName) {
+      return;
+    }
+    provider.setCharacterName(nextName);
   }
 
   int _readInt(Map<String, dynamic> source, String key, int fallback) {

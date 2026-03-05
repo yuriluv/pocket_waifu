@@ -67,9 +67,10 @@ class ImageOverlayPreset {
       overlayHeight: overlayHeight ?? this.overlayHeight,
       positionX: (positionX ?? this.positionX).clamp(0.0, 1.0),
       positionY: (positionY ?? this.positionY).clamp(0.0, 1.0),
-      imageScale: (imageScale ?? this.imageScale).clamp(0.1, 5.0),
-      linkedCharacterFolder:
-          clearLink ? null : (linkedCharacterFolder ?? this.linkedCharacterFolder),
+      imageScale: (imageScale ?? this.imageScale).clamp(0.1, 20.0),
+      linkedCharacterFolder: clearLink
+          ? null
+          : (linkedCharacterFolder ?? this.linkedCharacterFolder),
     );
   }
 }
