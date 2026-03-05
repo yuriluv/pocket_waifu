@@ -219,7 +219,9 @@ class Live2DNativeBridge {
 
   Future<String> getOverlayMode() async {
     try {
-      final result = await _methodChannel.invokeMethod<String>('getOverlayMode');
+      final result = await _methodChannel.invokeMethod<String>(
+        'getOverlayMode',
+      );
       return result ?? 'live2d';
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'getOverlayMode 실패', error: e);
@@ -231,9 +233,10 @@ class Live2DNativeBridge {
 
   Future<bool> loadOverlayImage(String imagePath) async {
     try {
-      final result = await _methodChannel.invokeMethod<bool>('loadOverlayImage', {
-        'path': imagePath,
-      });
+      final result = await _methodChannel.invokeMethod<bool>(
+        'loadOverlayImage',
+        {'path': imagePath},
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'loadOverlayImage 실패', error: e);
@@ -469,7 +472,7 @@ class Live2DNativeBridge {
         'setNotificationResponse',
         {
           'message': message,
-          if (sessionId != null) 'sessionId': sessionId,
+          ...?(sessionId == null ? null : {'sessionId': sessionId}),
         },
       );
       return result ?? false;
@@ -490,7 +493,7 @@ class Live2DNativeBridge {
         'setNotificationError',
         {
           'error': errorMessage,
-          if (sessionId != null) 'sessionId': sessionId,
+          ...?(sessionId == null ? null : {'sessionId': sessionId}),
         },
       );
       return result ?? false;
@@ -685,6 +688,21 @@ class Live2DNativeBridge {
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setSize 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<bool> setHitboxSize(int width, int height) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setHitboxSize', {
+        'width': width,
+        'height': height,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setHitboxSize 실패', error: e);
       return false;
     } on MissingPluginException {
       return false;

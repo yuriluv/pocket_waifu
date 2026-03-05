@@ -49,6 +49,7 @@ class Live2DMethodHandler(
                 "setOpacity" -> setOpacity(call, result)
                 "setPosition" -> setPosition(call, result)
                 "setSize" -> setSize(call, result)
+                "setHitboxSize" -> setHitboxSize(call, result)
                 
                 "setTouchThroughEnabled" -> setTouchThroughEnabled(call, result)
                 "setTouchThroughAlpha" -> setTouchThroughAlpha(call, result)
@@ -219,7 +220,15 @@ class Live2DMethodHandler(
     }
 
     private fun getOverlayMode(result: MethodChannel.Result) {
-        result.success(Live2DOverlayService.currentOverlayMode)
+        val mode = if (
+            Live2DOverlayService.currentOverlayMode == "image" &&
+            Live2DOverlayService.currentImageOverlayBasicMode
+        ) {
+            "image_basic"
+        } else {
+            Live2DOverlayService.currentOverlayMode
+        }
+        result.success(mode)
     }
 
     private fun loadOverlayImage(call: MethodCall, result: MethodChannel.Result) {
@@ -615,6 +624,25 @@ class Live2DMethodHandler(
             result.success(true)
         } catch (e: Exception) {
             Live2DLogger.e("크기 설정 실패", e)
+            result.error("DISPLAY_ERROR", e.message, null)
+        }
+    }
+
+    private fun setHitboxSize(call: MethodCall, result: MethodChannel.Result) {
+        val width = call.argument<Int>("width") ?: 300
+        val height = call.argument<Int>("height") ?: 400
+
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_HITBOX_SIZE
+                putExtra(Live2DOverlayService.EXTRA_WIDTH, width)
+                putExtra(Live2DOverlayService.EXTRA_HEIGHT, height)
+            }
+            context.startService(intent)
+
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("히트박스 크기 설정 실패", e)
             result.error("DISPLAY_ERROR", e.message, null)
         }
     }

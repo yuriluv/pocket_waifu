@@ -66,6 +66,7 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_OPACITY = "com.example.flutter_application_1.live2d.SET_OPACITY"
         const val ACTION_SET_POSITION = "com.example.flutter_application_1.live2d.SET_POSITION"
         const val ACTION_SET_SIZE = "com.example.flutter_application_1.live2d.SET_SIZE"
+        const val ACTION_SET_HITBOX_SIZE = "com.example.flutter_application_1.live2d.SET_HITBOX_SIZE"
         const val ACTION_SET_EYE_BLINK = "com.example.flutter_application_1.live2d.SET_EYE_BLINK"
         const val ACTION_SET_BREATHING = "com.example.flutter_application_1.live2d.SET_BREATHING"
         const val ACTION_SET_LOOK_AT = "com.example.flutter_application_1.live2d.SET_LOOK_AT"
@@ -165,6 +166,10 @@ class Live2DOverlayService : Service() {
             private set
 
         @Volatile
+        var currentImageOverlayBasicMode: Boolean = false
+            private set
+
+        @Volatile
         private var lastDisplayState: Map<String, Any> = emptyMap()
 
         fun getDisplayState(context: Context): Map<String, Any> {
@@ -198,6 +203,7 @@ class Live2DOverlayService : Service() {
     private var touchThroughAlpha = 0.8f
     private var characterOpacity = 1.0f
     @Volatile private var isAppForeground = false
+    private var imageBasicModeEnabled = false
     
     private var editModeEnabled = false
     private var characterPinned = false
@@ -363,6 +369,10 @@ class Live2DOverlayService : Service() {
                 intent.getIntExtra(EXTRA_POSITION_Y, 0)
             )
             ACTION_SET_SIZE -> setSize(
+                intent.getIntExtra(EXTRA_WIDTH, DEFAULT_WIDTH),
+                intent.getIntExtra(EXTRA_HEIGHT, DEFAULT_HEIGHT)
+            )
+            ACTION_SET_HITBOX_SIZE -> setHitboxSize(
                 intent.getIntExtra(EXTRA_WIDTH, DEFAULT_WIDTH),
                 intent.getIntExtra(EXTRA_HEIGHT, DEFAULT_HEIGHT)
             )
@@ -621,16 +631,26 @@ class Live2DOverlayService : Service() {
     }
 
     private fun setOverlayMode(mode: String) {
-        val normalized = if (mode.equals("image", ignoreCase = true)) {
+        val requestedBasicMode = mode.equals("image_basic", ignoreCase = true)
+        val normalized = if (mode.equals("image", ignoreCase = true) || requestedBasicMode) {
             "image"
         } else {
             "live2d"
         }
-        if (normalized == currentOverlayMode) {
+        val modeChanged =
+            normalized != currentOverlayMode || imageBasicModeEnabled != requestedBasicMode
+        if (!modeChanged) {
             return
         }
 
         currentOverlayMode = normalized
+        imageBasicModeEnabled = requestedBasicMode
+        currentImageOverlayBasicMode = imageBasicModeEnabled
+        if (currentOverlayMode == "image" && imageBasicModeEnabled) {
+            editModeEnabled = false
+            characterPinned = false
+            boxSelected = false
+        }
         if (overlayView != null) {
             rebuildOverlayContent()
             if (currentOverlayMode == "image") {
@@ -993,8 +1013,12 @@ class Live2DOverlayService : Service() {
      */
     private fun setEditModeEnabled(enabled: Boolean) {
         Live2DLogger.Overlay.d("편집 모드", "enabled=$enabled")
-        editModeEnabled = enabled
-        if (!enabled) {
+        editModeEnabled = if (currentOverlayMode == "image" && imageBasicModeEnabled) {
+            false
+        } else {
+            enabled
+        }
+        if (!editModeEnabled) {
             characterPinned = false
             boxSelected = false
         }
@@ -1006,9 +1030,16 @@ class Live2DOverlayService : Service() {
      */
     private fun setCharacterPinnedMode(enabled: Boolean) {
         Live2DLogger.Overlay.d("캐릭터 고정", "enabled=$enabled")
+        if (currentOverlayMode == "image" && imageBasicModeEnabled && enabled) {
+            characterPinned = false
+            boxSelected = false
+            updateEditModeBorder()
+            if (overlayView != null) setupDragListener()
+            return
+        }
         if (enabled && !characterPinned) {
-            pinnedCharScreenX = overlayParams.x + currentWidth / 2
-            pinnedCharScreenY = overlayParams.y + currentHeight / 2
+            pinnedCharScreenX = overlayParams.x + overlayParams.width / 2
+            pinnedCharScreenY = overlayParams.y + overlayParams.height / 2
         }
         characterPinned = enabled
         boxSelected = false
@@ -1052,8 +1083,8 @@ class Live2DOverlayService : Service() {
     /**
      */
     private fun updateCharacterOffsetFromPinned() {
-        val boxCenterX = overlayParams.x + currentWidth / 2
-        val boxCenterY = overlayParams.y + currentHeight / 2
+        val boxCenterX = overlayParams.x + overlayParams.width / 2
+        val boxCenterY = overlayParams.y + overlayParams.height / 2
         characterOffsetPixelX = (pinnedCharScreenX - boxCenterX).toFloat()
         characterOffsetPixelY = (pinnedCharScreenY - boxCenterY).toFloat()
         glSurfaceView?.setCharacterOffset(characterOffsetPixelX, characterOffsetPixelY)
@@ -1112,8 +1143,13 @@ class Live2DOverlayService : Service() {
         overlayParams.y = newY
         overlayParams.width = newWidth
         overlayParams.height = newHeight
-        currentWidth = newWidth
-        currentHeight = newHeight
+
+        val keepRenderSizeFixed =
+            currentOverlayMode == "image" && editModeEnabled && characterPinned
+        if (!keepRenderSizeFixed) {
+            currentWidth = newWidth
+            currentHeight = newHeight
+        }
         
         overlayView?.let {
             try {
@@ -1169,6 +1205,23 @@ class Live2DOverlayService : Service() {
      */
     private fun updateTouchMode() {
         if (overlayView == null) return
+
+        if (currentOverlayMode == "image" && imageBasicModeEnabled) {
+            applyTouchPassthrough()
+            imageOverlayView?.alpha = if (touchThroughEnabled && !isAppForeground) {
+                touchThroughAlpha
+            } else {
+                characterOpacity
+            }
+            overlayView?.let {
+                try {
+                    windowManager.updateViewLayout(it, overlayParams)
+                } catch (e: Exception) {
+                    Live2DLogger.Overlay.w("기본 오버레이 터치 모드 업데이트 실패", e.message)
+                }
+            }
+            return
+        }
         
         overlayParams.alpha = 1.0f
         
@@ -1267,13 +1320,34 @@ class Live2DOverlayService : Service() {
         updateDisplayState()
     }
 
+    private fun setHitboxSize(width: Int, height: Int) {
+        Live2DLogger.Overlay.d("히트박스 크기 설정", "${width}x$height")
+        overlayParams.width = width
+        overlayParams.height = height
+
+        overlayView?.let {
+            try {
+                windowManager.updateViewLayout(it, overlayParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("히트박스 크기 업데이트 실패", e.message)
+            }
+        }
+
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
+        }
+        updateDisplayState()
+    }
+
     private fun updateDisplayState() {
         val metrics = resources.displayMetrics
         val state = mapOf(
-            "containerWidth" to currentWidth,
-            "containerHeight" to currentHeight,
+            "containerWidth" to overlayParams.width,
+            "containerHeight" to overlayParams.height,
             "containerX" to overlayParams.x,
             "containerY" to overlayParams.y,
+            "renderWidth" to currentWidth,
+            "renderHeight" to currentHeight,
             "relativeScale" to relativeCharacterScale,
             "offsetX" to characterOffsetPixelX,
             "offsetY" to characterOffsetPixelY,
@@ -1283,6 +1357,7 @@ class Live2DOverlayService : Service() {
             "density" to metrics.density,
             "globalScale" to currentScale,
             "overlayMode" to currentOverlayMode,
+            "overlayVariant" to if (currentOverlayMode == "image" && imageBasicModeEnabled) "basic" else "advanced",
         )
         lastDisplayState = state
         Live2DEventStreamHandler.getInstance()?.sendSystemEvent(
