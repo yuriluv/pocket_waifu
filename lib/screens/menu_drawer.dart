@@ -203,6 +203,8 @@ class MenuDrawer extends StatelessWidget {
 
                 const _SectionTitle(title: 'Live2D'),
 
+                const _SectionTitle(title: '오버레이'),
+
                 _DrawerMenuItem(
                   icon: Icons.face,
                   title: 'Live2D 설정',
@@ -220,8 +222,8 @@ class MenuDrawer extends StatelessWidget {
 
                 _DrawerMenuItem(
                   icon: Icons.image,
-                  title: '이미지 오버레이',
-                  subtitle: '캐릭터 폴더 기반 이미지 오버레이',
+                  title: '이미지 오버레이 설정',
+                  subtitle: '이미지 오버레이 모드',
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -233,11 +235,9 @@ class MenuDrawer extends StatelessWidget {
                   },
                 ),
 
-                const _SectionTitle(title: 'Screen Share'),
-
                 _DrawerMenuItem(
                   icon: Icons.screen_share_outlined,
-                  title: 'Screen Share Settings',
+                  title: 'Screen Share',
                   subtitle: 'Permission & capture options',
                   onTap: () {
                     Navigator.pop(context);

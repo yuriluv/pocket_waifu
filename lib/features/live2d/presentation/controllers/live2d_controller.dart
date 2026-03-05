@@ -583,13 +583,13 @@ class Live2DController extends ChangeNotifier {
         return false;
       }
 
+      await _nativeBridge.setOverlayMode('live2d');
+
       final overlayShown = await _nativeBridge.showOverlay();
       if (!overlayShown) {
         _setError('오버레이 표시 실패');
         return false;
       }
-
-      await _nativeBridge.setOverlayMode('live2d');
 
       await _nativeBridge.setScale(_settings.scale);
       await _nativeBridge.setCharacterOpacity(_settings.opacity);
