@@ -1,6 +1,7 @@
 package com.example.flutter_application_1.live2d.cubism
 
 import android.opengl.Matrix
+import com.example.flutter_application_1.BuildConfig
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import com.example.flutter_application_1.live2d.core.Model3JsonParser
 import java.io.File
@@ -101,8 +102,16 @@ class CubismModel(
             }
             
             if (!isSdkMode) {
-                Live2DLogger.i("$TAG: Fallback mode", "Texture preview only")
-                
+                if (!BuildConfig.DEBUG) {
+                    Live2DLogger.e(
+                        "$TAG: Native Cubism unavailable in release",
+                        "Refusing texture-only fallback to avoid broken floating render"
+                    )
+                    return false
+                }
+
+                Live2DLogger.i("$TAG: Fallback mode", "Texture preview only (debug build)")
+
                 if (p.textures.isNotEmpty()) {
                     textureManager.loadTextures(p.textures)
                     Live2DLogger.d("$TAG: Textures loaded", "${textureManager.getValidTextureCount()}")

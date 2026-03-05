@@ -12,6 +12,14 @@ on:
         required: false
         default: "30"
         type: string
+      allow_cubism_fallback:
+        description: Allow build without native Cubism SDK (not recommended)
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   push:
     tags:
       - "v*"
@@ -107,6 +115,7 @@ jobs:
           CUBISM_SDK_PATH: ${{ secrets.CUBISM_SDK_PATH }}
           CUBISM_SDK_ZIP_BASE64: ${{ secrets.CUBISM_SDK_ZIP_BASE64 }}
           CUBISM_SDK_DOWNLOAD_URL: ${{ secrets.CUBISM_SDK_DOWNLOAD_URL }}
+          ALLOW_CUBISM_FALLBACK: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.allow_cubism_fallback || 'false' }}
         run: |
           set -euo pipefail
 
@@ -126,17 +135,24 @@ jobs:
             RESOLVED_CUBISM_PATH=$(find "$RUNNER_TEMP/cubism-sdk/unpacked" -mindepth 1 -maxdepth 3 -type d | head -n 1)
           fi
 
-          if [[ -z "${RESOLVED_CUBISM_PATH}" ]]; then
+          if [[ -n "${RESOLVED_CUBISM_PATH}" && ! -d "${RESOLVED_CUBISM_PATH}/Core" ]]; then
+            CANDIDATE_CORE=$(find "${RESOLVED_CUBISM_PATH}" -maxdepth 4 -type d -name Core | head -n 1 || true)
+            if [[ -n "${CANDIDATE_CORE}" ]]; then
+              RESOLVED_CUBISM_PATH=$(dirname "${CANDIDATE_CORE}")
+            fi
+          fi
+
+          if [[ -z "${RESOLVED_CUBISM_PATH}" || ! -d "${RESOLVED_CUBISM_PATH}/Core" ]]; then
             echo "cubism_native_enabled=false" >> "${GITHUB_OUTPUT}"
             rm -f android/local.properties
 
-            if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-              echo "::error::Missing Cubism SDK secret for tag release. Aborting to prevent broken Live2D native build."
-              exit 1
+            if [[ "${ALLOW_CUBISM_FALLBACK}" == "true" ]]; then
+              echo "::notice::Cubism SDK missing/invalid; continuing without native Cubism integration by explicit override."
+              exit 0
             fi
 
-            echo "::notice::Cubism SDK secret is missing; continuing without native Cubism integration (non-tag build)."
-            exit 0
+            echo "::error::Cubism SDK is missing/invalid. Set CUBISM_SDK_PATH or CUBISM_SDK_ZIP_BASE64 (with Core/) or run workflow with allow_cubism_fallback=true."
+            exit 1
           fi
 
           echo "cubism_native_enabled=true" >> "${GITHUB_OUTPUT}"
