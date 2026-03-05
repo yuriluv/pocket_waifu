@@ -1,0 +1,27 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "【雪熊企划】雪熊少女.moc3",
+		"Textures": [
+			"【雪熊企划】雪熊少女.4096/texture_00.png",
+			"【雪熊企划】雪熊少女.4096/texture_01.png"
+		],
+		"Physics": "【雪熊企划】雪熊少女.physics3.json",
+		"DisplayInfo": "【雪熊企划】雪熊少女.cdi3.json"
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	]
+}

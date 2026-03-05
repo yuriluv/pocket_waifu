@@ -1,0 +1,42 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "akaituno.moc3",
+		"Textures": [
+			"akaituno.8192/texture_00.png"
+		],
+		"Physics": "akaituno.physics3.json",
+		"DisplayInfo": "akaituno.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "目_絶望",
+				"File": "eyes_zetubou.exp3.json"
+			},
+			{
+				"Name": "あおざめ顔",
+				"File": "face_aozame.exp3.json"
+			},
+			{
+				"Name": "ひらく前髪",
+				"File": "hair_open.exp3.json"
+			},
+			{
+				"Name": "いろの目",
+				"File": "eye_color.exp3.json"
+			}
+		]
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": []
+		}
+	],
+	"HitAreas": []
+}

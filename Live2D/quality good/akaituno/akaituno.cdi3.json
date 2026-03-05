@@ -1,0 +1,296 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "ParamAngleX",
+			"GroupId": "",
+			"Name": "角度 X"
+		},
+		{
+			"Id": "ParamAngleY",
+			"GroupId": "",
+			"Name": "角度 Y"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "",
+			"Name": "角度 Z"
+		},
+		{
+			"Id": "ParamEyeROpen",
+			"GroupId": "",
+			"Name": "右目　開閉"
+		},
+		{
+			"Id": "ParamEyeRSmile",
+			"GroupId": "",
+			"Name": "右目　笑顔"
+		},
+		{
+			"Id": "ParamEyeLOpen",
+			"GroupId": "",
+			"Name": "左目　開閉"
+		},
+		{
+			"Id": "ParamEyeLSmile",
+			"GroupId": "",
+			"Name": "左目　笑顔"
+		},
+		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "",
+			"Name": "目玉 X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "",
+			"Name": "目玉 Y"
+		},
+		{
+			"Id": "ParamBrowLY",
+			"GroupId": "",
+			"Name": "左眉　上下"
+		},
+		{
+			"Id": "ParamBrowRY",
+			"GroupId": "",
+			"Name": "右眉　上下"
+		},
+		{
+			"Id": "ParamBrowLX",
+			"GroupId": "",
+			"Name": "左眉　左右"
+		},
+		{
+			"Id": "ParamBrowRX",
+			"GroupId": "",
+			"Name": "右眉　左右"
+		},
+		{
+			"Id": "ParamBrowLAngle",
+			"GroupId": "",
+			"Name": "左眉　角度"
+		},
+		{
+			"Id": "ParamBrowRAngle",
+			"GroupId": "",
+			"Name": "右眉　角度"
+		},
+		{
+			"Id": "ParamBrowLForm",
+			"GroupId": "",
+			"Name": "左眉　変形"
+		},
+		{
+			"Id": "ParamBrowRForm",
+			"GroupId": "",
+			"Name": "右眉　変形"
+		},
+		{
+			"Id": "ParamMouthForm",
+			"GroupId": "",
+			"Name": "口　変形"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "",
+			"Name": "口　開閉"
+		},
+		{
+			"Id": "ParamCheek",
+			"GroupId": "",
+			"Name": "照れ"
+		},
+		{
+			"Id": "ParamBodyAngleX",
+			"GroupId": "",
+			"Name": "体の回転 X"
+		},
+		{
+			"Id": "ParamBodyAngleY",
+			"GroupId": "",
+			"Name": "体の回転 Y"
+		},
+		{
+			"Id": "ParamBodyAngleZ",
+			"GroupId": "",
+			"Name": "体の回転 Z"
+		},
+		{
+			"Id": "ParamBreath",
+			"GroupId": "",
+			"Name": "呼吸"
+		},
+		{
+			"Id": "ParamHairFront",
+			"GroupId": "",
+			"Name": "髪揺れ　前"
+		},
+		{
+			"Id": "Param",
+			"GroupId": "",
+			"Name": "横1"
+		},
+		{
+			"Id": "Param2",
+			"GroupId": "",
+			"Name": "横2"
+		},
+		{
+			"Id": "Param3",
+			"GroupId": "",
+			"Name": "縦1"
+		},
+		{
+			"Id": "Param4",
+			"GroupId": "",
+			"Name": "縦2"
+		},
+		{
+			"Id": "ParamHairBack",
+			"GroupId": "",
+			"Name": "髪揺れ　後"
+		},
+		{
+			"Id": "ParamHairSide",
+			"GroupId": "",
+			"Name": "イヤリング揺れ1"
+		},
+		{
+			"Id": "ParamHairSide2",
+			"GroupId": "",
+			"Name": "イヤリング揺れ2"
+		},
+		{
+			"Id": "ParamHairSide3",
+			"GroupId": "",
+			"Name": "イヤリング揺れ3"
+		},
+		{
+			"Id": "ParamHairSide4",
+			"GroupId": "",
+			"Name": "イヤリング揺れ4"
+		},
+		{
+			"Id": "Param5",
+			"GroupId": "",
+			"Name": "フードフリル揺れX"
+		},
+		{
+			"Id": "Param6",
+			"GroupId": "",
+			"Name": "フードフリル揺れY"
+		},
+		{
+			"Id": "Param7",
+			"GroupId": "",
+			"Name": "フリル揺れX"
+		},
+		{
+			"Id": "Param8",
+			"GroupId": "",
+			"Name": "フリル揺れY"
+		},
+		{
+			"Id": "Param15",
+			"GroupId": "",
+			"Name": "瞳拡大縮小→"
+		},
+		{
+			"Id": "Param16",
+			"GroupId": "",
+			"Name": "瞳拡大縮小←"
+		},
+		{
+			"Id": "Param13",
+			"GroupId": "",
+			"Name": "ハイライト→揺れ"
+		},
+		{
+			"Id": "Param14",
+			"GroupId": "",
+			"Name": "ハイライト←揺れ"
+		},
+		{
+			"Id": "Param9",
+			"GroupId": "",
+			"Name": "★ハイライトなし"
+		},
+		{
+			"Id": "Param10",
+			"GroupId": "",
+			"Name": "★青ざめ"
+		},
+		{
+			"Id": "Param11",
+			"GroupId": "",
+			"Name": "★前髪"
+		},
+		{
+			"Id": "Param12",
+			"GroupId": "",
+			"Name": "★瞳カラー"
+		}
+	],
+	"ParameterGroups": [],
+	"Parts": [
+		{
+			"Id": "Part",
+			"Name": "レイヤーセット1"
+		},
+		{
+			"Id": "Part2",
+			"Name": "髪"
+		},
+		{
+			"Id": "Part3",
+			"Name": "目"
+		},
+		{
+			"Id": "Part4",
+			"Name": "くち"
+		},
+		{
+			"Id": "Part6",
+			"Name": "髪の影"
+		},
+		{
+			"Id": "Part7",
+			"Name": "イヤリング→"
+		},
+		{
+			"Id": "Part8",
+			"Name": "イヤリング←"
+		},
+		{
+			"Id": "Part5",
+			"Name": "くちガイド"
+		}
+	],
+	"CombinedParameters": [
+		[
+			"ParamAngleX",
+			"ParamAngleY"
+		],
+		[
+			"ParamEyeBallX",
+			"ParamEyeBallY"
+		],
+		[
+			"ParamMouthForm",
+			"ParamMouthOpenY"
+		],
+		[
+			"Param",
+			"Param2"
+		],
+		[
+			"Param3",
+			"Param4"
+		],
+		[
+			"Param7",
+			"Param8"
+		]
+	]
+}
