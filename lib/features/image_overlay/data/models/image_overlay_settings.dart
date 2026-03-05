@@ -15,6 +15,7 @@ class ImageOverlaySettings {
   final int touchThroughAlpha;
   final int overlayWidth;
   final int overlayHeight;
+  final double imageScale;
   final double positionX;
   final double positionY;
   final bool syncCharacterNameWithSession;
@@ -29,6 +30,7 @@ class ImageOverlaySettings {
     this.touchThroughAlpha = 80,
     this.overlayWidth = 320,
     this.overlayHeight = 420,
+    this.imageScale = 1.0,
     this.positionX = 0.5,
     this.positionY = 0.5,
     this.syncCharacterNameWithSession = false,
@@ -71,6 +73,7 @@ class ImageOverlaySettings {
     int? touchThroughAlpha,
     int? overlayWidth,
     int? overlayHeight,
+    double? imageScale,
     double? positionX,
     double? positionY,
     bool? syncCharacterNameWithSession,
@@ -93,6 +96,7 @@ class ImageOverlaySettings {
           .toInt(),
       overlayWidth: (overlayWidth ?? this.overlayWidth).clamp(120, 1920).toInt(),
       overlayHeight: (overlayHeight ?? this.overlayHeight).clamp(160, 2160).toInt(),
+      imageScale: (imageScale ?? this.imageScale).clamp(0.1, 5.0),
       positionX: (positionX ?? this.positionX).clamp(0.0, 1.0),
       positionY: (positionY ?? this.positionY).clamp(0.0, 1.0),
       syncCharacterNameWithSession:
@@ -111,6 +115,7 @@ class ImageOverlaySettings {
       'touchThroughAlpha': touchThroughAlpha,
       'overlayWidth': overlayWidth,
       'overlayHeight': overlayHeight,
+      'imageScale': imageScale,
       'positionX': positionX,
       'positionY': positionY,
       'syncCharacterNameWithSession': syncCharacterNameWithSession,
@@ -128,6 +133,7 @@ class ImageOverlaySettings {
       touchThroughAlpha: json['touchThroughAlpha'] as int? ?? 80,
       overlayWidth: json['overlayWidth'] as int? ?? 320,
       overlayHeight: json['overlayHeight'] as int? ?? 420,
+      imageScale: (json['imageScale'] as num?)?.toDouble() ?? 1.0,
       positionX: (json['positionX'] as num?)?.toDouble() ?? 0.5,
       positionY: (json['positionY'] as num?)?.toDouble() ?? 0.5,
       syncCharacterNameWithSession:

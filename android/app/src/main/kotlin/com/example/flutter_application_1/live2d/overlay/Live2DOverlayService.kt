@@ -128,7 +128,7 @@ class Live2DOverlayService : Service() {
         private const val NOTIFICATION_ID = 1001
 
         private const val REQUEST_CODE_OPEN_APP = 1000
-        
+
         // Android 12+ (API 31) Untrusted Touch Occlusion:
         private val MAX_OVERLAY_ALPHA = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.8f else 1.0f
         
@@ -181,6 +181,7 @@ class Live2DOverlayService : Service() {
     private var overlayView: View? = null
     private var overlayContainer: FrameLayout? = null
     private var glSurfaceView: Live2DGLSurfaceView? = null
+    private var imageRenderOverlayView: FrameLayout? = null
     private var imageOverlayView: ImageView? = null
     
     private var gestureDetector: GestureDetectorManager? = null
@@ -283,6 +284,27 @@ class Live2DOverlayService : Service() {
             height = currentHeight
             x = 0
             y = 100
+        }
+    }
+
+    private val imageRenderParams: WindowManager.LayoutParams by lazy {
+        WindowManager.LayoutParams().apply {
+            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            format = PixelFormat.TRANSLUCENT
+            gravity = Gravity.TOP or Gravity.START
+            width = WindowManager.LayoutParams.MATCH_PARENT
+            height = WindowManager.LayoutParams.MATCH_PARENT
+            x = 0
+            y = 0
         }
     }
     
@@ -426,7 +448,9 @@ class Live2DOverlayService : Service() {
         // No need to call it again here
         Live2DLogger.Overlay.d("Foreground Service 이미 시작됨", "notificationId=$NOTIFICATION_ID")
         
-        overlayContainer = FrameLayout(this)
+        overlayContainer = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
         rebuildOverlayContent()
         overlayView = overlayContainer
         Live2DLogger.Overlay.d("오버레이 컨텐츠 생성됨", "mode=$currentOverlayMode, size=${currentWidth}x${currentHeight}")
@@ -440,6 +464,9 @@ class Live2DOverlayService : Service() {
         Live2DLogger.Overlay.d("터치스루 초기화", "enabled=$touchThroughEnabled, foreground=$isAppForeground")
         
         try {
+            if (currentOverlayMode == "image") {
+                attachImageRenderOverlayIfNeeded()
+            }
             windowManager.addView(overlayView, overlayParams)
             isRunning = true
             
@@ -455,6 +482,7 @@ class Live2DOverlayService : Service() {
             Live2DLogger.Overlay.i("오버레이 표시 완료", "위치: (${overlayParams.x}, ${overlayParams.y}), 크기: ${overlayParams.width}x${overlayParams.height}")
         } catch (e: Exception) {
             Live2DLogger.Overlay.e("오버레이 표시 실패", "WindowManager.addView 예외", e)
+            detachImageRenderOverlay()
             overlayView = null
         }
     }
@@ -462,26 +490,22 @@ class Live2DOverlayService : Service() {
     private fun rebuildOverlayContent() {
         val container = overlayContainer ?: return
         container.removeAllViews()
+        container.foreground = null
 
         if (currentOverlayMode == "image") {
             glSurfaceView?.onPause()
             glSurfaceView?.dispose()
             glSurfaceView = null
 
-            imageOverlayView = ImageView(this).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setBackgroundColor(Color.TRANSPARENT)
-                isClickable = false
-                isFocusable = false
-            }
-            container.addView(
-                imageOverlayView,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                ),
-            )
-            imageOverlayView?.alpha = characterOpacity
+            ensureImageRenderOverlay()
+            attachImageRenderOverlayIfNeeded()
+            updateImageRenderBounds()
+
+            container.setBackgroundColor(Color.TRANSPARENT)
+            container.isClickable = false
+            container.isFocusable = false
+            container.isFocusableInTouchMode = false
+
             currentModelInfo = null
             if (!currentImagePath.isNullOrBlank()) {
                 applyImageFile(currentImagePath!!)
@@ -489,6 +513,7 @@ class Live2DOverlayService : Service() {
             return
         }
 
+        detachImageRenderOverlay()
         imageOverlayView = null
         glSurfaceView = Live2DGLSurfaceView(this).also { gl ->
             gl.setBackgroundColor(0f, 0f, 0f, 0f)
@@ -510,6 +535,91 @@ class Live2DOverlayService : Service() {
         }
     }
 
+    private fun ensureImageRenderOverlay() {
+        if (imageRenderOverlayView != null && imageOverlayView != null) {
+            return
+        }
+
+        val renderRoot = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+            isFocusableInTouchMode = false
+        }
+
+        val imageView = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+            isFocusableInTouchMode = false
+            alpha = characterOpacity
+        }
+
+        val frameParams = FrameLayout.LayoutParams(
+            currentWidth,
+            currentHeight,
+            Gravity.TOP or Gravity.START,
+        ).apply {
+            leftMargin = overlayParams.x
+            topMargin = overlayParams.y
+        }
+        renderRoot.addView(imageView, frameParams)
+
+        imageRenderOverlayView = renderRoot
+        imageOverlayView = imageView
+    }
+
+    private fun attachImageRenderOverlayIfNeeded() {
+        val renderView = imageRenderOverlayView ?: return
+        if (renderView.parent != null) {
+            return
+        }
+        try {
+            windowManager.addView(renderView, imageRenderParams)
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.w("이미지 렌더 오버레이 추가 실패", e.message)
+        }
+    }
+
+    private fun detachImageRenderOverlay() {
+        imageOverlayView?.setImageDrawable(null)
+
+        imageRenderOverlayView?.let { renderView ->
+            if (renderView.parent != null) {
+                try {
+                    windowManager.removeView(renderView)
+                } catch (e: Exception) {
+                    Live2DLogger.Overlay.w("이미지 렌더 오버레이 제거 실패", e.message)
+                }
+            }
+        }
+
+        imageRenderOverlayView = null
+        imageOverlayView = null
+    }
+
+    private fun updateImageRenderBounds() {
+        val imageView = imageOverlayView ?: return
+        val frameParams = imageView.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(
+                currentWidth,
+                currentHeight,
+                Gravity.TOP or Gravity.START,
+            )
+
+        frameParams.width = currentWidth
+        frameParams.height = currentHeight
+        frameParams.leftMargin = overlayParams.x
+        frameParams.topMargin = overlayParams.y
+        imageView.layoutParams = frameParams
+        imageView.alpha = if (touchThroughEnabled && !isAppForeground) {
+            touchThroughAlpha
+        } else {
+            characterOpacity
+        }
+    }
+
     private fun setOverlayMode(mode: String) {
         val normalized = if (mode.equals("image", ignoreCase = true)) {
             "image"
@@ -523,8 +633,25 @@ class Live2DOverlayService : Service() {
         currentOverlayMode = normalized
         if (overlayView != null) {
             rebuildOverlayContent()
+            if (currentOverlayMode == "image") {
+                bringHitboxOverlayToFront()
+            }
             updateTouchMode()
             updateDisplayState()
+        }
+    }
+
+    private fun bringHitboxOverlayToFront() {
+        val hitboxView = overlayView ?: return
+        if (hitboxView.parent == null) {
+            return
+        }
+
+        try {
+            windowManager.removeView(hitboxView)
+            windowManager.addView(hitboxView, overlayParams)
+        } catch (e: Exception) {
+            Live2DLogger.Overlay.w("히트박스 오버레이 순서 조정 실패", e.message)
         }
     }
 
@@ -550,12 +677,14 @@ class Live2DOverlayService : Service() {
             return
         }
         imageView.setImageBitmap(bitmap)
-        imageView.alpha = characterOpacity
+        updateImageRenderBounds()
     }
     
     private fun hideOverlay() {
         closeMiniMenu()
         stopStateChecks()
+
+        detachImageRenderOverlay()
         
         overlayView?.let { view ->
             Live2DLogger.Overlay.i("오버레이 숨김 시작", "리소스 정리")
@@ -580,6 +709,7 @@ class Live2DOverlayService : Service() {
         overlayView = null
         overlayContainer = null
         glSurfaceView = null
+        imageRenderOverlayView = null
         imageOverlayView = null
         isRunning = false
 
@@ -602,7 +732,7 @@ class Live2DOverlayService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
-    
+
     /**
      */
     private fun setupDragListener() {
@@ -626,10 +756,10 @@ class Live2DOverlayService : Service() {
         var hasMoved = false
         
         overlayView?.setOnTouchListener { _, event ->
-            gestureDetector?.onTouchEvent(event)
-            
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    gestureDetector?.onTouchEvent(event)
+
                     initialX = overlayParams.x
                     initialY = overlayParams.y
                     initialTouchX = event.rawX
@@ -651,6 +781,8 @@ class Live2DOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    gestureDetector?.onTouchEvent(event)
+
                     val dx = event.rawX - initialTouchX
                     val dy = event.rawY - initialTouchY
                     
@@ -662,11 +794,18 @@ class Live2DOverlayService : Service() {
                                 overlayParams.x = (initialX + dx).toInt()
                                 overlayParams.y = (initialY + dy).toInt()
                                 windowManager.updateViewLayout(overlayView, overlayParams)
+                                if (currentOverlayMode == "image") {
+                                    updateImageRenderBounds()
+                                }
+                                updateDisplayState()
                             }
                             TouchState.BOX_DRAGGING -> {
                                 overlayParams.x = (initialX + dx).toInt()
                                 overlayParams.y = (initialY + dy).toInt()
                                 windowManager.updateViewLayout(overlayView, overlayParams)
+                                if (currentOverlayMode == "image") {
+                                    updateImageRenderBounds()
+                                }
                                 updateCharacterOffsetFromPinned()
                             }
                             TouchState.BOX_RESIZING -> {
@@ -678,6 +817,8 @@ class Live2DOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    gestureDetector?.onTouchEvent(event)
+
                     if (!hasMoved && editModeEnabled && characterPinned) {
                         boxSelected = !boxSelected
                         updateEditModeBorder()
@@ -981,6 +1122,10 @@ class Live2DOverlayService : Service() {
                 Live2DLogger.Overlay.w("리사이즈 레이아웃 실패", e.message)
             }
         }
+
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
+        }
         
         if (characterPinned) {
             updateCharacterOffsetFromPinned()
@@ -1100,6 +1245,9 @@ class Live2DOverlayService : Service() {
         overlayView?.let {
             windowManager.updateViewLayout(it, overlayParams)
         }
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
+        }
         updateDisplayState()
     }
     
@@ -1112,6 +1260,9 @@ class Live2DOverlayService : Service() {
         
         overlayView?.let {
             windowManager.updateViewLayout(it, overlayParams)
+        }
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
         }
         updateDisplayState()
     }
@@ -1194,6 +1345,10 @@ class Live2DOverlayService : Service() {
             } catch (e: Exception) {
                 Live2DLogger.Overlay.w("동적 사이징 레이아웃 업데이트 실패", e.message)
             }
+        }
+
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
         }
         
         Live2DLogger.Overlay.d("동적 사이징 적용", "${newWidth}x${newHeight} (scale=$scale, padding=$PADDING_MULTIPLIER)")

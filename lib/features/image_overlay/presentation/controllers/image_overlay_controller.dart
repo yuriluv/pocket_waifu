@@ -20,11 +20,13 @@ class ImageOverlayController extends ChangeNotifier {
   List<ImageOverlayCharacter> _characters = const [];
   List<ImageOverlayPreset> _presets = const [];
   String? _errorMessage;
+  bool _hitboxEditMode = false;
 
   ImageOverlayControllerState get state => _state;
   ImageOverlaySettings get settings => _settings;
   List<ImageOverlayCharacter> get characters => _characters;
   List<ImageOverlayPreset> get presets => _presets;
+  bool get hitboxEditMode => _hitboxEditMode;
   bool get isLoading => _state == ImageOverlayControllerState.loading;
   String? get errorMessage => _errorMessage;
 
@@ -195,10 +197,103 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> setOverlaySize(int width, int height) async {
-    _settings = _settings.copyWith(overlayWidth: width, overlayHeight: height);
+    final prevWidth = _settings.overlayWidth;
+    final prevHeight = _settings.overlayHeight;
+
+    var nextScale = _settings.imageScale;
+    if (prevWidth > 0 && prevHeight > 0) {
+      final widthRatio = width / prevWidth;
+      final heightRatio = height / prevHeight;
+      final ratio = (widthRatio + heightRatio) / 2;
+      nextScale = (nextScale * ratio).clamp(0.1, 5.0);
+    }
+
+    _settings = _settings.copyWith(
+      overlayWidth: width,
+      overlayHeight: height,
+      imageScale: nextScale,
+    );
     await _settings.save();
-    await _live2dBridge.setSize(_settings.overlayWidth, _settings.overlayHeight);
+    if (_settings.isEnabled) {
+      await _applyOverlayGeometryToNative();
+    }
     notifyListeners();
+  }
+
+  Future<void> setImageScale(double scale) async {
+    final clampedScale = scale.clamp(0.1, 5.0);
+    final previousScale = _settings.imageScale <= 0 ? 1.0 : _settings.imageScale;
+    final ratio = clampedScale / previousScale;
+
+    final width = (_settings.overlayWidth * ratio).round();
+    final height = (_settings.overlayHeight * ratio).round();
+
+    _settings = _settings.copyWith(
+      imageScale: clampedScale,
+      overlayWidth: width,
+      overlayHeight: height,
+    );
+    await _settings.save();
+    if (_settings.isEnabled) {
+      await _applyOverlayGeometryToNative();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setOverlayPosition(double xRatio, double yRatio) async {
+    _settings = _settings.copyWith(positionX: xRatio, positionY: yRatio);
+    await _settings.save();
+    if (_settings.isEnabled) {
+      await _applyOverlayGeometryToNative();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setHitboxEditMode(bool enabled) async {
+    _hitboxEditMode = enabled;
+    await _live2dBridge.setEditMode(enabled);
+    await _live2dBridge.setCharacterPinned(enabled);
+    if (!enabled) {
+      await syncHitboxFromRuntime();
+    }
+    notifyListeners();
+  }
+
+  Future<void> syncHitboxFromRuntime() async {
+    final state = await _live2dBridge.getDisplayState();
+    final screenWidth = _readInt(state, 'screenWidth', 0);
+    final screenHeight = _readInt(state, 'screenHeight', 0);
+    final containerWidth = _readInt(state, 'containerWidth', _settings.overlayWidth);
+    final containerHeight = _readInt(state, 'containerHeight', _settings.overlayHeight);
+    final containerX = _readInt(state, 'containerX', 0);
+    final containerY = _readInt(state, 'containerY', 0);
+
+    if (screenWidth <= 0 || screenHeight <= 0) {
+      return;
+    }
+
+    final maxX = (screenWidth - containerWidth).clamp(0, screenWidth).toDouble();
+    final maxY = (screenHeight - containerHeight).clamp(0, screenHeight).toDouble();
+
+    final ratioX = maxX <= 0 ? 0.0 : (containerX / maxX).clamp(0.0, 1.0);
+    final ratioY = maxY <= 0 ? 0.0 : (containerY / maxY).clamp(0.0, 1.0);
+
+    var nextScale = _settings.imageScale;
+    if (_settings.overlayWidth > 0 && _settings.overlayHeight > 0) {
+      final widthRatio = containerWidth / _settings.overlayWidth;
+      final heightRatio = containerHeight / _settings.overlayHeight;
+      final ratio = (widthRatio + heightRatio) / 2;
+      nextScale = (nextScale * ratio).clamp(0.1, 5.0);
+    }
+
+    _settings = _settings.copyWith(
+      overlayWidth: containerWidth,
+      overlayHeight: containerHeight,
+      positionX: ratioX,
+      positionY: ratioY,
+      imageScale: nextScale,
+    );
+    await _settings.save();
   }
 
   Future<void> setEnabled(bool enabled) async {
@@ -218,6 +313,11 @@ class ImageOverlayController extends ChangeNotifier {
       return;
     }
 
+    if (_hitboxEditMode) {
+      _hitboxEditMode = false;
+      await _live2dBridge.setCharacterPinned(false);
+      await _live2dBridge.setEditMode(false);
+    }
     await _live2dBridge.hideOverlay();
     _settings = _settings.copyWith(isEnabled: false);
     await _settings.save();
@@ -247,6 +347,8 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> savePreset(String name) async {
+    await syncHitboxFromRuntime();
+
     final next = List<ImageOverlayPreset>.from(_presets)
       ..add(
         ImageOverlayPreset(
@@ -254,6 +356,9 @@ class ImageOverlayController extends ChangeNotifier {
           name: name,
           overlayWidth: _settings.overlayWidth,
           overlayHeight: _settings.overlayHeight,
+          positionX: _settings.positionX,
+          positionY: _settings.positionY,
+          imageScale: _settings.imageScale,
           linkedCharacterFolder: _settings.selectedCharacterFolder,
         ),
       );
@@ -263,19 +368,34 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> loadPreset(ImageOverlayPreset preset) async {
-    _settings = _settings.copyWith(
-      overlayWidth: preset.overlayWidth,
-      overlayHeight: preset.overlayHeight,
-    );
-    await _settings.save();
-    await _live2dBridge.setSize(_settings.overlayWidth, _settings.overlayHeight);
-
+    ImageOverlayCharacter? linkedCharacter;
     if (preset.linkedCharacterFolder != null) {
       for (final character in _characters) {
         if (character.folderPath == preset.linkedCharacterFolder) {
-          await selectCharacter(character);
+          linkedCharacter = character;
           break;
         }
+      }
+    }
+
+    _settings = _settings.copyWith(
+      overlayWidth: preset.overlayWidth,
+      overlayHeight: preset.overlayHeight,
+      imageScale: preset.imageScale,
+      positionX: preset.positionX,
+      positionY: preset.positionY,
+      selectedCharacterFolder: linkedCharacter?.folderPath,
+      selectedEmotionFile: linkedCharacter != null && linkedCharacter.emotions.isNotEmpty
+          ? linkedCharacter.emotions.first.filePath
+          : _settings.selectedEmotionFile,
+    );
+    await _settings.save();
+
+    if (_settings.isEnabled) {
+      await _applyOverlayGeometryToNative();
+      final selectedFile = _settings.selectedEmotionFile;
+      if (selectedFile != null) {
+        await _imageBridge.loadOverlayImage(selectedFile);
       }
     }
     notifyListeners();
@@ -327,7 +447,7 @@ class ImageOverlayController extends ChangeNotifier {
   Future<void> _ensureImageOverlayVisible() async {
     await _imageBridge.setOverlayMode('image');
     await _live2dBridge.showOverlay();
-    await _live2dBridge.setSize(_settings.overlayWidth, _settings.overlayHeight);
+    await _applyOverlayGeometryToNative();
     await _live2dBridge.setCharacterOpacity(_settings.opacity);
     await _live2dBridge.setTouchThroughEnabled(_settings.touchThroughEnabled);
     await _live2dBridge.setTouchThroughAlpha(_settings.touchThroughAlpha);
@@ -335,6 +455,33 @@ class ImageOverlayController extends ChangeNotifier {
     if (imagePath != null) {
       await _imageBridge.loadOverlayImage(imagePath);
     }
+  }
+
+  Future<void> _applyOverlayGeometryToNative() async {
+    await _live2dBridge.setSize(_settings.overlayWidth, _settings.overlayHeight);
+
+    final state = await _live2dBridge.getDisplayState();
+    final screenWidth = _readInt(state, 'screenWidth', 0);
+    final screenHeight = _readInt(state, 'screenHeight', 0);
+
+    if (screenWidth <= 0 || screenHeight <= 0) {
+      return;
+    }
+
+    final maxX = (screenWidth - _settings.overlayWidth).clamp(0, screenWidth);
+    final maxY = (screenHeight - _settings.overlayHeight).clamp(0, screenHeight);
+    final targetX = (maxX * _settings.positionX).round();
+    final targetY = (maxY * _settings.positionY).round();
+
+    await _live2dBridge.setPosition(targetX.toDouble(), targetY.toDouble());
+  }
+
+  int _readInt(Map<String, dynamic> source, String key, int fallback) {
+    final value = source[key];
+    if (value is num) {
+      return value.toInt();
+    }
+    return fallback;
   }
 
   ImageOverlaySettings _sanitizeSelection(ImageOverlaySettings source) {

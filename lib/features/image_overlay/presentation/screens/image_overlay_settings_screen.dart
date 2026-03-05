@@ -51,6 +51,7 @@ class _ImageOverlaySettingsBody extends StatelessWidget {
               _FolderSection(),
               _CharacterSection(),
               _DisplaySection(),
+              _HitboxSection(),
               _TouchThroughSection(),
               _PresetSection(),
               _AdvancedSection(),
@@ -193,8 +194,49 @@ class _CharacterSection extends StatelessWidget {
   }
 }
 
-class _DisplaySection extends StatelessWidget {
+class _DisplaySection extends StatefulWidget {
   const _DisplaySection();
+
+  @override
+  State<_DisplaySection> createState() => _DisplaySectionState();
+}
+
+class _DisplaySectionState extends State<_DisplaySection> {
+  late final TextEditingController _scaleController;
+
+  @override
+  void initState() {
+    super.initState();
+    final scale = context.read<ImageOverlayController>().settings.imageScale;
+    _scaleController = TextEditingController(text: scale.toStringAsFixed(2));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scale = context.watch<ImageOverlayController>().settings.imageScale;
+    final text = scale.toStringAsFixed(2);
+    if (_scaleController.text != text) {
+      _scaleController.text = text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scaleController.dispose();
+    super.dispose();
+  }
+
+  void _submitScale(String raw) {
+    final normalized = raw.trim().replaceAll(',', '.');
+    final parsed = double.tryParse(normalized);
+    if (parsed == null) {
+      return;
+    }
+    final clamped = parsed.clamp(0.1, 5.0);
+    context.read<ImageOverlayController>().setImageScale(clamped);
+    _scaleController.text = clamped.toStringAsFixed(2);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,27 +262,118 @@ class _DisplaySection extends StatelessWidget {
               onChanged: controller.setOpacity,
             ),
             const SizedBox(height: 8),
-            Text('너비: ${settings.overlayWidth}px'),
+            Text('크기 배율: ${settings.imageScale.toStringAsFixed(2)}x'),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: TextField(
+                    controller: _scaleController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      suffixText: 'x',
+                      isDense: true,
+                    ),
+                    onSubmitted: _submitScale,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => _submitScale(_scaleController.text),
+                  child: const Text('적용'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HitboxSection extends StatelessWidget {
+  const _HitboxSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<ImageOverlayController>();
+    final settings = controller.settings;
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('히트박스', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: controller.hitboxEditMode,
+              onChanged: settings.isEnabled
+                  ? controller.setHitboxEditMode
+                  : null,
+              title: const Text('히트박스 편집 모드'),
+              subtitle: const Text('오버레이에서 드래그/리사이즈로 직접 수정'),
+            ),
+            const SizedBox(height: 6),
+            Text('가로 위치: ${(settings.positionX * 100).round()}%'),
             Slider(
-              value: settings.overlayWidth.toDouble(),
-              min: 120,
-              max: 1200,
-              divisions: 108,
-              label: '${settings.overlayWidth}px',
+              value: settings.positionX,
+              min: 0,
+              max: 1,
+              divisions: 100,
+              label: '${(settings.positionX * 100).round()}%',
               onChanged: (value) {
-                controller.setOverlaySize(value.round(), settings.overlayHeight);
+                controller.setOverlayPosition(value, settings.positionY);
               },
             ),
-            Text('높이: ${settings.overlayHeight}px'),
+            Text('세로 위치: ${(settings.positionY * 100).round()}%'),
             Slider(
-              value: settings.overlayHeight.toDouble(),
-              min: 160,
-              max: 1600,
-              divisions: 144,
-              label: '${settings.overlayHeight}px',
+              value: settings.positionY,
+              min: 0,
+              max: 1,
+              divisions: 100,
+              label: '${(settings.positionY * 100).round()}%',
               onChanged: (value) {
-                controller.setOverlaySize(settings.overlayWidth, value.round());
+                controller.setOverlayPosition(settings.positionX, value);
               },
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(0.0, 0.0),
+                  child: const Text('좌상단'),
+                ),
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(0.5, 0.0),
+                  child: const Text('상단 중앙'),
+                ),
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(1.0, 0.0),
+                  child: const Text('우상단'),
+                ),
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(0.0, 1.0),
+                  child: const Text('좌하단'),
+                ),
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(0.5, 1.0),
+                  child: const Text('하단 중앙'),
+                ),
+                OutlinedButton(
+                  onPressed: () => controller.setOverlayPosition(1.0, 1.0),
+                  child: const Text('우하단'),
+                ),
+              ],
             ),
           ],
         ),
@@ -350,14 +483,14 @@ class _PresetSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('크기 프리셋', style: Theme.of(context).textTheme.titleMedium),
+            Text('히트박스 프리셋', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Row(
               children: [
                 FilledButton.icon(
                   onPressed: () => _showSavePresetDialog(context, controller),
                   icon: const Icon(Icons.save),
-                  label: const Text('현재 크기 저장'),
+                  label: const Text('현재 상태 저장'),
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
@@ -423,7 +556,7 @@ class _PresetSection extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('크기 프리셋 목록'),
+          title: const Text('히트박스 프리셋 목록'),
           content: SizedBox(
             width: double.maxFinite,
             child: controller.presets.isEmpty
@@ -435,8 +568,11 @@ class _PresetSection extends StatelessWidget {
                       final preset = controller.presets[index];
                       return ListTile(
                         title: Text(preset.name),
-                        subtitle:
-                            Text('크기: ${preset.overlayWidth}x${preset.overlayHeight}'),
+                        subtitle: Text(
+                          '크기: ${preset.overlayWidth}x${preset.overlayHeight} · '
+                          '위치: ${(preset.positionX * 100).round()}%, ${(preset.positionY * 100).round()}% · '
+                          '배율: ${preset.imageScale.toStringAsFixed(2)}x',
+                        ),
                         trailing: Wrap(
                           spacing: 8,
                           children: [

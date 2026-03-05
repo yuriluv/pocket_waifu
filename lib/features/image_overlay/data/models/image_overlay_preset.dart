@@ -8,6 +8,9 @@ class ImageOverlayPreset {
     required this.name,
     required this.overlayWidth,
     required this.overlayHeight,
+    this.positionX = 0.5,
+    this.positionY = 0.5,
+    this.imageScale = 1.0,
     this.linkedCharacterFolder,
   });
 
@@ -15,6 +18,9 @@ class ImageOverlayPreset {
   final String name;
   final int overlayWidth;
   final int overlayHeight;
+  final double positionX;
+  final double positionY;
+  final double imageScale;
   final String? linkedCharacterFolder;
 
   Map<String, dynamic> toJson() {
@@ -23,6 +29,9 @@ class ImageOverlayPreset {
       'name': name,
       'overlayWidth': overlayWidth,
       'overlayHeight': overlayHeight,
+      'positionX': positionX,
+      'positionY': positionY,
+      'imageScale': imageScale,
       'linkedCharacterFolder': linkedCharacterFolder,
     };
   }
@@ -33,6 +42,9 @@ class ImageOverlayPreset {
       name: json['name'] as String,
       overlayWidth: json['overlayWidth'] as int? ?? 320,
       overlayHeight: json['overlayHeight'] as int? ?? 420,
+      positionX: (json['positionX'] as num?)?.toDouble() ?? 0.5,
+      positionY: (json['positionY'] as num?)?.toDouble() ?? 0.5,
+      imageScale: (json['imageScale'] as num?)?.toDouble() ?? 1.0,
       linkedCharacterFolder: json['linkedCharacterFolder'] as String?,
     );
   }
@@ -42,6 +54,9 @@ class ImageOverlayPreset {
     String? name,
     int? overlayWidth,
     int? overlayHeight,
+    double? positionX,
+    double? positionY,
+    double? imageScale,
     String? linkedCharacterFolder,
     bool clearLink = false,
   }) {
@@ -50,6 +65,9 @@ class ImageOverlayPreset {
       name: name ?? this.name,
       overlayWidth: overlayWidth ?? this.overlayWidth,
       overlayHeight: overlayHeight ?? this.overlayHeight,
+      positionX: (positionX ?? this.positionX).clamp(0.0, 1.0),
+      positionY: (positionY ?? this.positionY).clamp(0.0, 1.0),
+      imageScale: (imageScale ?? this.imageScale).clamp(0.1, 5.0),
       linkedCharacterFolder:
           clearLink ? null : (linkedCharacterFolder ?? this.linkedCharacterFolder),
     );
