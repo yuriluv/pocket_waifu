@@ -171,6 +171,7 @@ class Live2DOverlayService : Service() {
     private var overlayView: View? = null
     private var overlayContainer: FrameLayout? = null
     private var glSurfaceView: Live2DGLSurfaceView? = null
+    @Volatile private var isHidingOverlay = false
     
     private var gestureDetector: GestureDetectorManager? = null
     
@@ -458,6 +459,12 @@ class Live2DOverlayService : Service() {
     }
     
     private fun hideOverlay() {
+        if (isHidingOverlay) {
+            Live2DLogger.Overlay.d("오버레이 숨김 스킵", "already in progress")
+            return
+        }
+        isHidingOverlay = true
+
         closeMiniMenu()
         stopStateChecks()
         

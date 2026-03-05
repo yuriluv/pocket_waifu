@@ -237,7 +237,26 @@ class Live2DGLSurfaceView : GLSurfaceView {
     /**
      */
     fun dispose() {
-        renderer?.dispose()
+        val r = renderer
+        if (r == null) {
+            Live2DLogger.GL.i("GLSurfaceView 정리됨", "renderer already null")
+            return
+        }
+
+        val latch = CountDownLatch(1)
+        try {
+            queueEvent {
+                try {
+                    r.dispose()
+                } finally {
+                    latch.countDown()
+                }
+            }
+            latch.await(1, TimeUnit.SECONDS)
+        } catch (t: Throwable) {
+            Live2DLogger.GL.w("GLSurfaceView dispose queueEvent 실패", t.message)
+        }
+
         Live2DLogger.GL.i("GLSurfaceView 정리됨", null)
     }
     
