@@ -431,16 +431,14 @@ class PromptBlockProvider extends ChangeNotifier {
   }
 
   List<PromptBlock> _resolveBlocksForPreset(String? presetId) {
-    if (presetId == null || presetId == _activePresetId) {
-      return _workingBlocks;
-    }
-
-    for (final preset in _presets) {
-      if (preset.id == presetId) {
-        return preset.blocks;
+    final targetPresetId = presetId ?? _activePresetId;
+    if (targetPresetId != null) {
+      for (final preset in _presets) {
+        if (preset.id == targetPresetId) {
+          return preset.blocks;
+        }
       }
     }
-
     return _workingBlocks;
   }
 

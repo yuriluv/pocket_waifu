@@ -5,11 +5,7 @@ import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
-import '../features/image_overlay/data/models/image_overlay_settings.dart';
-import '../features/image_overlay/data/services/image_overlay_storage_service.dart';
 import '../features/image_overlay/services/image_overlay_directive_service.dart';
-import '../features/live2d/data/repositories/live2d_settings_repository.dart';
-import '../features/live2d/data/services/live2d_native_bridge.dart';
 import '../features/live2d_llm/services/live2d_directive_service.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
@@ -18,6 +14,7 @@ import '../services/global_runtime_registry.dart';
 import '../services/image_cache_manager.dart';
 import '../services/prompt_builder.dart';
 import 'chat_session_provider.dart';
+import 'prompt_block_provider.dart';
 
 /// Manages chat request state and delegates message persistence to
 /// [ChatSessionProvider].
@@ -31,13 +28,9 @@ class ChatProvider extends ChangeNotifier {
       Live2DDirectiveService.instance;
   final ImageOverlayDirectiveService _imageDirectiveService =
       ImageOverlayDirectiveService.instance;
-  final Live2DNativeBridge _live2dBridge = Live2DNativeBridge();
-  final Live2DSettingsRepository _live2dSettingsRepository =
-      Live2DSettingsRepository();
-  final ImageOverlayStorageService _imageStorage =
-      ImageOverlayStorageService.instance;
 
   ChatSessionProvider? _sessionProvider;
+  PromptBlockProvider? _promptBlockProvider;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -50,6 +43,11 @@ class ChatProvider extends ChangeNotifier {
   void setSessionProvider(ChatSessionProvider provider) {
     _sessionProvider = provider;
     debugPrint('ChatProvider connected to ChatSessionProvider');
+  }
+
+  void setPromptBlockProvider(PromptBlockProvider provider) {
+    _promptBlockProvider = provider;
+    debugPrint('ChatProvider connected to PromptBlockProvider');
   }
 
   List<Message> getMessagesFor(String sessionId) {
@@ -142,9 +140,7 @@ class ChatProvider extends ChangeNotifier {
       try {
         final response = await _requestAssistantResponse(
           sessionId: sessionId,
-          character: character,
           settings: settings,
-          userName: userName,
           apiConfig: apiConfig,
           requestHandle: requestHandle,
         );
@@ -280,8 +276,8 @@ class ChatProvider extends ChangeNotifier {
         );
         output = directiveResult.cleanedText;
       } else {
-        final directiveResult =
-            await _imageDirectiveService.processAssistantOutput(output);
+        final directiveResult = await _imageDirectiveService
+            .processAssistantOutput(output);
         output = directiveResult.cleanedText;
       }
     }
@@ -325,35 +321,100 @@ class ChatProvider extends ChangeNotifier {
 
   Future<String> _requestAssistantResponse({
     required String sessionId,
-    required Character character,
     required AppSettings settings,
-    required String userName,
     required ApiConfig? apiConfig,
     ApiRequestHandle? requestHandle,
   }) async {
     final sessionProvider = _sessionProvider!;
     final chatHistory = sessionProvider.getMessagesForSession(sessionId);
+    final promptProvider = _promptBlockProvider;
+    if (promptProvider == null) {
+      throw Exception('PromptBlockProvider is not connected.');
+    }
 
-    var apiMessages = _promptBuilder.buildMessages(
-      character: character,
-      settings: settings,
-      chatHistory: chatHistory,
-      userName: userName,
-    );
+    final latestUserMessage = _findLastUserMessage(chatHistory);
+    final currentInput = latestUserMessage?.content ?? '';
+    final promptHistory = List<Message>.from(chatHistory);
+    if (latestUserMessage != null &&
+        promptHistory.isNotEmpty &&
+        promptHistory.last.id == latestUserMessage.id) {
+      promptHistory.removeLast();
+    }
 
-    apiMessages = await _injectDirectiveCapabilities(apiMessages, settings);
+    final effectivePresetId = promptProvider.activePresetId;
 
     if (apiConfig == null) {
+      final blocks =
+          promptProvider.activePreset?.blocks ?? promptProvider.blocks;
+      if (blocks.isEmpty) {
+        throw Exception('프롬프트 블록 프리셋이 비어 있습니다.');
+      }
+
+      if (latestUserMessage == null || latestUserMessage.images.isEmpty) {
+        return _apiService.sendMessageWithBlocks(
+          apiConfig: null,
+          blocks: blocks,
+          pastMessages: promptHistory,
+          currentInput: currentInput,
+          settings: settings,
+          requestHandle: requestHandle,
+        );
+      }
+
+      final promptMessages = promptProvider.buildMessagesForApi(
+        promptHistory,
+        currentInput,
+        hasFirstSystemPrompt: true,
+        requiresAlternateRole: false,
+        presetId: effectivePresetId,
+      );
+      if (promptMessages.isEmpty) {
+        throw Exception('프롬프트 블록 프리셋이 비어 있습니다.');
+      }
+
+      final legacyMessages = <Message>[];
+      for (final payload in promptMessages) {
+        final role = _parseRole(payload['role']?.toString());
+        final content = payload['content'];
+        if (role == null || content is! String || content.trim().isEmpty) {
+          continue;
+        }
+        legacyMessages.add(Message(role: role, content: content));
+      }
+      legacyMessages.add(
+        Message(
+          role: MessageRole.user,
+          content: currentInput,
+          images: latestUserMessage.images,
+        ),
+      );
       return _apiService.sendMessage(
-        messages: apiMessages,
+        messages: legacyMessages,
         settings: settings,
         requestHandle: requestHandle,
       );
     }
 
-    final formattedMessages = <Map<String, dynamic>>[];
-    for (final message in apiMessages) {
-      formattedMessages.add(await _messageToApiPayload(message));
+    final formattedMessages = promptProvider.buildMessagesForApi(
+      promptHistory,
+      currentInput,
+      hasFirstSystemPrompt: apiConfig.hasFirstSystemPrompt,
+      requiresAlternateRole: apiConfig.requiresAlternateRole,
+      presetId: effectivePresetId,
+    );
+    if (formattedMessages.isEmpty) {
+      throw Exception('프롬프트 블록 프리셋이 비어 있습니다.');
+    }
+
+    if (latestUserMessage != null && latestUserMessage.images.isNotEmpty) {
+      final payload = await _messageToApiPayload(
+        Message(
+          role: MessageRole.user,
+          content: currentInput,
+          images: latestUserMessage.images,
+        ),
+      );
+      formattedMessages.add(payload);
     }
 
     return _apiService.sendMessageWithConfig(
@@ -364,143 +425,13 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
-  Future<List<Message>> _injectDirectiveCapabilities(
-    List<Message> messages,
-    AppSettings settings,
-  ) async {
-    if (!settings.live2dPromptInjectionEnabled) {
-      return messages;
-    }
-
-    if (settings.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay) {
-      return _injectImageOverlayCapabilities(messages);
-    }
-
-    return _injectLive2DCapabilities(messages);
-  }
-
-  Future<List<Message>> _injectLive2DCapabilities(
-    List<Message> messages,
-  ) async {
-
-    final modelInfo = await _live2dBridge.getModelInfo();
-    final params = <String>[];
-    final rawParams = modelInfo['parameters'];
-    if (rawParams is List) {
-      for (final raw in rawParams) {
-        if (raw is Map) {
-          final id = raw['id']?.toString();
-          if (id != null && id.isNotEmpty) {
-            params.add(id);
-            continue;
-          }
-        }
-        params.add(raw.toString());
-      }
-    }
-    final expressions = (modelInfo['expressions'] as List<dynamic>? ?? const [])
-        .map((item) => item.toString())
-        .toList();
-
-    final motions = <String>[];
-    final motionGroups = await _live2dBridge.getMotionGroups();
-    for (final group in motionGroups) {
-      final names = await _live2dBridge.getMotionNames(group);
-      if (names.isEmpty) {
-        final count = await _live2dBridge.getMotionCount(group);
-        for (var i = 0; i < count; i++) {
-          motions.add('$group[$i]');
-        }
-      } else {
-        for (var i = 0; i < names.length; i++) {
-          motions.add('$group[$i]:${names[i]}');
-        }
-      }
-    }
-
-    final aliasLines = <String>[];
-    final modelPath = modelInfo['path']?.toString();
-    if (modelPath != null && modelPath.isNotEmpty) {
-      final aliases = await _live2dSettingsRepository.loadParameterAliases(
-        modelPath,
-      );
-      if (aliases != null) {
-        aliasLines.addAll(
-          aliases.aliasToReal.entries
-              .map((e) => '${e.key}=${e.value}')
-              .toList(growable: false),
-        );
-      }
-    }
-
-    final capability = [
-      '[Live2D Capability]',
-      'Parameters: ${params.isEmpty ? '(none)' : params.join(', ')}',
-      'Motions: ${motions.isEmpty ? '(none)' : motions.join(', ')}',
-      'Expressions: ${expressions.isEmpty ? '(none)' : expressions.join(', ')}',
-      'Aliases: ${aliasLines.isEmpty ? '(none)' : aliasLines.join(', ')}',
-      'Use <live2d> blocks only for visible animation cues.',
-    ].join('\n');
-
-    final index = messages.indexWhere(
-      (message) => message.role == MessageRole.system,
-    );
-    if (index == -1) {
-      return [
-        Message(role: MessageRole.system, content: capability),
-        ...messages,
-      ];
-    }
-
-    final system = messages[index];
-    final updated = List<Message>.from(messages);
-    updated[index] = system.copyWith(
-      content: '${system.content}\n\n$capability',
-    );
-    return updated;
-  }
-
-  Future<List<Message>> _injectImageOverlayCapabilities(
-    List<Message> messages,
-  ) async {
-    final overlaySettings = await ImageOverlaySettings.load();
-    _imageStorage.restoreRootPath(overlaySettings.dataFolderPath);
-    final characters = await _imageStorage.scanCharacters();
-
-    final lines = <String>[];
-    for (final character in characters) {
-      final names = character.emotions
-          .map((emotion) => emotion.name)
-          .toList(growable: false)
-          .join(', ');
-      lines.add('${character.name}: ${names.isEmpty ? '(none)' : names}');
-    }
-
-    final capability = [
-      '[Image Overlay Capability]',
-      'Characters: ${lines.isEmpty ? '(none)' : lines.join(' | ')}',
-      'SelectedCharacterFolder: ${overlaySettings.selectedCharacterFolder ?? '(none)'}',
-      'SelectedEmotionFile: ${overlaySettings.selectedEmotionFile ?? '(none)'}',
-      'Use <overlay>...</overlay> blocks for image directives.',
-      'Supported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.',
-      'Inline directives: [img_move:x=100,y=200], [img_emotion:name=happy].',
-    ].join('\n');
-
-    final index = messages.indexWhere(
-      (message) => message.role == MessageRole.system,
-    );
-    if (index == -1) {
-      return [
-        Message(role: MessageRole.system, content: capability),
-        ...messages,
-      ];
-    }
-
-    final updated = List<Message>.from(messages);
-    updated[index] = messages[index].copyWith(
-      content: '${messages[index].content}\n\n$capability',
-    );
-    return updated;
+  MessageRole? _parseRole(String? raw) {
+    return switch (raw) {
+      'system' => MessageRole.system,
+      'user' => MessageRole.user,
+      'assistant' => MessageRole.assistant,
+      _ => null,
+    };
   }
 
   void deleteMessage(String messageId, {String? targetSessionId}) {
@@ -655,7 +586,10 @@ class ChatProvider extends ChangeNotifier {
 
     return {
       'role': msg.roleString,
-      'content': _promptBuilder.buildMultimodalContent(msg.content, hydratedImages),
+      'content': _promptBuilder.buildMultimodalContent(
+        msg.content,
+        hydratedImages,
+      ),
     };
   }
 

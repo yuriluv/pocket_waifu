@@ -13,6 +13,7 @@ import '../models/message.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_session_provider.dart';
+import '../providers/prompt_block_provider.dart';
 import '../providers/global_runtime_provider.dart';
 import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
@@ -75,8 +76,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final chatProvider = context.read<ChatProvider>();
     final chatSessionProvider = context.read<ChatSessionProvider>();
+    final promptBlockProvider = context.read<PromptBlockProvider>();
 
     chatProvider.setSessionProvider(chatSessionProvider);
+    chatProvider.setPromptBlockProvider(promptBlockProvider);
     _isProviderLinked = true;
 
     debugPrint('>>> v2.0.5: Provider 연결 완료');
@@ -227,7 +230,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
       setState(() {
         if (_attachedImages.length >= _maxAttachmentsPerMessage) {
-          context.showInfoSnackBar('최대 $_maxAttachmentsPerMessage장까지 첨부할 수 있습니다.');
+          context.showInfoSnackBar(
+            '최대 $_maxAttachmentsPerMessage장까지 첨부할 수 있습니다.',
+          );
           return;
         }
         _attachedImages = <ImageAttachment>[..._attachedImages, image];
@@ -351,11 +356,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         title: const Row(
-          children: [
-            Icon(Icons.download),
-            SizedBox(width: 8),
-            Text('대화 내보내기'),
-          ],
+          children: [Icon(Icons.download), SizedBox(width: 8), Text('대화 내보내기')],
         ),
         content: SizedBox(
           width: double.maxFinite,
@@ -519,7 +520,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               Container(
                 width: double.infinity,
                 color: Colors.orange.withValues(alpha: 0.14),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 child: const Row(
                   children: [
                     Icon(Icons.power_settings_new, size: 18),
@@ -773,7 +777,10 @@ class _MessageBubble extends StatelessWidget {
                 context: context,
                 builder: (sheetContext) => SafeArea(
                   child: ListTile(
-                    leading: const Icon(Icons.delete_outline, color: Colors.red),
+                    leading: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                    ),
                     title: const Text('이미지 삭제'),
                     onTap: () {
                       Navigator.pop(sheetContext);
@@ -791,23 +798,25 @@ class _MessageBubble extends StatelessWidget {
                 width: 96,
                 height: 96,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _brokenImage(context),
+                errorBuilder: (context, error, stackTrace) =>
+                    _brokenImage(context),
               )
             : hasBase64
-                ? Image.memory(
-                    base64Decode(image.base64Data),
-                    width: 96,
-                    height: 96,
-                    fit: BoxFit.cover,
-                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                      if (wasSynchronouslyLoaded || frame != null) {
-                        return child;
-                      }
-                      return _loadingImage(context);
-                    },
-                    errorBuilder: (context, error, stackTrace) => _brokenImage(context),
-                  )
-                : _brokenImage(context),
+            ? Image.memory(
+                base64Decode(image.base64Data),
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+                frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                  if (wasSynchronouslyLoaded || frame != null) {
+                    return child;
+                  }
+                  return _loadingImage(context);
+                },
+                errorBuilder: (context, error, stackTrace) =>
+                    _brokenImage(context),
+              )
+            : _brokenImage(context),
       ),
     );
   }
@@ -842,9 +851,9 @@ class _MessageBubble extends StatelessWidget {
     final hasBase64 = image.base64Data.isNotEmpty;
 
     if (!hasFile && !hasBase64) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이미지 데이터를 찾을 수 없습니다.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이미지 데이터를 찾을 수 없습니다.')));
       return;
     }
 
@@ -936,32 +945,50 @@ class _MessageInput extends StatelessWidget {
                                   width: 72,
                                   height: 72,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (ctx, error, stackTrace) => Container(
-                                    width: 72,
-                                    height: 72,
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                    child: const Icon(Icons.broken_image_outlined, size: 24),
-                                  ),
-                                )
-                              : image.thumbnailPath != null && image.thumbnailPath!.isNotEmpty
-                                  ? Image.file(
-                                      File(image.thumbnailPath!),
-                                      width: 72,
-                                      height: 72,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (ctx, error, stackTrace) => Container(
+                                  errorBuilder: (ctx, error, stackTrace) =>
+                                      Container(
                                         width: 72,
                                         height: 72,
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                        child: const Icon(Icons.broken_image_outlined, size: 24),
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerHighest,
+                                        child: const Icon(
+                                          Icons.broken_image_outlined,
+                                          size: 24,
+                                        ),
                                       ),
-                                    )
-                                  : Container(
-                                      width: 72,
-                                      height: 72,
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                      child: const Icon(Icons.broken_image_outlined, size: 24),
-                                    ),
+                                )
+                              : image.thumbnailPath != null &&
+                                    image.thumbnailPath!.isNotEmpty
+                              ? Image.file(
+                                  File(image.thumbnailPath!),
+                                  width: 72,
+                                  height: 72,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, error, stackTrace) =>
+                                      Container(
+                                        width: 72,
+                                        height: 72,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.surfaceContainerHighest,
+                                        child: const Icon(
+                                          Icons.broken_image_outlined,
+                                          size: 24,
+                                        ),
+                                      ),
+                                )
+                              : Container(
+                                  width: 72,
+                                  height: 72,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surfaceContainerHighest,
+                                  child: const Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 24,
+                                  ),
+                                ),
                         ),
                         Positioned(
                           top: -6,
@@ -984,7 +1011,9 @@ class _MessageInput extends StatelessWidget {
             Row(
               children: [
                 IconButton(
-                  onPressed: isLoading || !canAttachImages ? null : onAttachImage,
+                  onPressed: isLoading || !canAttachImages
+                      ? null
+                      : onAttachImage,
                   icon: Icon(
                     Icons.attach_file,
                     color: isLoading || !canAttachImages
