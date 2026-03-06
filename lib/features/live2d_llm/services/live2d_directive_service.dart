@@ -258,11 +258,6 @@ class Live2DDirectiveService {
     String? tag,
     Map<String, String> attrs,
   ) async {
-    final delay = int.tryParse(attrs['delay'] ?? '') ?? 0;
-    if (delay > 0) {
-      await Future<void>.delayed(Duration(milliseconds: delay));
-    }
-
     switch (tag) {
       case 'param':
         await _runParam(attrs);
@@ -461,25 +456,40 @@ class Live2DDirectiveService {
     if (id == null || value == null) return;
 
     await _ensureParameterBoundsLoaded();
+    final operation = _resolveOperation(attrs['op'] ?? attrs['operation']);
     var resolvedId = id;
     final aliases = _aliasMap;
     if (aliases != null && aliases.aliasToReal.containsKey(id)) {
       resolvedId = aliases.aliasToReal[id]!;
     }
 
-    var clamped = value;
+    final currentValue =
+        await _bridge.getParameter(resolvedId) ??
+        _parameterBounds[resolvedId]?.defaultValue ??
+        value;
+
+    final nextRaw = _applyOperation(
+      base: currentValue,
+      operand: value,
+      operation: operation,
+    );
+
+    var clamped = nextRaw;
     final range = _parameterBounds[resolvedId];
     if (range != null) {
-      final bounded = value.clamp(range.min, range.max).toDouble();
-      if ((bounded - value).abs() > 0.00001) {
+      final bounded = nextRaw.clamp(range.min, range.max).toDouble();
+      if ((bounded - nextRaw).abs() > 0.00001) {
         debugPrint(
-          '[Live2DDirectiveService] Param $resolvedId out of range ($value), clamped to $bounded',
+          '[Live2DDirectiveService] Param $resolvedId out of range ($nextRaw), clamped to $bounded',
         );
       }
       clamped = bounded;
     }
 
-    final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
+    final dur = _parseTransitionMs(
+      attrs['delay'],
+      fallbackMs: int.tryParse(attrs['dur'] ?? '') ?? 200,
+    );
     final ok = await _bridge.setParameter(resolvedId, clamped, durationMs: dur);
     if (!ok) {
       debugPrint('[Live2DDirectiveService] Unknown parameter: $resolvedId');
@@ -571,7 +581,10 @@ class Live2DDirectiveService {
       return;
     }
 
-    final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
+    final dur = _parseTransitionMs(
+      attrs['delay'],
+      fallbackMs: int.tryParse(attrs['dur'] ?? '') ?? 200,
+    );
     for (final entry in target.overrides.entries) {
       await _bridge.setParameter(entry.key, entry.value, durationMs: dur);
     }
@@ -579,7 +592,10 @@ class Live2DDirectiveService {
 
   Future<void> _runReset(Map<String, String> attrs) async {
     await _ensureParameterBoundsLoaded();
-    final dur = int.tryParse(attrs['dur'] ?? '') ?? 200;
+    final dur = _parseTransitionMs(
+      attrs['delay'],
+      fallbackMs: int.tryParse(attrs['dur'] ?? '') ?? 200,
+    );
     for (final entry in _parameterBounds.entries) {
       await _bridge.setParameter(
         entry.key,
@@ -588,7 +604,51 @@ class Live2DDirectiveService {
       );
     }
   }
+
+  _DirectiveOperation _resolveOperation(String? raw) {
+    switch ((raw ?? 'set').trim().toLowerCase()) {
+      case 'del':
+      case 'subtract':
+      case '-':
+        return _DirectiveOperation.del;
+      case 'mul':
+      case 'multiply':
+      case '*':
+        return _DirectiveOperation.multiply;
+      default:
+        return _DirectiveOperation.set;
+    }
+  }
+
+  double _applyOperation({
+    required double base,
+    required double operand,
+    required _DirectiveOperation operation,
+  }) {
+    switch (operation) {
+      case _DirectiveOperation.del:
+        return base - operand;
+      case _DirectiveOperation.multiply:
+        return base * operand;
+      case _DirectiveOperation.set:
+        return operand;
+    }
+  }
+
+  int _parseTransitionMs(String? delayRaw, {required int fallbackMs}) {
+    final raw = delayRaw?.trim() ?? '';
+    if (raw.isEmpty) {
+      return fallbackMs.clamp(0, 60 * 1000);
+    }
+    final seconds = double.tryParse(raw);
+    if (seconds == null) {
+      return fallbackMs.clamp(0, 60 * 1000);
+    }
+    return (seconds * 1000).round().clamp(0, 60 * 1000);
+  }
 }
+
+enum _DirectiveOperation { set, del, multiply }
 
 class _ParameterRange {
   const _ParameterRange({

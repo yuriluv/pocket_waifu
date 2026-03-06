@@ -13,9 +13,11 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   final methodCalls = <MethodCall>[];
+  var currentParamEyeLOpen = 0.5;
 
   setUp(() {
     methodCalls.clear();
+    currentParamEyeLOpen = 0.5;
     messenger.setMockMethodCallHandler(channel, (call) async {
       methodCalls.add(call);
       switch (call.method) {
@@ -29,6 +31,17 @@ void main() {
           final args = Map<String, dynamic>.from(call.arguments as Map);
           return args['id'] != 'nonexistent';
         case 'setParameter':
+          final args = Map<String, dynamic>.from(call.arguments as Map);
+          if (args['id'] == 'ParamEyeLOpen') {
+            currentParamEyeLOpen = (args['value'] as num).toDouble();
+          }
+          return true;
+        case 'getParameter':
+          final args = Map<String, dynamic>.from(call.arguments as Map);
+          if (args['id'] == 'ParamEyeLOpen') {
+            return currentParamEyeLOpen;
+          }
+          return 0.0;
         case 'playMotion':
           return true;
         default:
@@ -129,6 +142,37 @@ void main() {
       final args = Map<String, dynamic>.from(setParamCall.arguments as Map);
       expect(args['id'], 'ParamEyeLOpen');
       expect(args['value'], 1.0);
+    });
+
+    test('param delay applies as smooth transition duration in seconds', () async {
+      final service = Live2DDirectiveService.instance;
+      await service.processAssistantOutput(
+        '[param:id=ParamEyeLOpen,value=0.2,delay=1.5]',
+      );
+
+      final setParamCall = methodCalls.lastWhere((c) => c.method == 'setParameter');
+      final args = Map<String, dynamic>.from(setParamCall.arguments as Map);
+      expect(args['id'], 'ParamEyeLOpen');
+      expect(args['value'], closeTo(0.2, 0.0001));
+      expect(args['durationMs'], 1500);
+    });
+
+    test('param del and multiply operations transform from current value', () async {
+      final service = Live2DDirectiveService.instance;
+
+      await service.processAssistantOutput(
+        '[param:id=ParamEyeLOpen,value=0.1,op=del]',
+      );
+      final firstSet = methodCalls.lastWhere((c) => c.method == 'setParameter');
+      final firstArgs = Map<String, dynamic>.from(firstSet.arguments as Map);
+      expect(firstArgs['value'], closeTo(0.4, 0.0001));
+
+      await service.processAssistantOutput(
+        '[param:id=ParamEyeLOpen,value=0.5,op=multiply]',
+      );
+      final secondSet = methodCalls.lastWhere((c) => c.method == 'setParameter');
+      final secondArgs = Map<String, dynamic>.from(secondSet.arguments as Map);
+      expect(secondArgs['value'], closeTo(0.2, 0.0001));
     });
 
     test('nonexistent expression does not crash and still strips tag', () async {
