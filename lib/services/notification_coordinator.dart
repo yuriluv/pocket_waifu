@@ -394,29 +394,34 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required String userName,
   }) async {
     var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyUserInput(
         output,
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onUserMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onUserMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onUserMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyUserInput(
         output,
         characterId: characterId,
@@ -435,29 +440,34 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required String userName,
   }) async {
     var output = text;
+    final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyAiOutput(
         output,
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onAssistantMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onAssistantMessage(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onAssistantMessage(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyAiOutput(
         output,
         characterId: characterId,
@@ -478,23 +488,27 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         characterId: characterId,
         sessionId: sessionId,
       );
-      output = await _luaScriptingService.onDisplayRender(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
     } else {
-      output = await _luaScriptingService.onDisplayRender(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-        ),
-      );
+      if (luaEnabled) {
+        output = await _luaScriptingService.onDisplayRender(
+          output,
+          LuaHookContext(
+            characterId: characterId,
+            characterName: characterName,
+            userName: userName,
+          ),
+        );
+      }
       output = await _regexPipeline.applyDisplayOnly(
         output,
         characterId: characterId,

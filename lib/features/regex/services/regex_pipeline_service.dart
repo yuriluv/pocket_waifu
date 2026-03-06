@@ -23,7 +23,11 @@ class RegexPipelineService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_rulesKey);
       if (raw == null || raw.trim().isEmpty) {
-        _rulesCache = [];
+        _rulesCache = _defaultRules();
+        await prefs.setString(
+          _rulesKey,
+          jsonEncode(_rulesCache!.map((rule) => rule.toMap()).toList()),
+        );
         return _rulesCache!;
       }
 
@@ -39,6 +43,13 @@ class RegexPipelineService {
               .map(RegexRule.fromMap)
               .toList()
             ..sort((a, b) => a.priority.compareTo(b.priority));
+      if (_rulesCache!.isEmpty) {
+        _rulesCache = _defaultRules();
+        await prefs.setString(
+          _rulesKey,
+          jsonEncode(_rulesCache!.map((rule) => rule.toMap()).toList()),
+        );
+      }
       return _rulesCache!;
     } catch (e) {
       debugPrint('RegexPipelineService.getRules failed: $e');
@@ -166,5 +177,22 @@ class RegexPipelineService {
     final ambiguousAlternation = RegExp(r'\((?:[^)]*\|){3,}[^)]*\)[+*]');
     return nestedQuantifier.hasMatch(pattern) ||
         ambiguousAlternation.hasMatch(pattern);
+  }
+
+  List<RegexRule> _defaultRules() {
+    return <RegexRule>[
+      RegexRule(
+        name: 'Hide <live2d> display blocks',
+        description:
+            'Display-only cleanup: removes <live2d>...</live2d> so chat and notifications stay clean.',
+        type: RegexRuleType.displayOnly,
+        pattern: r'<live2d\b[^>]*>[\s\S]*?<\/live2d>',
+        replacement: '',
+        multiLine: true,
+        dotAll: true,
+        priority: -100,
+        scope: RegexRuleScope.global,
+      ),
+    ];
   }
 }

@@ -58,7 +58,11 @@ class LuaScriptingService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_scriptsKey);
       if (raw == null || raw.trim().isEmpty) {
-        _scriptsCache = [];
+        _scriptsCache = _defaultScripts();
+        await prefs.setString(
+          _scriptsKey,
+          jsonEncode(_scriptsCache!.map((script) => script.toMap()).toList()),
+        );
         if (!_hooksInitialized) {
           _hooksInitialized = true;
           await onLoad(const LuaHookContext());
@@ -82,6 +86,13 @@ class LuaScriptingService {
               .map(LuaScript.fromMap)
               .toList()
             ..sort((a, b) => a.order.compareTo(b.order));
+      if (_scriptsCache!.isEmpty) {
+        _scriptsCache = _defaultScripts();
+        await prefs.setString(
+          _scriptsKey,
+          jsonEncode(_scriptsCache!.map((script) => script.toMap()).toList()),
+        );
+      }
       if (!_hooksInitialized) {
         _hooksInitialized = true;
         await onLoad(const LuaHookContext());
@@ -272,5 +283,40 @@ class LuaScriptingService {
     }
 
     return output;
+  }
+
+  List<LuaScript> _defaultScripts() {
+    return <LuaScript>[
+      LuaScript(
+        name: 'live2d_hooks_template.lua',
+        order: 0,
+        scope: LuaScriptScope.global,
+        content: '''-- Editable Live2D hook template.
+-- Keep or customize these hooks from the Regex/Lua management screen.
+
+function onLoad()
+end
+
+function onUserMessage(text)
+  return text
+end
+
+function onPromptBuild(text)
+  return text
+end
+
+function onAssistantMessage(text)
+  return text
+end
+
+function onDisplayRender(text)
+  return text
+end
+
+function onUnload()
+end
+''',
+      ),
+    ];
   }
 }
