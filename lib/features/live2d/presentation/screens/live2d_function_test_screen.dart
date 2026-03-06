@@ -38,6 +38,13 @@ class _Live2DFunctionTestScreenState extends State<Live2DFunctionTestScreen>
 
   Model3Data _modelData = Model3Data.empty;
   final Map<String, double> _currentValues = <String, double>{};
+  final Map<String, double> _partValues = <String, double>{};
+  final Map<String, String> _parameterDisplayNames = <String, String>{};
+  final Map<String, String> _partDisplayNames = <String, String>{};
+  final Map<String, TextEditingController> _parameterNameControllers =
+      <String, TextEditingController>{};
+  final Map<String, TextEditingController> _partNameControllers =
+      <String, TextEditingController>{};
   ParameterAliasMap? _aliasMap;
   final List<_CommandLogEntry> _commandLogs = <_CommandLogEntry>[];
   final MotionGenChatSession _motionSession = MotionGenChatSession();
@@ -60,6 +67,12 @@ class _Live2DFunctionTestScreenState extends State<Live2DFunctionTestScreen>
 
   @override
   void dispose() {
+    for (final controller in _parameterNameControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _partNameControllers.values) {
+      controller.dispose();
+    }
     _tabController.dispose();
     _parameterSearchController.dispose();
     _commandInputController.dispose();
@@ -75,12 +88,59 @@ class _Live2DFunctionTestScreenState extends State<Live2DFunctionTestScreen>
       return;
     }
 
-    final data = await _parser.parseFile(modelPath);
+    var data = await _parser.parseFile(modelPath);
+    final runtimeValues = await _bridge.getRuntimeParameterValues();
+    final runtimeIds = await _bridge.getParameterIds();
+    final mergedRuntimeIds = <String>{...runtimeValues.keys, ...runtimeIds};
+
+    if (mergedRuntimeIds.isNotEmpty) {
+      final knownIds = data.parameters.map((e) => e.id).toSet();
+      final mergedParameters = <Model3Parameter>[...data.parameters];
+      for (final id in mergedRuntimeIds) {
+        if (knownIds.contains(id)) {
+          continue;
+        }
+        final range = _rangeForId(id);
+        final defaultValue = runtimeValues[id] ?? (range.min == 0 ? 1.0 : 0.0);
+        mergedParameters.add(
+          Model3Parameter(
+            id: id,
+            name: id,
+            min: range.min,
+            defaultValue: defaultValue,
+            max: range.max,
+          ),
+        );
+      }
+      mergedParameters.sort((a, b) => a.id.compareTo(b.id));
+      data = Model3Data(
+        motionGroups: data.motionGroups,
+        expressions: data.expressions,
+        parameters: mergedParameters,
+        hitAreas: data.hitAreas,
+        parts: data.parts,
+        physicsMeta: data.physicsMeta,
+        physicsSettings: data.physicsSettings,
+        displayInfoPath: data.displayInfoPath,
+        physicsPath: data.physicsPath,
+      );
+    }
+
     final aliases = await _ensureAliases(modelPath, data.parameters);
     final values = <String, double>{};
     for (final p in data.parameters) {
-      values[p.id] = (await _bridge.getParameter(p.id)) ?? p.defaultValue;
+      final runtime = runtimeValues[p.id] ?? await _bridge.getParameter(p.id);
+      values[p.id] = runtime ?? p.defaultValue;
     }
+
+    final partIds = await _bridge.getPartIds();
+    final partValues = <String, double>{};
+    for (final id in partIds) {
+      partValues[id] = ((await _bridge.getPartOpacity(id)) ?? 1.0).clamp(0.0, 1.0);
+    }
+
+    final savedParameterNames = await _repository.loadParameterDisplayNames(modelPath);
+    final savedPartNames = await _repository.loadPartDisplayNames(modelPath);
 
     if (!mounted) return;
     setState(() {
@@ -89,8 +149,118 @@ class _Live2DFunctionTestScreenState extends State<Live2DFunctionTestScreen>
       _currentValues
         ..clear()
         ..addAll(values);
+      _partValues
+        ..clear()
+        ..addAll(partValues);
+      _parameterDisplayNames
+        ..clear()
+        ..addAll(savedParameterNames);
+      _partDisplayNames
+        ..clear()
+        ..addAll(savedPartNames);
+      _rebuildNameControllers();
       _loading = false;
     });
+  }
+
+  void _rebuildNameControllers() {
+    for (final controller in _parameterNameControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _partNameControllers.values) {
+      controller.dispose();
+    }
+    _parameterNameControllers.clear();
+    _partNameControllers.clear();
+
+    for (final parameter in _modelData.parameters) {
+      _parameterNameControllers[parameter.id] =
+          TextEditingController(text: _displayNameForParameter(parameter));
+    }
+
+    final knownPartIds = _modelData.parts.map((e) => e.id).toSet();
+    for (final part in _modelData.parts) {
+      _partNameControllers[part.id] =
+          TextEditingController(text: _displayNameForPart(part.id, fallback: part.name));
+    }
+    for (final partId in _partValues.keys) {
+      if (knownPartIds.contains(partId)) {
+        continue;
+      }
+      _partNameControllers[partId] =
+          TextEditingController(text: _displayNameForPart(partId, fallback: partId));
+    }
+  }
+
+  _Range _rangeForId(String id) {
+    final lower = id.toLowerCase();
+    final unitStyle = lower.contains('open') ||
+        lower.contains('smile') ||
+        lower.contains('opacity') ||
+        lower.contains('alpha') ||
+        lower.contains('weight') ||
+        lower.contains('eye');
+    if (unitStyle) {
+      return const _Range(min: 0.0, max: 1.0);
+    }
+    return const _Range(min: -30.0, max: 30.0);
+  }
+
+  _Range _rangeForParameter(Model3Parameter parameter) {
+    if (parameter.min >= 0 && parameter.max <= 1.0) {
+      return const _Range(min: 0.0, max: 1.0);
+    }
+    return _rangeForId(parameter.id);
+  }
+
+  String _displayNameForParameter(Model3Parameter parameter) {
+    final custom = _parameterDisplayNames[parameter.id]?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return custom;
+    }
+    return parameter.name;
+  }
+
+  String _displayNameForPart(String partId, {required String fallback}) {
+    final custom = _partDisplayNames[partId]?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return custom;
+    }
+    return fallback;
+  }
+
+  Future<void> _saveParameterDisplayName(String id) async {
+    final modelPath = widget.modelPath;
+    if (modelPath == null || modelPath.isEmpty) {
+      return;
+    }
+    final next = _parameterNameControllers[id]?.text.trim() ?? '';
+    if (next.isEmpty) {
+      _parameterDisplayNames.remove(id);
+    } else {
+      _parameterDisplayNames[id] = next;
+    }
+    await _repository.saveParameterDisplayNames(modelPath, _parameterDisplayNames);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _savePartDisplayName(String id) async {
+    final modelPath = widget.modelPath;
+    if (modelPath == null || modelPath.isEmpty) {
+      return;
+    }
+    final next = _partNameControllers[id]?.text.trim() ?? '';
+    if (next.isEmpty) {
+      _partDisplayNames.remove(id);
+    } else {
+      _partDisplayNames[id] = next;
+    }
+    await _repository.savePartDisplayNames(modelPath, _partDisplayNames);
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<ParameterAliasMap> _ensureAliases(
@@ -463,8 +633,27 @@ Aliases:\n$aliasLines''';
   Widget build(BuildContext context) {
     final filteredParams = _modelData.parameters.where((p) {
       if (_parameterSearch.isEmpty) return true;
-      return p.id.toLowerCase().contains(_parameterSearch);
+      final displayName = _displayNameForParameter(p).toLowerCase();
+      return p.id.toLowerCase().contains(_parameterSearch) ||
+          p.name.toLowerCase().contains(_parameterSearch) ||
+          displayName.contains(_parameterSearch);
     }).toList(growable: false);
+    final partIds = <String>{..._modelData.parts.map((e) => e.id), ..._partValues.keys};
+    final filteredPartIds = partIds.where((id) {
+      if (_parameterSearch.isEmpty) {
+        return true;
+      }
+      var fallback = id;
+      for (final part in _modelData.parts) {
+        if (part.id == id) {
+          fallback = part.name;
+          break;
+        }
+      }
+      final display = _displayNameForPart(id, fallback: fallback).toLowerCase();
+      return id.toLowerCase().contains(_parameterSearch) || display.contains(_parameterSearch);
+    }).toList(growable: false)
+      ..sort();
     final settingsProvider = context.watch<SettingsProvider>();
 
     return Scaffold(
@@ -514,20 +703,112 @@ Aliases:\n$aliasLines''';
                     ),
                     const SizedBox(height: 8),
                     ...filteredParams.map((p) {
-                      final value = _currentValues[p.id] ?? p.defaultValue;
+                      final range = _rangeForParameter(p);
+                      final value = (_currentValues[p.id] ?? p.defaultValue).clamp(range.min, range.max);
+                      final nameController = _parameterNameControllers.putIfAbsent(
+                        p.id,
+                        () => TextEditingController(text: _displayNameForParameter(p)),
+                      );
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${p.id}  (${value.toStringAsFixed(2)})'),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: nameController,
+                                  onSubmitted: (_) => _saveParameterDisplayName(p.id),
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    isDense: true,
+                                    labelText: 'Name',
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Save name',
+                                onPressed: () => _saveParameterDisplayName(p.id),
+                                icon: const Icon(Icons.save),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('${_displayNameForParameter(p)} (${p.id})  ${value.toStringAsFixed(2)}'),
                           Slider(
-                            min: p.min,
-                            max: p.max,
-                            value: value.clamp(p.min, p.max),
+                            min: range.min,
+                            max: range.max,
+                            value: value,
                             onChanged: (v) => _setParameter(p, v),
                           ),
+                          Text('Range: ${range.min.toStringAsFixed(0)} .. ${range.max.toStringAsFixed(0)}'),
+                          const Divider(height: 16),
                         ],
                       );
                     }),
+                    if (filteredPartIds.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Text('Parts (0..1 opacity)'),
+                      const SizedBox(height: 8),
+                      ...filteredPartIds.map((partId) {
+                        String fallbackName = partId;
+                        for (final part in _modelData.parts) {
+                          if (part.id == partId) {
+                            fallbackName = part.name;
+                            break;
+                          }
+                        }
+                        final displayName = _displayNameForPart(partId, fallback: fallbackName);
+                        final nameController = _partNameControllers.putIfAbsent(
+                          partId,
+                          () => TextEditingController(text: displayName),
+                        );
+                        final opacity = (_partValues[partId] ?? 1.0).clamp(0.0, 1.0);
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: nameController,
+                                    onSubmitted: (_) => _savePartDisplayName(partId),
+                                    decoration: const InputDecoration(
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                      labelText: 'Part name',
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Save name',
+                                  onPressed: () => _savePartDisplayName(partId),
+                                  icon: const Icon(Icons.save),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('$displayName ($partId)  ${opacity.toStringAsFixed(2)}'),
+                            Slider(
+                              min: 0,
+                              max: 1,
+                              divisions: 100,
+                              value: opacity,
+                              onChanged: (value) async {
+                                await _bridge.setPartOpacity(partId, value);
+                                if (!mounted) {
+                                  return;
+                                }
+                                setState(() {
+                                  _partValues[partId] = value;
+                                });
+                              },
+                            ),
+                            const Divider(height: 16),
+                          ],
+                        );
+                      }),
+                    ],
                   ],
                 ),
                 Column(
@@ -662,6 +943,13 @@ class _CommandLogEntry {
   final String parsed;
   final List<String> errors;
   bool get success => errors.isEmpty;
+}
+
+class _Range {
+  const _Range({required this.min, required this.max});
+
+  final double min;
+  final double max;
 }
 
 class MotionGenMessage {

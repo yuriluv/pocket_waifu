@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../../data/models/auto_motion_config.dart';
 import '../../data/models/gesture_motion_mapping.dart';
@@ -158,6 +161,7 @@ class _Live2DAdvancedSettingsScreenState
                       ),
                       _InteractionTestTab(
                         model3Data: _model3Data,
+                        modelPath: modelPath,
                         isLoading: _isLoading,
                       ),
                       _MotionParametersTab(
@@ -312,6 +316,7 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
 
     final groups = data.motionGroups.keys.toList(growable: false);
     final expressions = data.expressions.map((e) => e.name).toList(growable: false);
+    final physicsMeta = data.physicsMeta;
 
     final selectedGroup = groups.contains(_config.motionGroup)
         ? _config.motionGroup
@@ -320,100 +325,283 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        SwitchListTile(
-          title: const Text('Enable Auto Motion'),
-          subtitle: Text(_autoMotionService.isRunning ? 'Running' : 'Stopped'),
-          value: _config.enabled,
-          onChanged: groups.isEmpty
-              ? null
-              : (value) {
-                  _updateConfig(_config.copyWith(enabled: value, motionGroup: selectedGroup));
-                },
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          decoration: const InputDecoration(
-            labelText: 'Idle motion group',
-            border: OutlineInputBorder(),
-          ),
-          initialValue: selectedGroup,
-          items: groups
-              .map(
-                (group) => DropdownMenuItem<String>(
-                  value: group,
-                  child: Text('$group (${data.motionGroups[group]?.length ?? 0})'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Cubism runtime', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('CubismEyeBlink'),
+                  subtitle: const Text('Automatic eye blink parameter update'),
+                  value: _config.cubismEyeBlinkEnabled,
+                  onChanged: (value) {
+                    _updateConfig(_config.copyWith(cubismEyeBlinkEnabled: value));
+                  },
                 ),
-              )
-              .toList(growable: false),
-          onChanged: groups.isEmpty
-              ? null
-              : (value) {
-                  if (value == null) {
-                    return;
-                  }
-                  _updateConfig(_config.copyWith(motionGroup: value));
-                },
+                Text('Eye blink interval: ${_config.eyeBlinkIntervalSeconds.toStringAsFixed(1)}s'),
+                Slider(
+                  min: 0.5,
+                  max: 12,
+                  divisions: 46,
+                  value: _config.eyeBlinkIntervalSeconds.clamp(0.5, 12),
+                  label: '${_config.eyeBlinkIntervalSeconds.toStringAsFixed(1)}s',
+                  onChanged: _config.cubismEyeBlinkEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(eyeBlinkIntervalSeconds: value));
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('CubismBreath'),
+                  subtitle: const Text('Breath-related parameter oscillation'),
+                  value: _config.cubismBreathEnabled,
+                  onChanged: (value) {
+                    _updateConfig(_config.copyWith(cubismBreathEnabled: value));
+                  },
+                ),
+                Text('Breath cycle: ${_config.breathCycleSeconds.toStringAsFixed(1)}s'),
+                Slider(
+                  min: 1,
+                  max: 12,
+                  divisions: 44,
+                  value: _config.breathCycleSeconds.clamp(1, 12),
+                  label: '${_config.breathCycleSeconds.toStringAsFixed(1)}s',
+                  onChanged: _config.cubismBreathEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(breathCycleSeconds: value));
+                        }
+                      : null,
+                ),
+                Text('Breath weight: ${_config.breathWeight.toStringAsFixed(2)}'),
+                Slider(
+                  min: 0,
+                  max: 2,
+                  divisions: 40,
+                  value: _config.breathWeight.clamp(0, 2),
+                  label: _config.breathWeight.toStringAsFixed(2),
+                  onChanged: _config.cubismBreathEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(breathWeight: value));
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('LookAt (gaze tracking)'),
+                  subtitle: const Text('Touch/cursor driven ParamEyeBallX/Y'),
+                  value: _config.lookAtEnabled,
+                  onChanged: (value) {
+                    _updateConfig(_config.copyWith(lookAtEnabled: value));
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: 12),
-        Text('Idle motion interval: ${_config.intervalSeconds}s'),
-        Slider(
-          min: 5,
-          max: 120,
-          divisions: 23,
-          value: _config.intervalSeconds.toDouble().clamp(5, 120),
-          label: '${_config.intervalSeconds}s',
-          onChanged: (value) {
-            _updateConfig(_config.copyWith(intervalSeconds: value.round()));
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Random mode'),
-          subtitle: const Text('OFF uses sequential motion order'),
-          value: _config.randomMode,
-          onChanged: (value) {
-            _updateConfig(_config.copyWith(randomMode: value));
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Auto-expression change'),
-          subtitle: Text(
-            expressions.isEmpty
-                ? 'No expressions found in model'
-                : 'Change expression when idle motion is triggered',
-          ),
-          value: _config.autoExpressionChange,
-          onChanged: expressions.isEmpty
-              ? null
-              : (value) {
-                  _updateConfig(_config.copyWith(autoExpressionChange: value));
-                },
-        ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          decoration: const InputDecoration(
-            labelText: 'Expression change group',
-            border: OutlineInputBorder(),
-          ),
-          initialValue: _config.expressionSelection,
-          hint: const Text('All expressions (cycle/random)'),
-          items: expressions
-              .map(
-                (name) => DropdownMenuItem<String>(
-                  value: name,
-                  child: Text(name),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('physics3.json', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enable physics3 runtime'),
+                  subtitle: Text(
+                    data.physicsPath == null
+                        ? 'No physics3.json detected in model3 FileReferences'
+                        : data.physicsPath!,
+                  ),
+                  value: _config.physicsEnabled,
+                  onChanged: data.physicsPath == null
+                      ? null
+                      : (value) {
+                          _updateConfig(_config.copyWith(physicsEnabled: value));
+                        },
                 ),
-              )
-              .toList(growable: false),
-          onChanged: !_config.autoExpressionChange || expressions.isEmpty
-              ? null
-              : (value) {
-                  _updateConfig(
-                    _config.copyWith(
-                      expressionSelection: value,
-                      clearExpressionSelection: value == null,
+                if (physicsMeta != null)
+                  Text(
+                    'Meta: settings=${physicsMeta.settingCount}, '
+                    'inputs=${physicsMeta.totalInputCount}, outputs=${physicsMeta.totalOutputCount}, '
+                    'vertices=${physicsMeta.vertexCount}, fps=${physicsMeta.fps}',
+                  )
+                else
+                  const Text('Meta information unavailable'),
+                const SizedBox(height: 8),
+                Text('Physics FPS: ${_config.physicsFps}'),
+                Slider(
+                  min: 1,
+                  max: 120,
+                  divisions: 119,
+                  value: _config.physicsFps.toDouble().clamp(1, 120),
+                  label: _config.physicsFps.toString(),
+                  onChanged: _config.physicsEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(physicsFps: value.round()));
+                        }
+                      : null,
+                ),
+                Text('Delay scale: ${_config.physicsDelayScale.toStringAsFixed(2)}'),
+                Slider(
+                  min: 0.1,
+                  max: 3,
+                  divisions: 58,
+                  value: _config.physicsDelayScale.clamp(0.1, 3),
+                  label: _config.physicsDelayScale.toStringAsFixed(2),
+                  onChanged: _config.physicsEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(physicsDelayScale: value));
+                        }
+                      : null,
+                ),
+                Text('Mobility scale: ${_config.physicsMobilityScale.toStringAsFixed(2)}'),
+                Slider(
+                  min: 0.1,
+                  max: 3,
+                  divisions: 58,
+                  value: _config.physicsMobilityScale.clamp(0.1, 3),
+                  label: _config.physicsMobilityScale.toStringAsFixed(2),
+                  onChanged: _config.physicsEnabled
+                      ? (value) {
+                          _updateConfig(_config.copyWith(physicsMobilityScale: value));
+                        }
+                      : null,
+                ),
+                const SizedBox(height: 6),
+                ...data.physicsSettings.map(
+                  (setting) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${setting.name} (${setting.id})'),
+                    subtitle: Text(
+                      'avg delay=${setting.averageDelay.toStringAsFixed(2)} | '
+                      'avg mobility=${setting.averageMobility.toStringAsFixed(2)}',
                     ),
-                  );
-                },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Auto motion scheduler', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Enable Auto Motion'),
+                  subtitle: Text(_autoMotionService.isRunning ? 'Running' : 'Stopped'),
+                  value: _config.enabled,
+                  onChanged: groups.isEmpty
+                      ? null
+                      : (value) {
+                          _updateConfig(_config.copyWith(enabled: value, motionGroup: selectedGroup));
+                        },
+                ),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(
+                    labelText: 'Idle motion group',
+                    border: OutlineInputBorder(),
+                  ),
+                  initialValue: selectedGroup,
+                  items: groups
+                      .map(
+                        (group) => DropdownMenuItem<String>(
+                          value: group,
+                          child: Text('$group (${data.motionGroups[group]?.length ?? 0})'),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: groups.isEmpty
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          _updateConfig(_config.copyWith(motionGroup: value));
+                        },
+                ),
+                const SizedBox(height: 12),
+                Text('Idle motion interval: ${_config.intervalSeconds}s'),
+                Slider(
+                  min: 5,
+                  max: 120,
+                  divisions: 23,
+                  value: _config.intervalSeconds.toDouble().clamp(5, 120),
+                  label: '${_config.intervalSeconds}s',
+                  onChanged: (value) {
+                    _updateConfig(_config.copyWith(intervalSeconds: value.round()));
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Random mode'),
+                  subtitle: const Text('OFF uses sequential motion order'),
+                  value: _config.randomMode,
+                  onChanged: (value) {
+                    _updateConfig(_config.copyWith(randomMode: value));
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Auto-expression change'),
+                  subtitle: Text(
+                    expressions.isEmpty
+                        ? 'No expressions found in model'
+                        : 'Change expression when idle motion is triggered',
+                  ),
+                  value: _config.autoExpressionChange,
+                  onChanged: expressions.isEmpty
+                      ? null
+                      : (value) {
+                          _updateConfig(_config.copyWith(autoExpressionChange: value));
+                        },
+                ),
+                DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(
+                    labelText: 'Expression change group',
+                    border: OutlineInputBorder(),
+                  ),
+                  initialValue: _config.expressionSelection,
+                  hint: const Text('All expressions (cycle/random)'),
+                  items: expressions
+                      .map(
+                        (name) => DropdownMenuItem<String>(
+                          value: name,
+                          child: Text(name),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: !_config.autoExpressionChange || expressions.isEmpty
+                      ? null
+                      : (value) {
+                          _updateConfig(
+                            _config.copyWith(
+                              expressionSelection: value,
+                              clearExpressionSelection: value == null,
+                            ),
+                          );
+                        },
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -787,10 +975,12 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
 class _InteractionTestTab extends StatefulWidget {
   const _InteractionTestTab({
     required this.model3Data,
+    required this.modelPath,
     required this.isLoading,
   });
 
   final Model3Data? model3Data;
+  final String? modelPath;
   final bool isLoading;
 
   @override
@@ -799,13 +989,21 @@ class _InteractionTestTab extends StatefulWidget {
 
 class _InteractionTestTabState extends State<_InteractionTestTab> {
   final Map<String, double> _currentValues = <String, double>{};
+  final Map<String, double> _partOpacities = <String, double>{};
+  final Map<String, String> _interactionLabels = <String, String>{};
   final Live2DNativeBridge _bridge = Live2DNativeBridge();
+  final Live2DSettingsRepository _repo = Live2DSettingsRepository();
+
+  bool _labelsLoaded = false;
 
   @override
   void didUpdateWidget(covariant _InteractionTestTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.model3Data != widget.model3Data) {
+    if (oldWidget.model3Data != widget.model3Data ||
+        oldWidget.modelPath != widget.modelPath) {
       _initializeParameterValues();
+      _loadPartOpacities();
+      _loadInteractionLabels();
     }
   }
 
@@ -813,6 +1011,8 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
   void initState() {
     super.initState();
     _initializeParameterValues();
+    _loadPartOpacities();
+    _loadInteractionLabels();
   }
 
   void _initializeParameterValues() {
@@ -855,6 +1055,61 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     }
   }
 
+  Future<void> _loadPartOpacities() async {
+    try {
+      final ids = await _bridge.getPartIds();
+      if (!mounted || ids.isEmpty) {
+        return;
+      }
+      final values = <String, double>{};
+      for (final id in ids) {
+        values[id] = ((await _bridge.getPartOpacity(id)) ?? 1.0).clamp(0.0, 1.0);
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _partOpacities
+          ..clear()
+          ..addAll(values);
+      });
+    } catch (e) {
+      debugPrint('InteractionTest: failed to load part opacities: $e');
+    }
+  }
+
+  Future<void> _loadInteractionLabels() async {
+    final modelPath = widget.modelPath;
+    if (modelPath == null || modelPath.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _interactionLabels.clear();
+        _labelsLoaded = true;
+      });
+      return;
+    }
+    final labels = await _repo.loadInteractionLabels(modelPath);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _interactionLabels
+        ..clear()
+        ..addAll(labels);
+      _labelsLoaded = true;
+    });
+  }
+
+  Future<void> _saveInteractionLabels() async {
+    final modelPath = widget.modelPath;
+    if (modelPath == null || modelPath.isEmpty) {
+      return;
+    }
+    await _repo.saveInteractionLabels(modelPath, _interactionLabels);
+  }
+
   Future<void> _playMotion(String group, int index) async {
     await _bridge.playMotion(group, index);
   }
@@ -871,6 +1126,147 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     setState(() {
       _currentValues[parameter.id] = value;
     });
+  }
+
+  Future<void> _setPartOpacity(Model3Part part, double value) async {
+    await _bridge.setPartOpacity(part.id, value);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _partOpacities[part.id] = value;
+    });
+  }
+
+  String _motionLabel(String group, int index, String filePath) {
+    final key = 'motion:$group#$index';
+    final custom = _interactionLabels[key];
+    if (custom == null || custom.trim().isEmpty) {
+      final fileName = p.basename(filePath);
+      return '$group[$index] ($fileName)';
+    }
+    return custom;
+  }
+
+  String _expressionLabel(Model3Expression expression) {
+    final key = 'expression:${expression.filePath}';
+    final custom = _interactionLabels[key];
+    if (custom == null || custom.trim().isEmpty) {
+      return expression.name;
+    }
+    return custom;
+  }
+
+  Future<void> _editInteractionLabel({
+    required String key,
+    required String currentLabel,
+    required String title,
+  }) async {
+    final controller = TextEditingController(text: currentLabel);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            labelText: 'Display name',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      final next = controller.text.trim();
+      if (next.isEmpty) {
+        _interactionLabels.remove(key);
+      } else {
+        _interactionLabels[key] = next;
+      }
+      await _saveInteractionLabels();
+      if (mounted) {
+        setState(() {});
+      }
+    }
+    controller.dispose();
+  }
+
+  String _resolveAssetPath(String relativePath) {
+    final modelPath = widget.modelPath;
+    if (modelPath == null || modelPath.isEmpty) {
+      return relativePath;
+    }
+    return p.normalize(p.join(p.dirname(modelPath), relativePath));
+  }
+
+  Future<void> _openJsonEditor({
+    required String title,
+    required String filePath,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File not found: $filePath')));
+      return;
+    }
+
+    final controller = TextEditingController(text: await file.readAsString());
+    if (!mounted) {
+      controller.dispose();
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 640,
+          child: TextField(
+            controller: controller,
+            minLines: 14,
+            maxLines: 28,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'JSON',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save file'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await file.writeAsString(controller.text);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Saved: $filePath')));
+      }
+    }
+    controller.dispose();
   }
 
   Future<void> _resetParameters(Model3Data data) async {
@@ -909,16 +1305,41 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
                 const Text('Motion Groups'),
                 const SizedBox(height: 8),
                 ...data.motionGroups.entries.map(
-                  (entry) => Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: List<Widget>.generate(
-                      entry.value.length,
-                      (index) => ActionChip(
-                        label: Text('${entry.key}/$index'),
-                        onPressed: () => _playMotion(entry.key, index),
-                      ),
-                    ),
+                  (entry) => Column(
+                    children: List<Widget>.generate(entry.value.length, (index) {
+                      final motionFile = entry.value[index];
+                      final displayName = _motionLabel(entry.key, index, motionFile);
+                      final key = 'motion:${entry.key}#$index';
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('$displayName (${p.basename(motionFile)})'),
+                        subtitle: Text(motionFile),
+                        onTap: () => _playMotion(entry.key, index),
+                        trailing: Wrap(
+                          spacing: 4,
+                          children: [
+                            IconButton(
+                              tooltip: 'Rename',
+                              onPressed: () => _editInteractionLabel(
+                                key: key,
+                                currentLabel: displayName,
+                                title: 'Edit motion label',
+                              ),
+                              icon: const Icon(Icons.edit),
+                            ),
+                            IconButton(
+                              tooltip: 'JSON edit',
+                              onPressed: () => _openJsonEditor(
+                                title: 'Motion JSON editor',
+                                filePath: _resolveAssetPath(motionFile),
+                              ),
+                              icon: const Icon(Icons.code),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ),
                 ),
               ],
@@ -934,22 +1355,74 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
               children: [
                 const Text('Expressions'),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: data.expressions
-                      .map(
-                        (exp) => ActionChip(
-                          label: Text(exp.name),
-                          onPressed: () => _setExpression(exp.name),
+                ...data.expressions.map((exp) {
+                  final label = _expressionLabel(exp);
+                  final key = 'expression:${exp.filePath}';
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('$label (${p.basename(exp.filePath)})'),
+                    subtitle: Text(exp.filePath),
+                    onTap: () => _setExpression(exp.name),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          tooltip: 'Rename',
+                          onPressed: () => _editInteractionLabel(
+                            key: key,
+                            currentLabel: label,
+                            title: 'Edit expression label',
+                          ),
+                          icon: const Icon(Icons.edit),
                         ),
-                      )
-                      .toList(growable: false),
-                ),
+                        IconButton(
+                          tooltip: 'JSON edit',
+                          onPressed: () => _openJsonEditor(
+                            title: 'Expression JSON editor',
+                            filePath: _resolveAssetPath(exp.filePath),
+                          ),
+                          icon: const Icon(Icons.code),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
               ],
             ),
           ),
         ),
+        if (data.parts.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Parts (Opacity)'),
+                  const SizedBox(height: 8),
+                  ...data.parts.map((part) {
+                    final current = _partOpacities[part.id] ?? 1.0;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${part.name} (${part.id})'),
+                        Slider(
+                          min: 0,
+                          max: 1,
+                          divisions: 100,
+                          value: current.clamp(0, 1),
+                          onChanged: (value) => _setPartOpacity(part, value),
+                        ),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -994,6 +1467,11 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
             ),
           ),
         ),
+        if (!_labelsLoaded)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: LinearProgressIndicator(),
+          ),
       ],
     );
   }

@@ -24,6 +24,16 @@ void main() {
         randomMode: false,
         autoExpressionChange: true,
         expressionSelection: 'happy',
+        cubismEyeBlinkEnabled: true,
+        eyeBlinkIntervalSeconds: 2.5,
+        cubismBreathEnabled: true,
+        breathCycleSeconds: 3.0,
+        breathWeight: 1.0,
+        lookAtEnabled: true,
+        physicsEnabled: true,
+        physicsFps: 30,
+        physicsDelayScale: 1.0,
+        physicsMobilityScale: 1.0,
       );
 
       await repo.saveAutoMotionConfig(modelPath, config);

@@ -20,6 +20,9 @@ class Live2DSettingsRepository {
   static const String _autoMotionPrefix = 'live2d_auto_motion_config_';
   static const String _gestureMappingPrefix = 'live2d_gesture_mapping_config_';
   static const String _parameterAliasPrefix = 'live2d_parameter_alias_map_';
+  static const String _parameterNamePrefix = 'live2d_parameter_name_map_';
+  static const String _partNamePrefix = 'live2d_part_name_map_';
+  static const String _interactionLabelPrefix = 'live2d_interaction_label_map_';
 
   String _modelKey(String modelPath) {
     final normalized = modelPath.replaceAll('\\', '/').toLowerCase();
@@ -43,6 +46,18 @@ class Live2DSettingsRepository {
 
   String _parameterAliasKey(String modelPath) {
     return '$_parameterAliasPrefix${_modelKey(modelPath)}';
+  }
+
+  String _parameterNameKey(String modelPath) {
+    return '$_parameterNamePrefix${_modelKey(modelPath)}';
+  }
+
+  String _partNameKey(String modelPath) {
+    return '$_partNamePrefix${_modelKey(modelPath)}';
+  }
+
+  String _interactionLabelKey(String modelPath) {
+    return '$_interactionLabelPrefix${_modelKey(modelPath)}';
   }
 
   Future<AutoMotionConfig?> loadAutoMotionConfig(String modelPath) async {
@@ -163,6 +178,87 @@ class Live2DSettingsRepository {
   Future<void> saveParameterAliases(String modelPath, ParameterAliasMap map) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_parameterAliasKey(modelPath), jsonEncode(map.toJson()));
+  }
+
+  Future<Map<String, String>> loadParameterDisplayNames(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_parameterNameKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return const <String, String>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return const <String, String>{};
+      }
+      return decoded.map(
+        (key, value) => MapEntry(key, value?.toString() ?? ''),
+      );
+    } catch (_) {
+      return const <String, String>{};
+    }
+  }
+
+  Future<void> saveParameterDisplayNames(
+    String modelPath,
+    Map<String, String> names,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_parameterNameKey(modelPath), jsonEncode(names));
+  }
+
+  Future<Map<String, String>> loadPartDisplayNames(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_partNameKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return const <String, String>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return const <String, String>{};
+      }
+      return decoded.map(
+        (key, value) => MapEntry(key, value?.toString() ?? ''),
+      );
+    } catch (_) {
+      return const <String, String>{};
+    }
+  }
+
+  Future<void> savePartDisplayNames(
+    String modelPath,
+    Map<String, String> names,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_partNameKey(modelPath), jsonEncode(names));
+  }
+
+  Future<Map<String, String>> loadInteractionLabels(String modelPath) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_interactionLabelKey(modelPath));
+    if (raw == null || raw.isEmpty) {
+      return const <String, String>{};
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        return const <String, String>{};
+      }
+      return decoded.map(
+        (key, value) => MapEntry(key, value?.toString() ?? ''),
+      );
+    } catch (_) {
+      return const <String, String>{};
+    }
+  }
+
+  Future<void> saveInteractionLabels(
+    String modelPath,
+    Map<String, String> labels,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_interactionLabelKey(modelPath), jsonEncode(labels));
   }
 
   Future<String> exportParameterPresets(
