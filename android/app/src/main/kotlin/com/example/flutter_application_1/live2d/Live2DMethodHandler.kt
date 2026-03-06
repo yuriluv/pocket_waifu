@@ -68,8 +68,16 @@ class Live2DMethodHandler(
                 "getRuntimeParameterValues" -> getRuntimeParameterValues(result)
                 
                 "setEyeBlink" -> setEyeBlink(call, result)
+                "setEyeBlinkInterval" -> setEyeBlinkInterval(call, result)
                 "setBreathing" -> setBreathing(call, result)
+                "setBreathConfig" -> setBreathConfig(call, result)
                 "setLookAt" -> setLookAt(call, result)
+                "setPhysicsEnabled" -> setPhysicsEnabled(call, result)
+                "setPhysicsConfig" -> setPhysicsConfig(call, result)
+
+                "getPartIds" -> getPartIds(result)
+                "getPartOpacity" -> getPartOpacity(call, result)
+                "setPartOpacity" -> setPartOpacity(call, result)
                 
                 "sendSignal" -> sendSignal(call, result)
                 
@@ -666,6 +674,22 @@ class Live2DMethodHandler(
             result.error("BEHAVIOR_ERROR", e.message, null)
         }
     }
+
+    private fun setEyeBlinkInterval(call: MethodCall, result: MethodChannel.Result) {
+        val intervalSeconds = call.argument<Double>("intervalSeconds")?.toFloat() ?: 3f
+
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_EYE_BLINK_INTERVAL
+                putExtra(Live2DOverlayService.EXTRA_EYE_BLINK_INTERVAL, intervalSeconds)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("눈 깜빡임 간격 설정 실패", e)
+            result.error("BEHAVIOR_ERROR", e.message, null)
+        }
+    }
     
     private fun setBreathing(call: MethodCall, result: MethodChannel.Result) {
         val enabled = call.argument<Boolean>("enabled") ?: true
@@ -680,6 +704,25 @@ class Live2DMethodHandler(
             result.success(true)
         } catch (e: Exception) {
             Live2DLogger.e("호흡 설정 실패", e)
+            result.error("BEHAVIOR_ERROR", e.message, null)
+        }
+    }
+
+    private fun setBreathConfig(call: MethodCall, result: MethodChannel.Result) {
+        val cycleSeconds = call.argument<Double>("cycleSeconds")?.toFloat() ?: 3.2f
+        val weight = call.argument<Double>("weight")?.toFloat() ?: 1.0f
+
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_BREATH_CONFIG
+                putExtra(Live2DOverlayService.EXTRA_BREATH_CYCLE_SECONDS, cycleSeconds)
+                putExtra(Live2DOverlayService.EXTRA_BREATH_WEIGHT, weight)
+            }
+            context.startService(intent)
+
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("호흡 파라미터 설정 실패", e)
             result.error("BEHAVIOR_ERROR", e.message, null)
         }
     }
@@ -698,6 +741,88 @@ class Live2DMethodHandler(
         } catch (e: Exception) {
             Live2DLogger.e("시선 추적 설정 실패", e)
             result.error("BEHAVIOR_ERROR", e.message, null)
+        }
+    }
+
+    private fun setPhysicsEnabled(call: MethodCall, result: MethodChannel.Result) {
+        val enabled = call.argument<Boolean>("enabled") ?: true
+
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_PHYSICS_ENABLED
+                putExtra(Live2DOverlayService.EXTRA_ENABLED, enabled)
+            }
+            context.startService(intent)
+
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("물리 설정 실패", e)
+            result.error("BEHAVIOR_ERROR", e.message, null)
+        }
+    }
+
+    private fun setPhysicsConfig(call: MethodCall, result: MethodChannel.Result) {
+        val fps = call.argument<Int>("fps") ?: 30
+        val delayScale = call.argument<Double>("delayScale")?.toFloat() ?: 1f
+        val mobilityScale = call.argument<Double>("mobilityScale")?.toFloat() ?: 1f
+
+        try {
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SET_PHYSICS_CONFIG
+                putExtra(Live2DOverlayService.EXTRA_PHYSICS_FPS, fps)
+                putExtra(Live2DOverlayService.EXTRA_PHYSICS_DELAY_SCALE, delayScale)
+                putExtra(Live2DOverlayService.EXTRA_PHYSICS_MOBILITY_SCALE, mobilityScale)
+            }
+            context.startService(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("물리 파라미터 설정 실패", e)
+            result.error("BEHAVIOR_ERROR", e.message, null)
+        }
+    }
+
+    private fun getPartIds(result: MethodChannel.Result) {
+        try {
+            val ids = Live2DNativeBridge.safeGetPartIds()
+            result.success(ids.toList())
+        } catch (t: Throwable) {
+            Live2DLogger.e("파트 ID 조회 실패", t)
+            result.error("PART_ERROR", t.message, null)
+        }
+    }
+
+    private fun getPartOpacity(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id")
+        if (id.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "id is required", null)
+            return
+        }
+        try {
+            val value = Live2DNativeBridge.safeGetPartOpacity(id)
+            if (value == null) {
+                result.error("NATIVE_UNAVAILABLE", "Cubism native bridge unavailable", null)
+                return
+            }
+            result.success(value.toDouble())
+        } catch (t: Throwable) {
+            Live2DLogger.e("파트 불투명도 조회 실패", t)
+            result.error("PART_ERROR", t.message, null)
+        }
+    }
+
+    private fun setPartOpacity(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id")
+        val opacity = call.argument<Double>("opacity")?.toFloat() ?: 1f
+        if (id.isNullOrBlank()) {
+            result.error("INVALID_ARGUMENT", "id is required", null)
+            return
+        }
+        try {
+            val success = Live2DNativeBridge.safeSetPartOpacity(id, opacity.coerceIn(0f, 1f))
+            result.success(success)
+        } catch (t: Throwable) {
+            Live2DLogger.e("파트 불투명도 설정 실패", t)
+            result.error("PART_ERROR", t.message, null)
         }
     }
     

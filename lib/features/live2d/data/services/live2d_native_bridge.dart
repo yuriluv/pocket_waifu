@@ -726,6 +726,20 @@ class Live2DNativeBridge {
     }
   }
 
+  Future<bool> setEyeBlinkInterval(double intervalSeconds) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setEyeBlinkInterval', {
+        'intervalSeconds': intervalSeconds,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setEyeBlinkInterval 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> setBreathing(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setBreathing', {
@@ -740,6 +754,24 @@ class Live2DNativeBridge {
     }
   }
 
+  Future<bool> setBreathConfig({
+    required double cycleSeconds,
+    required double weight,
+  }) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setBreathConfig', {
+        'cycleSeconds': cycleSeconds,
+        'weight': weight,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setBreathConfig 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> setLookAt(bool enabled) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('setLookAt', {
@@ -748,6 +780,81 @@ class Live2DNativeBridge {
       return result ?? false;
     } on PlatformException catch (e) {
       live2dLog.error(_tag, 'setLookAt 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<bool> setPhysicsEnabled(bool enabled) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setPhysicsEnabled', {
+        'enabled': enabled,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setPhysicsEnabled 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<bool> setPhysicsConfig({
+    required int fps,
+    required double delayScale,
+    required double mobilityScale,
+  }) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setPhysicsConfig', {
+        'fps': fps,
+        'delayScale': delayScale,
+        'mobilityScale': mobilityScale,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setPhysicsConfig 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  Future<List<String>> getPartIds() async {
+    try {
+      final result = await _methodChannel.invokeMethod<List<dynamic>>('getPartIds');
+      return result?.cast<String>() ?? <String>[];
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getPartIds 실패', error: e);
+      return <String>[];
+    } on MissingPluginException {
+      return <String>[];
+    }
+  }
+
+  Future<double?> getPartOpacity(String partId) async {
+    try {
+      final result = await _methodChannel.invokeMethod<double>('getPartOpacity', {
+        'id': partId,
+      });
+      return result;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'getPartOpacity 실패', error: e);
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  Future<bool> setPartOpacity(String partId, double opacity) async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('setPartOpacity', {
+        'id': partId,
+        'opacity': opacity,
+      });
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'setPartOpacity 실패', error: e);
       return false;
     } on MissingPluginException {
       return false;

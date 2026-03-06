@@ -68,8 +68,12 @@ class Live2DOverlayService : Service() {
         const val ACTION_SET_SIZE = "com.example.flutter_application_1.live2d.SET_SIZE"
         const val ACTION_SET_HITBOX_SIZE = "com.example.flutter_application_1.live2d.SET_HITBOX_SIZE"
         const val ACTION_SET_EYE_BLINK = "com.example.flutter_application_1.live2d.SET_EYE_BLINK"
+        const val ACTION_SET_EYE_BLINK_INTERVAL = "com.example.flutter_application_1.live2d.SET_EYE_BLINK_INTERVAL"
         const val ACTION_SET_BREATHING = "com.example.flutter_application_1.live2d.SET_BREATHING"
+        const val ACTION_SET_BREATH_CONFIG = "com.example.flutter_application_1.live2d.SET_BREATH_CONFIG"
         const val ACTION_SET_LOOK_AT = "com.example.flutter_application_1.live2d.SET_LOOK_AT"
+        const val ACTION_SET_PHYSICS_ENABLED = "com.example.flutter_application_1.live2d.SET_PHYSICS_ENABLED"
+        const val ACTION_SET_PHYSICS_CONFIG = "com.example.flutter_application_1.live2d.SET_PHYSICS_CONFIG"
         const val ACTION_SEND_SIGNAL = "com.example.flutter_application_1.live2d.SEND_SIGNAL"
         const val ACTION_SET_TARGET_FPS = "com.example.flutter_application_1.live2d.SET_TARGET_FPS"
         const val ACTION_SET_LOW_POWER_MODE = "com.example.flutter_application_1.live2d.SET_LOW_POWER_MODE"
@@ -106,6 +110,12 @@ class Live2DOverlayService : Service() {
         const val EXTRA_WIDTH = "width"
         const val EXTRA_HEIGHT = "height"
         const val EXTRA_ENABLED = "enabled"
+        const val EXTRA_EYE_BLINK_INTERVAL = "eye_blink_interval"
+        const val EXTRA_BREATH_CYCLE_SECONDS = "breath_cycle_seconds"
+        const val EXTRA_BREATH_WEIGHT = "breath_weight"
+        const val EXTRA_PHYSICS_FPS = "physics_fps"
+        const val EXTRA_PHYSICS_DELAY_SCALE = "physics_delay_scale"
+        const val EXTRA_PHYSICS_MOBILITY_SCALE = "physics_mobility_scale"
         const val EXTRA_SIGNAL_NAME = "signal_name"
         const val EXTRA_TARGET_FPS = "target_fps"
         const val EXTRA_TOUCH_THROUGH = "touch_through"
@@ -377,8 +387,19 @@ class Live2DOverlayService : Service() {
                 intent.getIntExtra(EXTRA_HEIGHT, DEFAULT_HEIGHT)
             )
             ACTION_SET_EYE_BLINK -> setEyeBlink(intent.getBooleanExtra(EXTRA_ENABLED, true))
+            ACTION_SET_EYE_BLINK_INTERVAL -> setEyeBlinkInterval(intent.getFloatExtra(EXTRA_EYE_BLINK_INTERVAL, 3f))
             ACTION_SET_BREATHING -> setBreathing(intent.getBooleanExtra(EXTRA_ENABLED, true))
+            ACTION_SET_BREATH_CONFIG -> setBreathConfig(
+                intent.getFloatExtra(EXTRA_BREATH_CYCLE_SECONDS, 3.2f),
+                intent.getFloatExtra(EXTRA_BREATH_WEIGHT, 1.0f)
+            )
             ACTION_SET_LOOK_AT -> setLookAt(intent.getBooleanExtra(EXTRA_ENABLED, true))
+            ACTION_SET_PHYSICS_ENABLED -> setPhysicsEnabled(intent.getBooleanExtra(EXTRA_ENABLED, true))
+            ACTION_SET_PHYSICS_CONFIG -> setPhysicsConfig(
+                intent.getIntExtra(EXTRA_PHYSICS_FPS, 30),
+                intent.getFloatExtra(EXTRA_PHYSICS_DELAY_SCALE, 1f),
+                intent.getFloatExtra(EXTRA_PHYSICS_MOBILITY_SCALE, 1f)
+            )
             ACTION_SEND_SIGNAL -> handleSignal(intent.getStringExtra(EXTRA_SIGNAL_NAME) ?: "")
             ACTION_SET_TARGET_FPS -> setTargetFps(intent.getIntExtra(EXTRA_TARGET_FPS, 60))
             ACTION_SET_LOW_POWER_MODE -> setLowPowerMode(intent.getBooleanExtra(EXTRA_ENABLED, false))
@@ -531,6 +552,13 @@ class Live2DOverlayService : Service() {
             gl.isFocusable = false
             gl.isFocusableInTouchMode = false
             gl.setCharacterOpacity(characterOpacity)
+            gl.setEyeBlinkEnabled(isEyeBlinkEnabled)
+            gl.setEyeBlinkInterval(eyeBlinkIntervalSeconds)
+            gl.setBreathingEnabled(isBreathingEnabled)
+            gl.setBreathConfig(breathCycleSeconds, breathWeight)
+            gl.setLookAtEnabled(isLookAtEnabled)
+            gl.setPhysicsEnabled(isPhysicsEnabled)
+            gl.setPhysicsConfig(physicsFps, physicsDelayScale, physicsMobilityScale)
         }
         container.addView(
             glSurfaceView,
@@ -1440,20 +1468,66 @@ class Live2DOverlayService : Service() {
     private var isEyeBlinkEnabled = true
     private var isBreathingEnabled = true
     private var isLookAtEnabled = true
+    private var eyeBlinkIntervalSeconds = 3f
+    private var breathCycleSeconds = 3.2f
+    private var breathWeight = 1.0f
+    private var isPhysicsEnabled = true
+    private var physicsFps = 30
+    private var physicsDelayScale = 1.0f
+    private var physicsMobilityScale = 1.0f
     
     private fun setEyeBlink(enabled: Boolean) {
         Live2DLogger.Model.d("눈 깜빡임 설정", "$enabled")
         isEyeBlinkEnabled = enabled
+        glSurfaceView?.setEyeBlinkEnabled(enabled)
+    }
+
+    private fun setEyeBlinkInterval(intervalSeconds: Float) {
+        val clamped = intervalSeconds.coerceIn(0.5f, 12f)
+        Live2DLogger.Model.d("눈 깜빡임 간격 설정", "$clamped")
+        eyeBlinkIntervalSeconds = clamped
+        glSurfaceView?.setEyeBlinkInterval(clamped)
     }
     
     private fun setBreathing(enabled: Boolean) {
         Live2DLogger.Model.d("호흡 설정", "$enabled")
         isBreathingEnabled = enabled
+        glSurfaceView?.setBreathingEnabled(enabled)
+    }
+
+    private fun setBreathConfig(cycleSeconds: Float, weight: Float) {
+        val clampedCycle = cycleSeconds.coerceIn(1f, 12f)
+        val clampedWeight = weight.coerceIn(0f, 2f)
+        Live2DLogger.Model.d("호흡 파라미터 설정", "cycle=$clampedCycle, weight=$clampedWeight")
+        breathCycleSeconds = clampedCycle
+        breathWeight = clampedWeight
+        glSurfaceView?.setBreathConfig(clampedCycle, clampedWeight)
     }
     
     private fun setLookAt(enabled: Boolean) {
         Live2DLogger.Model.d("시선 추적 설정", "$enabled")
         isLookAtEnabled = enabled
+        glSurfaceView?.setLookAtEnabled(enabled)
+    }
+
+    private fun setPhysicsEnabled(enabled: Boolean) {
+        Live2DLogger.Model.d("물리 활성화 설정", "$enabled")
+        isPhysicsEnabled = enabled
+        glSurfaceView?.setPhysicsEnabled(enabled)
+    }
+
+    private fun setPhysicsConfig(fps: Int, delayScale: Float, mobilityScale: Float) {
+        val clampedFps = fps.coerceIn(1, 120)
+        val clampedDelay = delayScale.coerceIn(0.1f, 3f)
+        val clampedMobility = mobilityScale.coerceIn(0.1f, 3f)
+        Live2DLogger.Model.d(
+            "물리 파라미터 설정",
+            "fps=$clampedFps, delay=$clampedDelay, mobility=$clampedMobility"
+        )
+        physicsFps = clampedFps
+        physicsDelayScale = clampedDelay
+        physicsMobilityScale = clampedMobility
+        glSurfaceView?.setPhysicsConfig(clampedFps, clampedDelay, clampedMobility)
     }
     
     // ============================================================================

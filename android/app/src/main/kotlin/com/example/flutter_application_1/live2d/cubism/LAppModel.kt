@@ -50,8 +50,23 @@ class LAppModel(
     private var nextBlinkTime = 3f
     private var isBlinking = false
     private var blinkProgress = 0f
-    
+
     private var breathTime = 0f
+    private var eyeBlinkEnabled = true
+    private var eyeBlinkIntervalSeconds = 3f
+    private var breathingEnabled = true
+    private var breathCycleSeconds = 3.2f
+    private var breathWeight = 1f
+    private var lookAtEnabled = true
+    private var lookAtTargetX = 0f
+    private var lookAtTargetY = 0f
+    private var lookAtActive = false
+    private var lookAtCurrentX = 0f
+    private var lookAtCurrentY = 0f
+    private var physicsEnabled = true
+    private var physicsFps = 30
+    private var physicsDelayScale = 1f
+    private var physicsMobilityScale = 1f
     private val availableParameterIds = mutableSetOf<String>()
     
     /**
@@ -224,9 +239,25 @@ class LAppModel(
         }
         
         motionManager?.update(dt)
-        
-        updateEyeBlinkTimer(dt)
-        updateBreathTimer(dt)
+
+        if (lookAtEnabled && lookAtActive) {
+            updateLookAt(dt)
+        } else {
+            resetLookAt()
+        }
+
+        if (eyeBlinkEnabled) {
+            updateEyeBlinkTimer(dt)
+        } else {
+            applyParameterIfExists("ParamEyeLOpen", 1f)
+            applyParameterIfExists("ParamEyeROpen", 1f)
+        }
+
+        if (breathingEnabled) {
+            updateBreathTimer(dt)
+        } else {
+            applyParameterIfExists("ParamBreath", 0f)
+        }
     }
     
     /**
@@ -401,7 +432,9 @@ class LAppModel(
             if (blinkProgress >= 1f) {
                 isBlinking = false
                 eyeBlinkTime = 0f
-                nextBlinkTime = 2f + (Math.random() * 4f).toFloat()
+                val minInterval = (eyeBlinkIntervalSeconds * 0.6f).coerceAtLeast(0.5f)
+                val maxInterval = (eyeBlinkIntervalSeconds * 1.4f).coerceAtLeast(minInterval)
+                nextBlinkTime = minInterval + (Math.random().toFloat() * (maxInterval - minInterval))
                 applyParameterIfExists("ParamEyeLOpen", 1f)
                 applyParameterIfExists("ParamEyeROpen", 1f)
             }
@@ -412,8 +445,36 @@ class LAppModel(
      */
     private fun updateBreathTimer(dt: Float) {
         breathTime += dt
-        val breathValue = ((kotlin.math.sin(breathTime * 1.57f) + 1f) / 2f).coerceIn(0f, 1f)
+        val angularFrequency = (Math.PI * 2.0 / breathCycleSeconds.coerceAtLeast(1f)).toFloat()
+        val base = (kotlin.math.sin(breathTime * angularFrequency) + 1f) / 2f
+        val breathValue = (base * breathWeight).coerceIn(0f, 1f)
         applyParameterIfExists("ParamBreath", breathValue)
+    }
+
+    private fun updateLookAt(dt: Float) {
+        val smoothing = if (physicsEnabled) {
+            (dt / physicsDelayScale.coerceAtLeast(0.1f)).coerceIn(0.02f, 0.6f)
+        } else {
+            1.0f
+        }
+        lookAtCurrentX += (lookAtTargetX - lookAtCurrentX) * smoothing
+        lookAtCurrentY += (lookAtTargetY - lookAtCurrentY) * smoothing
+
+        val clampedX = lookAtCurrentX.coerceIn(-1f, 1f)
+        val clampedY = lookAtCurrentY.coerceIn(-1f, 1f)
+        val mobility = physicsMobilityScale.coerceIn(0.1f, 3f)
+
+        applyParameterIfExists("ParamEyeBallX", clampedX)
+        applyParameterIfExists("ParamEyeBallY", clampedY)
+        applyParameterIfExists("ParamAngleX", (clampedX * 30f * mobility).coerceIn(-30f, 30f))
+        applyParameterIfExists("ParamAngleY", (clampedY * 30f * mobility).coerceIn(-30f, 30f))
+    }
+
+    private fun resetLookAt() {
+        lookAtCurrentX = 0f
+        lookAtCurrentY = 0f
+        applyParameterIfExists("ParamEyeBallX", 0f)
+        applyParameterIfExists("ParamEyeBallY", 0f)
     }
 
     private fun refreshAvailableParameterIds() {
@@ -462,4 +523,53 @@ class LAppModel(
     //     val breathValue = (kotlin.math.sin(breathTime * 1.57f) + 1f) / 2f
     //     model.setParameterValue(breathParamId, breathValue)
     // }
+
+    fun setEyeBlinkEnabled(enabled: Boolean) {
+        eyeBlinkEnabled = enabled
+    }
+
+    fun setEyeBlinkInterval(intervalSeconds: Float) {
+        eyeBlinkIntervalSeconds = intervalSeconds.coerceIn(0.5f, 12f)
+    }
+
+    fun setBreathingEnabled(enabled: Boolean) {
+        breathingEnabled = enabled
+    }
+
+    fun setBreathConfig(cycleSeconds: Float, weight: Float) {
+        breathCycleSeconds = cycleSeconds.coerceIn(1f, 12f)
+        breathWeight = weight.coerceIn(0f, 2f)
+    }
+
+    fun setLookAtEnabled(enabled: Boolean) {
+        lookAtEnabled = enabled
+        if (!enabled) {
+            lookAtActive = false
+            lookAtTargetX = 0f
+            lookAtTargetY = 0f
+            resetLookAt()
+        }
+    }
+
+    fun setLookAtTarget(x: Float, y: Float) {
+        lookAtTargetX = x
+        lookAtTargetY = y
+        lookAtActive = true
+    }
+
+    fun clearLookAtTarget() {
+        lookAtActive = false
+        lookAtTargetX = 0f
+        lookAtTargetY = 0f
+    }
+
+    fun setPhysicsEnabled(enabled: Boolean) {
+        physicsEnabled = enabled
+    }
+
+    fun setPhysicsConfig(fps: Int, delayScale: Float, mobilityScale: Float) {
+        physicsFps = fps.coerceIn(1, 120)
+        physicsDelayScale = delayScale.coerceIn(0.1f, 3f)
+        physicsMobilityScale = mobilityScale.coerceIn(0.1f, 3f)
+    }
 }

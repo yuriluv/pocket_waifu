@@ -122,6 +122,16 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var lookAtX = 0f
     private var lookAtY = 0f
     private var isLookAtActive = false
+    private var lookAtEnabled = true
+    private var eyeBlinkEnabled = true
+    private var eyeBlinkIntervalSeconds = 3f
+    private var breathingEnabled = true
+    private var breathCycleSeconds = 3.2f
+    private var breathWeight = 1.0f
+    private var physicsEnabled = true
+    private var physicsFps = 30
+    private var physicsDelayScale = 1.0f
+    private var physicsMobilityScale = 1.0f
     
     private var placeholderShader: PlaceholderShader? = null
     private var textureRenderer: TextureModelRenderer? = null
@@ -283,7 +293,10 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         
         cubismModel?.let { model ->
             if (model.isReady()) {
-                if (isLookAtActive) {
+                if (isLookAtActive && lookAtEnabled) {
+                    model.setLookAtTarget(lookAtX, lookAtY)
+                } else {
+                    model.clearLookAtTarget()
                 }
                 
                 val usingSdk = model.isUsingSdk()
@@ -342,7 +355,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         }
         
         currentModel?.let { model ->
-            if (isLookAtActive) {
+            if (isLookAtActive && lookAtEnabled) {
                 model.lookAt(lookAtX, lookAtY)
             }
             model.update(deltaTime)
@@ -444,6 +457,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 }
                 
                 val info = newCubismModel.getInfo()
+                applyBehaviorSettingsToModel(newCubismModel)
                 Live2DLogger.Model.i(
                     "CubismModel 로드 성공",
                     "name=$modelName, sdk=${info["sdkMode"]}, textures=${info["textureCount"]}"
@@ -571,6 +585,9 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     /**
      */
     fun onTouch(x: Float, y: Float) {
+        if (!lookAtEnabled) {
+            return
+        }
         lookAtX = x
         lookAtY = y
         isLookAtActive = true
@@ -613,6 +630,52 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 durationMs = durationMs.coerceAtLeast(0)
             )
         )
+    }
+
+    fun setEyeBlinkEnabled(enabled: Boolean) {
+        eyeBlinkEnabled = enabled
+        cubismModel?.setEyeBlinkEnabled(enabled)
+    }
+
+    fun setEyeBlinkInterval(intervalSeconds: Float) {
+        val clamped = intervalSeconds.coerceIn(0.5f, 12f)
+        eyeBlinkIntervalSeconds = clamped
+        cubismModel?.setEyeBlinkInterval(clamped)
+    }
+
+    fun setBreathingEnabled(enabled: Boolean) {
+        breathingEnabled = enabled
+        cubismModel?.setBreathingEnabled(enabled)
+    }
+
+    fun setBreathConfig(cycleSeconds: Float, weight: Float) {
+        val clampedCycle = cycleSeconds.coerceIn(1f, 12f)
+        val clampedWeight = weight.coerceIn(0f, 2f)
+        breathCycleSeconds = clampedCycle
+        breathWeight = clampedWeight
+        cubismModel?.setBreathConfig(clampedCycle, clampedWeight)
+    }
+
+    fun setLookAtEnabled(enabled: Boolean) {
+        lookAtEnabled = enabled
+        cubismModel?.setLookAtEnabled(enabled)
+        if (!enabled) {
+            isLookAtActive = false
+            lookAtX = 0f
+            lookAtY = 0f
+        }
+    }
+
+    fun setPhysicsEnabled(enabled: Boolean) {
+        physicsEnabled = enabled
+        cubismModel?.setPhysicsEnabled(enabled)
+    }
+
+    fun setPhysicsConfig(fps: Int, delayScale: Float, mobilityScale: Float) {
+        physicsFps = fps.coerceIn(1, 120)
+        physicsDelayScale = delayScale.coerceIn(0.1f, 3f)
+        physicsMobilityScale = mobilityScale.coerceIn(0.1f, 3f)
+        cubismModel?.setPhysicsConfig(physicsFps, physicsDelayScale, physicsMobilityScale)
     }
 
     private fun processPendingParameterUpdates(deltaMs: Float) {
@@ -906,5 +969,15 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         while (GLES20.glGetError().also { error = it } != GLES20.GL_NO_ERROR) {
             Live2DLogger.GL.e("GL Error", "$operation: $error")
         }
+    }
+
+    private fun applyBehaviorSettingsToModel(model: CubismModel) {
+        model.setEyeBlinkEnabled(eyeBlinkEnabled)
+        model.setEyeBlinkInterval(eyeBlinkIntervalSeconds)
+        model.setBreathingEnabled(breathingEnabled)
+        model.setBreathConfig(breathCycleSeconds, breathWeight)
+        model.setLookAtEnabled(lookAtEnabled)
+        model.setPhysicsEnabled(physicsEnabled)
+        model.setPhysicsConfig(physicsFps, physicsDelayScale, physicsMobilityScale)
     }
 }

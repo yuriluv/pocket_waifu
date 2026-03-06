@@ -22,6 +22,16 @@ class AutoMotionService {
   static const String _keyRandomMode = '${_prefix}random_mode';
   static const String _keyAutoExpression = '${_prefix}auto_expression';
   static const String _keyExpressionSelection = '${_prefix}expression_selection';
+  static const String _keyEyeBlinkEnabled = '${_prefix}eye_blink_enabled';
+  static const String _keyEyeBlinkInterval = '${_prefix}eye_blink_interval';
+  static const String _keyBreathEnabled = '${_prefix}breath_enabled';
+  static const String _keyBreathCycle = '${_prefix}breath_cycle';
+  static const String _keyBreathWeight = '${_prefix}breath_weight';
+  static const String _keyLookAtEnabled = '${_prefix}look_at_enabled';
+  static const String _keyPhysicsEnabled = '${_prefix}physics_enabled';
+  static const String _keyPhysicsFps = '${_prefix}physics_fps';
+  static const String _keyPhysicsDelayScale = '${_prefix}physics_delay_scale';
+  static const String _keyPhysicsMobilityScale = '${_prefix}physics_mobility_scale';
 
   final Live2DNativeBridge _bridge = Live2DNativeBridge();
   final Random _random = Random();
@@ -47,6 +57,21 @@ class AutoMotionService {
       randomMode: prefs.getBool(_keyRandomMode) ?? true,
       autoExpressionChange: prefs.getBool(_keyAutoExpression) ?? false,
       expressionSelection: prefs.getString(_keyExpressionSelection),
+      cubismEyeBlinkEnabled: prefs.getBool(_keyEyeBlinkEnabled) ?? true,
+      eyeBlinkIntervalSeconds: (prefs.getDouble(_keyEyeBlinkInterval) ?? 3.0)
+          .clamp(0.5, 12.0),
+      cubismBreathEnabled: prefs.getBool(_keyBreathEnabled) ?? true,
+      breathCycleSeconds: (prefs.getDouble(_keyBreathCycle) ?? 3.2)
+          .clamp(1.0, 12.0),
+      breathWeight: (prefs.getDouble(_keyBreathWeight) ?? 1.0)
+          .clamp(0.0, 2.0),
+      lookAtEnabled: prefs.getBool(_keyLookAtEnabled) ?? true,
+      physicsEnabled: prefs.getBool(_keyPhysicsEnabled) ?? true,
+      physicsFps: (prefs.getInt(_keyPhysicsFps) ?? 30).clamp(1, 120),
+      physicsDelayScale: (prefs.getDouble(_keyPhysicsDelayScale) ?? 1.0)
+          .clamp(0.1, 3.0),
+      physicsMobilityScale: (prefs.getDouble(_keyPhysicsMobilityScale) ?? 1.0)
+          .clamp(0.1, 3.0),
     );
     _config = loaded;
     return loaded;
@@ -77,6 +102,31 @@ class AutoMotionService {
       } else {
         await prefs.setString(_keyExpressionSelection, pending.expressionSelection!);
       }
+      await prefs.setBool(_keyEyeBlinkEnabled, pending.cubismEyeBlinkEnabled);
+      await prefs.setDouble(
+        _keyEyeBlinkInterval,
+        pending.eyeBlinkIntervalSeconds.clamp(0.5, 12.0),
+      );
+      await prefs.setBool(_keyBreathEnabled, pending.cubismBreathEnabled);
+      await prefs.setDouble(
+        _keyBreathCycle,
+        pending.breathCycleSeconds.clamp(1.0, 12.0),
+      );
+      await prefs.setDouble(
+        _keyBreathWeight,
+        pending.breathWeight.clamp(0.0, 2.0),
+      );
+      await prefs.setBool(_keyLookAtEnabled, pending.lookAtEnabled);
+      await prefs.setBool(_keyPhysicsEnabled, pending.physicsEnabled);
+      await prefs.setInt(_keyPhysicsFps, pending.physicsFps.clamp(1, 120));
+      await prefs.setDouble(
+        _keyPhysicsDelayScale,
+        pending.physicsDelayScale.clamp(0.1, 3.0),
+      );
+      await prefs.setDouble(
+        _keyPhysicsMobilityScale,
+        pending.physicsMobilityScale.clamp(0.1, 3.0),
+      );
 
       _pendingSaveConfig = null;
     });
@@ -86,6 +136,7 @@ class AutoMotionService {
     _config = config;
     _modelData = modelData;
     await saveConfig(config);
+    await _applyRuntimeBehaviorToggles(config);
     if (config.enabled) {
       start();
     } else {
@@ -204,5 +255,22 @@ class AutoMotionService {
         .name;
     _expressionCursor += 1;
     return next;
+  }
+
+  Future<void> _applyRuntimeBehaviorToggles(AutoMotionConfig config) async {
+    await _bridge.setEyeBlink(config.cubismEyeBlinkEnabled);
+    await _bridge.setEyeBlinkInterval(config.eyeBlinkIntervalSeconds);
+    await _bridge.setBreathing(config.cubismBreathEnabled);
+    await _bridge.setBreathConfig(
+      cycleSeconds: config.breathCycleSeconds,
+      weight: config.breathWeight,
+    );
+    await _bridge.setLookAt(config.lookAtEnabled);
+    await _bridge.setPhysicsEnabled(config.physicsEnabled);
+    await _bridge.setPhysicsConfig(
+      fps: config.physicsFps,
+      delayScale: config.physicsDelayScale,
+      mobilityScale: config.physicsMobilityScale,
+    );
   }
 }

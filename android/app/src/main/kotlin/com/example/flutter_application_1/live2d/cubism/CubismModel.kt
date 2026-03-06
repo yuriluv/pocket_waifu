@@ -39,6 +39,20 @@ class CubismModel(
     private var scale = 1f
     private var rotation = 0f
     private var opacity = 1f
+
+    private var eyeBlinkEnabled = true
+    private var eyeBlinkIntervalSeconds = 3f
+    private var breathingEnabled = true
+    private var breathCycleSeconds = 3.2f
+    private var breathWeight = 1f
+    private var lookAtEnabled = true
+    private var lookAtTargetX = 0f
+    private var lookAtTargetY = 0f
+    private var lookAtTargetActive = false
+    private var physicsEnabled = true
+    private var physicsFps = 30
+    private var physicsDelayScale = 1f
+    private var physicsMobilityScale = 1f
     
     private var currentMotionGroup: String? = null
     private var currentMotionIndex: Int = 0
@@ -97,6 +111,7 @@ class CubismModel(
                     if (!lappModel!!.initializeRenderer()) {
                         Live2DLogger.w("$TAG: LAppModel renderer init failed", null)
                     }
+                    applyBehaviorSettingsToLAppModel(lappModel!!)
                 }
             }
             
@@ -159,6 +174,11 @@ class CubismModel(
         val model = lappModel
         if (isSdkMode && model != null) {
             try {
+                if (lookAtTargetActive && lookAtEnabled) {
+                    model.setLookAtTarget(lookAtTargetX, lookAtTargetY)
+                } else {
+                    model.clearLookAtTarget()
+                }
                 model.update(safeDelta)
                 model.setOpacity(opacity)
             } catch (e: Exception) {
@@ -354,5 +374,70 @@ class CubismModel(
         motionTime = 0f
         
         Live2DLogger.d("$TAG: ✓ Model released", modelName)
+    }
+
+    fun setEyeBlinkEnabled(enabled: Boolean) {
+        eyeBlinkEnabled = enabled
+        lappModel?.setEyeBlinkEnabled(enabled)
+    }
+
+    fun setEyeBlinkInterval(intervalSeconds: Float) {
+        eyeBlinkIntervalSeconds = intervalSeconds.coerceIn(0.5f, 12f)
+        lappModel?.setEyeBlinkInterval(eyeBlinkIntervalSeconds)
+    }
+
+    fun setBreathingEnabled(enabled: Boolean) {
+        breathingEnabled = enabled
+        lappModel?.setBreathingEnabled(enabled)
+    }
+
+    fun setBreathConfig(cycleSeconds: Float, weight: Float) {
+        breathCycleSeconds = cycleSeconds.coerceIn(1f, 12f)
+        breathWeight = weight.coerceIn(0f, 2f)
+        lappModel?.setBreathConfig(breathCycleSeconds, breathWeight)
+    }
+
+    fun setLookAtEnabled(enabled: Boolean) {
+        lookAtEnabled = enabled
+        lappModel?.setLookAtEnabled(enabled)
+        if (!enabled) {
+            lookAtTargetActive = false
+            lookAtTargetX = 0f
+            lookAtTargetY = 0f
+        }
+    }
+
+    fun setLookAtTarget(x: Float, y: Float) {
+        lookAtTargetX = x
+        lookAtTargetY = y
+        lookAtTargetActive = true
+    }
+
+    fun clearLookAtTarget() {
+        lookAtTargetActive = false
+        lookAtTargetX = 0f
+        lookAtTargetY = 0f
+    }
+
+    fun setPhysicsEnabled(enabled: Boolean) {
+        physicsEnabled = enabled
+        lappModel?.setPhysicsEnabled(enabled)
+    }
+
+    fun setPhysicsConfig(fps: Int, delayScale: Float, mobilityScale: Float) {
+        physicsFps = fps.coerceIn(1, 120)
+        physicsDelayScale = delayScale.coerceIn(0.1f, 3f)
+        physicsMobilityScale = mobilityScale.coerceIn(0.1f, 3f)
+        lappModel?.setPhysicsConfig(physicsFps, physicsDelayScale, physicsMobilityScale)
+    }
+
+    private fun applyBehaviorSettingsToLAppModel(model: LAppModel) {
+        model.setEyeBlinkEnabled(eyeBlinkEnabled)
+        model.setEyeBlinkInterval(eyeBlinkIntervalSeconds)
+        model.setBreathingEnabled(breathingEnabled)
+        model.setBreathConfig(breathCycleSeconds, breathWeight)
+        model.setLookAtEnabled(lookAtEnabled)
+        model.setPhysicsEnabled(physicsEnabled)
+        model.setPhysicsConfig(physicsFps, physicsDelayScale, physicsMobilityScale)
     }
 }

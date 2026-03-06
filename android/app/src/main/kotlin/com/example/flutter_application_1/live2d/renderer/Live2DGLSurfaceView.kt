@@ -233,6 +233,48 @@ class Live2DGLSurfaceView : GLSurfaceView {
             queueEvent { r.setParameterValue(paramId, value, durationMs) }
         }
     }
+
+    fun setEyeBlinkEnabled(enabled: Boolean) {
+        renderer?.let { r ->
+            queueEvent { r.setEyeBlinkEnabled(enabled) }
+        }
+    }
+
+    fun setEyeBlinkInterval(intervalSeconds: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setEyeBlinkInterval(intervalSeconds) }
+        }
+    }
+
+    fun setBreathingEnabled(enabled: Boolean) {
+        renderer?.let { r ->
+            queueEvent { r.setBreathingEnabled(enabled) }
+        }
+    }
+
+    fun setBreathConfig(cycleSeconds: Float, weight: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setBreathConfig(cycleSeconds, weight) }
+        }
+    }
+
+    fun setLookAtEnabled(enabled: Boolean) {
+        renderer?.let { r ->
+            queueEvent { r.setLookAtEnabled(enabled) }
+        }
+    }
+
+    fun setPhysicsEnabled(enabled: Boolean) {
+        renderer?.let { r ->
+            queueEvent { r.setPhysicsEnabled(enabled) }
+        }
+    }
+
+    fun setPhysicsConfig(fps: Int, delayScale: Float, mobilityScale: Float) {
+        renderer?.let { r ->
+            queueEvent { r.setPhysicsConfig(fps, delayScale, mobilityScale) }
+        }
+    }
     
     /**
      */

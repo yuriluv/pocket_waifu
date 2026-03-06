@@ -56,6 +56,37 @@ object Live2DNativeBridge {
         }
     }
 
+    fun safeSetPartOpacity(partId: String, opacity: Float): Boolean {
+        if (!isNativeAvailable()) return false
+        return try {
+            nativeSetPartOpacity(partId, opacity)
+            true
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeSetPartOpacity failed", t)
+            false
+        }
+    }
+
+    fun safeGetPartOpacity(partId: String): Float? {
+        if (!isNativeAvailable()) return null
+        return try {
+            nativeGetPartOpacity(partId)
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeGetPartOpacity failed", t)
+            null
+        }
+    }
+
+    fun safeGetPartIds(): Array<String> {
+        if (!isNativeAvailable()) return emptyArray()
+        return try {
+            nativeGetPartIds()
+        } catch (t: Throwable) {
+            Live2DLogger.e("$TAG: nativeGetPartIds failed", t)
+            emptyArray()
+        }
+    }
+
     external fun nativeSetAssetManager(assetManager: android.content.res.AssetManager)
     external fun nativeInitializeFramework(): Boolean
     external fun nativeGetVersion(): Int
@@ -79,4 +110,7 @@ object Live2DNativeBridge {
     external fun nativeSetParameterValue(paramId: String, value: Float)
     external fun nativeGetParameterValue(paramId: String): Float
     external fun nativeGetParameterIds(): Array<String>
+    external fun nativeSetPartOpacity(partId: String, opacity: Float)
+    external fun nativeGetPartOpacity(partId: String): Float
+    external fun nativeGetPartIds(): Array<String>
 }
