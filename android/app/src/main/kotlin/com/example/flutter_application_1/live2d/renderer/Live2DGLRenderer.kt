@@ -115,9 +115,9 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var savedModelPath: String? = null
     private var savedModelName: String? = null
     
-    private var lastFrameTime = 0L
+    private var lastFrameTimeNs = 0L
     private var targetFps = DEFAULT_FPS
-    private var frameTimeMs = 1000L / targetFps
+    private var frameTimeNs = 1_000_000_000L / targetFps
     
     private var lookAtX = 0f
     private var lookAtY = 0f
@@ -147,6 +147,8 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var lastMetricTime = 0L
     private var droppedFrames = 0L
     private var measuredFps = 0f
+    private var lowFpsWarnCooldownUntilMs = 0L
+    private val editedMvpMatrix = FloatArray(16)
     
     @Volatile private var isOverlayInvisible = false
     
@@ -194,8 +196,8 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         Live2DLogger.GL.d("Alpha Fix 셰이더", if (alphaFixProgram != 0) "초기화 성공" else "초기화 실패")
         
         isReady = true
-        lastFrameTime = System.currentTimeMillis()
-        lastMetricTime = lastFrameTime
+        lastFrameTimeNs = System.nanoTime()
+        lastMetricTime = System.currentTimeMillis()
         frameCount = 0L
         droppedFrames = 0L
         Live2DLogger.Renderer.i("렌더러 준비 완료", "isReady=true")
@@ -237,28 +239,40 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     
     override fun onDrawFrame(gl: GL10?) {
         if (!isReady || isPaused || isDisposed) return
-        
-        val currentTime = System.currentTimeMillis()
-        val elapsed = currentTime - lastFrameTime
-        
-        if (enableFpsLimit && elapsed < frameTimeMs) {
-            droppedFrames++
-            return
+
+        var nowNs = System.nanoTime()
+        var elapsedNs = nowNs - lastFrameTimeNs
+
+        if (enableFpsLimit && elapsedNs < frameTimeNs) {
+            val waitNs = frameTimeNs - elapsedNs
+            val waitMs = waitNs / 1_000_000L
+            val extraNs = (waitNs % 1_000_000L).toInt()
+            try {
+                if (waitMs > 0L || extraNs > 0) {
+                    Thread.sleep(waitMs, extraNs)
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            nowNs = System.nanoTime()
+            elapsedNs = nowNs - lastFrameTimeNs
         }
-        lastFrameTime = currentTime
+        lastFrameTimeNs = nowNs
+        val currentTime = System.currentTimeMillis()
         
         frameCount++
         if (currentTime - lastMetricTime >= 5000L) {
             measuredFps = frameCount * 1000f / (currentTime - lastMetricTime).coerceAtLeast(1L)
-            if (measuredFps < targetFps * 0.7f) {
+            if (measuredFps < targetFps * 0.7f && currentTime >= lowFpsWarnCooldownUntilMs) {
                 Live2DLogger.Renderer.w("FPS 저하 감지", "measured=%.1f, target=$targetFps, dropped=$droppedFrames".format(measuredFps))
+                lowFpsWarnCooldownUntilMs = currentTime + 30_000L
             }
             frameCount = 0L
             droppedFrames = 0L
             lastMetricTime = currentTime
         }
-        
-        val deltaTime = (elapsed.coerceIn(1L, 100L) / 1000f)
+
+        val deltaTime = ((elapsedNs.coerceIn(4_000_000L, 100_000_000L)).toFloat() / 1_000_000_000f)
         processPendingParameterUpdates(deltaTime * 1000f)
         
         GLES20.glClearColor(0f, 0f, 0f, 0f)
@@ -271,8 +285,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         // ============================================
         // ============================================
         
-        val editedMvp = FloatArray(16)
-        System.arraycopy(mvpMatrix, 0, editedMvp, 0, 16)
+        System.arraycopy(mvpMatrix, 0, editedMvpMatrix, 0, 16)
         
         val hasEditTransform = characterOffsetPixelX != 0f || characterOffsetPixelY != 0f ||
                 characterRotationDeg != 0 || relativeCharacterScale != 1.0f
@@ -282,12 +295,12 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val glOffsetX = characterOffsetPixelX * pixelToGL
             val glOffsetY = -characterOffsetPixelY * pixelToGL
             
-            Matrix.translateM(editedMvp, 0, glOffsetX, glOffsetY, 0f)
+            Matrix.translateM(editedMvpMatrix, 0, glOffsetX, glOffsetY, 0f)
             if (characterRotationDeg != 0) {
-                Matrix.rotateM(editedMvp, 0, characterRotationDeg.toFloat(), 0f, 0f, 1f)
+                Matrix.rotateM(editedMvpMatrix, 0, characterRotationDeg.toFloat(), 0f, 0f, 1f)
             }
             if (relativeCharacterScale != 1.0f) {
-                Matrix.scaleM(editedMvp, 0, relativeCharacterScale, relativeCharacterScale, 1f)
+                Matrix.scaleM(editedMvpMatrix, 0, relativeCharacterScale, relativeCharacterScale, 1f)
             }
         }
         
@@ -318,7 +331,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                     GLES20.glEnable(GLES20.GL_BLEND)
                     GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                     model.update(deltaTime)
-                    model.draw(editedMvp)
+                    model.draw(editedMvpMatrix)
                     
                     GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
                     GLES20.glViewport(0, 0, surfaceWidth, surfaceHeight)
@@ -329,7 +342,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
                 GLES20.glEnable(GLES20.GL_BLEND)
                 GLES20.glBlendFunc(GLES20.GL_ONE, GLES20.GL_ONE_MINUS_SRC_ALPHA)
                 model.update(deltaTime)
-                model.draw(editedMvp)
+                model.draw(editedMvpMatrix)
                 
                 if (model.isUsingSdk()) {
                     GLES20.glEnable(GLES20.GL_BLEND)
@@ -343,7 +356,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val texturePath = model.getFirstTexturePath()
             if (texturePath != null && textureRenderer?.hasLoadedTexture() == true) {
                 textureRenderer?.render(
-                    editedMvp,
+                    editedMvpMatrix,
                     model.getX(),
                     model.getY(),
                     model.getScale(),
@@ -363,7 +376,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val texturePath = model.getFirstTexturePath()
             if (texturePath != null && textureRenderer?.hasLoadedTexture() == true) {
                 textureRenderer?.render(
-                    editedMvp,
+                    editedMvpMatrix,
                     model.getX(),
                     model.getY(),
                     model.getScale(),
@@ -605,7 +618,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
      */
     fun setTargetFps(fps: Int) {
         targetFps = fps.coerceIn(15, 60)
-        frameTimeMs = 1000L / targetFps
+        frameTimeNs = 1_000_000_000L / targetFps
         Live2DLogger.Renderer.d("FPS 설정", "$targetFps fps")
     }
     
@@ -614,7 +627,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     fun setLowPowerMode(enabled: Boolean) {
         lowPowerMode = enabled
         targetFps = if (enabled) LOW_POWER_FPS else DEFAULT_FPS
-        frameTimeMs = 1000L / targetFps
+        frameTimeNs = 1_000_000_000L / targetFps
         Live2DLogger.Renderer.d("저전력 모드", if (enabled) "활성화 (${LOW_POWER_FPS}fps)" else "비활성화 (${DEFAULT_FPS}fps)")
     }
 
@@ -732,7 +745,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
      */
     fun onResume() {
         isPaused = false
-        lastFrameTime = System.currentTimeMillis()
+        lastFrameTimeNs = System.nanoTime()
     }
     
     /**

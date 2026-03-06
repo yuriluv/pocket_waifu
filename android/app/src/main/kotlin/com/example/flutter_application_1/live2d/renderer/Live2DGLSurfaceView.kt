@@ -55,7 +55,7 @@ class Live2DGLSurfaceView : GLSurfaceView {
      * 
      */
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        return false
+        return true
     }
     
     /**

@@ -781,6 +781,17 @@ class Live2DOverlayService : Service() {
         stopSelf()
     }
 
+    private fun forwardTouchToRenderer(event: MotionEvent) {
+        val gl = glSurfaceView ?: return
+        val translated = MotionEvent.obtain(event)
+        translated.setLocation(event.x - gl.left, event.y - gl.top)
+        try {
+            gl.deliverTouchToRenderer(translated)
+        } finally {
+            translated.recycle()
+        }
+    }
+
     /**
      */
     private fun setupDragListener() {
@@ -806,6 +817,7 @@ class Live2DOverlayService : Service() {
         overlayView?.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    forwardTouchToRenderer(event)
                     gestureDetector?.onTouchEvent(event)
 
                     initialX = overlayParams.x
@@ -829,6 +841,7 @@ class Live2DOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    forwardTouchToRenderer(event)
                     gestureDetector?.onTouchEvent(event)
 
                     val dx = event.rawX - initialTouchX
@@ -865,6 +878,7 @@ class Live2DOverlayService : Service() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    forwardTouchToRenderer(event)
                     gestureDetector?.onTouchEvent(event)
 
                     if (!hasMoved && editModeEnabled && characterPinned) {
@@ -879,6 +893,11 @@ class Live2DOverlayService : Service() {
                         boxSelected = false
                         updateEditModeBorder()
                     }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    forwardTouchToRenderer(event)
+                    touchState = TouchState.IDLE
                     true
                 }
                 else -> false
