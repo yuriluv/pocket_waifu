@@ -90,6 +90,10 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var fboHeight = 0
     private var alphaFixProgram = 0
     private var alphaFixQuadBuffer: FloatBuffer? = null
+    private var alphaFixTextureUniformLoc = -1
+    private var alphaFixOpacityUniformLoc = -1
+    private var alphaFixPositionAttrLoc = -1
+    private var alphaFixTexCoordAttrLoc = -1
     
     @Volatile private var characterOpacity = 1.0f
     
@@ -140,6 +144,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var lowPowerMode = false
 
     private val pendingParameterUpdates = mutableListOf<ParameterUpdate>()
+    private val parameterUpdateCache = mutableMapOf<String, Float>()
     
     @Volatile private var fboPathLogged = false
     
@@ -149,6 +154,8 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private var measuredFps = 0f
     private var lowFpsWarnCooldownUntilMs = 0L
     private val editedMvpMatrix = FloatArray(16)
+    private var smoothedDeltaSeconds = 1f / DEFAULT_FPS.toFloat()
+    private val deltaSmoothingFactor = 0.18f
     
     @Volatile private var isOverlayInvisible = false
     
@@ -272,7 +279,9 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             lastMetricTime = currentTime
         }
 
-        val deltaTime = ((elapsedNs.coerceIn(4_000_000L, 100_000_000L)).toFloat() / 1_000_000_000f)
+        val rawDeltaTime = ((elapsedNs.coerceIn(4_000_000L, 100_000_000L)).toFloat() / 1_000_000_000f)
+        smoothedDeltaSeconds += (rawDeltaTime - smoothedDeltaSeconds) * deltaSmoothingFactor
+        val deltaTime = smoothedDeltaSeconds.coerceIn(0.004f, 0.05f)
         processPendingParameterUpdates(deltaTime * 1000f)
         
         GLES20.glClearColor(0f, 0f, 0f, 0f)
@@ -440,6 +449,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     private fun loadModelInternal(modelPath: String, modelName: String): Boolean {
         try {
             Live2DLogger.Model.i("모델 로드 시작", "path=$modelPath, name=$modelName")
+            parameterUpdateCache.clear()
             
             // ============================================
             // ============================================
@@ -693,11 +703,16 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
 
     private fun processPendingParameterUpdates(deltaMs: Float) {
         if (pendingParameterUpdates.isEmpty()) return
+        val epsilon = 0.0005f
         val iterator = pendingParameterUpdates.iterator()
         while (iterator.hasNext()) {
             val update = iterator.next()
             if (update.durationMs <= 0) {
-                Live2DNativeBridge.safeSetParameterValue(update.paramId, update.targetValue)
+                val last = parameterUpdateCache[update.paramId]
+                if (last == null || kotlin.math.abs(last - update.targetValue) >= epsilon) {
+                    Live2DNativeBridge.safeSetParameterValue(update.paramId, update.targetValue)
+                    parameterUpdateCache[update.paramId] = update.targetValue
+                }
                 iterator.remove()
                 continue
             }
@@ -710,7 +725,11 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             val progress = (update.elapsedMs / update.durationMs.toFloat()).coerceIn(0f, 1f)
             val start = update.startValue ?: update.targetValue
             val currentValue = start + ((update.targetValue - start) * progress)
-            Live2DNativeBridge.safeSetParameterValue(update.paramId, currentValue)
+            val last = parameterUpdateCache[update.paramId]
+            if (last == null || kotlin.math.abs(last - currentValue) >= epsilon) {
+                Live2DNativeBridge.safeSetParameterValue(update.paramId, currentValue)
+                parameterUpdateCache[update.paramId] = currentValue
+            }
 
             if (progress >= 1f) {
                 iterator.remove()
@@ -746,6 +765,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     fun onResume() {
         isPaused = false
         lastFrameTimeNs = System.nanoTime()
+        smoothedDeltaSeconds = 1f / targetFps.toFloat()
     }
     
     /**
@@ -784,6 +804,7 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             currentModel?.dispose()
             currentModel = null
             pendingParameterUpdates.clear()
+            parameterUpdateCache.clear()
             
             placeholderShader?.dispose()
             placeholderShader = null
@@ -892,6 +913,13 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         
         GLES20.glDeleteShader(vertShader)
         GLES20.glDeleteShader(fragShader)
+
+        if (alphaFixProgram != 0) {
+            alphaFixTextureUniformLoc = GLES20.glGetUniformLocation(alphaFixProgram, "uTexture")
+            alphaFixOpacityUniformLoc = GLES20.glGetUniformLocation(alphaFixProgram, "uCharacterOpacity")
+            alphaFixPositionAttrLoc = GLES20.glGetAttribLocation(alphaFixProgram, "aPosition")
+            alphaFixTexCoordAttrLoc = GLES20.glGetAttribLocation(alphaFixProgram, "aTexCoord")
+        }
         
         val quadData = floatArrayOf(
             -1f, -1f,  0f, 0f,
@@ -912,6 +940,10 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
             GLES20.glDeleteProgram(alphaFixProgram)
             alphaFixProgram = 0
         }
+        alphaFixTextureUniformLoc = -1
+        alphaFixOpacityUniformLoc = -1
+        alphaFixPositionAttrLoc = -1
+        alphaFixTexCoordAttrLoc = -1
         alphaFixQuadBuffer = null
     }
     
@@ -924,33 +956,30 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         GLES20.glDisable(GLES20.GL_BLEND)
         
         GLES20.glUseProgram(alphaFixProgram)
-        
+
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, fboTexture)
-        GLES20.glUniform1i(
-            GLES20.glGetUniformLocation(alphaFixProgram, "uTexture"), 0
-        )
-        
-        GLES20.glUniform1f(
-            GLES20.glGetUniformLocation(alphaFixProgram, "uCharacterOpacity"),
-            characterOpacity
-        )
-        
-        val posLoc = GLES20.glGetAttribLocation(alphaFixProgram, "aPosition")
-        val texLoc = GLES20.glGetAttribLocation(alphaFixProgram, "aTexCoord")
-        
+        if (alphaFixTextureUniformLoc < 0 || alphaFixOpacityUniformLoc < 0 ||
+            alphaFixPositionAttrLoc < 0 || alphaFixTexCoordAttrLoc < 0
+        ) {
+            return
+        }
+        GLES20.glUniform1i(alphaFixTextureUniformLoc, 0)
+
+        GLES20.glUniform1f(alphaFixOpacityUniformLoc, characterOpacity)
+
         quadBuf.position(0)
-        GLES20.glEnableVertexAttribArray(posLoc)
-        GLES20.glVertexAttribPointer(posLoc, 2, GLES20.GL_FLOAT, false, 16, quadBuf)
-        
+        GLES20.glEnableVertexAttribArray(alphaFixPositionAttrLoc)
+        GLES20.glVertexAttribPointer(alphaFixPositionAttrLoc, 2, GLES20.GL_FLOAT, false, 16, quadBuf)
+
         quadBuf.position(2)
-        GLES20.glEnableVertexAttribArray(texLoc)
-        GLES20.glVertexAttribPointer(texLoc, 2, GLES20.GL_FLOAT, false, 16, quadBuf)
-        
+        GLES20.glEnableVertexAttribArray(alphaFixTexCoordAttrLoc)
+        GLES20.glVertexAttribPointer(alphaFixTexCoordAttrLoc, 2, GLES20.GL_FLOAT, false, 16, quadBuf)
+
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
-        
-        GLES20.glDisableVertexAttribArray(posLoc)
-        GLES20.glDisableVertexAttribArray(texLoc)
+
+        GLES20.glDisableVertexAttribArray(alphaFixPositionAttrLoc)
+        GLES20.glDisableVertexAttribArray(alphaFixTexCoordAttrLoc)
         
         GLES20.glEnable(GLES20.GL_BLEND)
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)

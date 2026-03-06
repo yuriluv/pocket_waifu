@@ -79,6 +79,10 @@ class LAppModel(
     private var headLagY = 0f
     private var secondsSinceLookAtInput = 999f
     private val idleGazeResumeDelaySeconds = 0.75f
+    private var saccadeTimer = 0f
+    private var nextSaccadeAt = 1.4f
+    private var saccadeX = 0f
+    private var saccadeY = 0f
 
     private data class ExpressionParam(
         val id: String,
@@ -491,6 +495,17 @@ class LAppModel(
 
     private fun updateLookAt(dt: Float) {
         val idleGazeEnabled = secondsSinceLookAtInput >= idleGazeResumeDelaySeconds
+        saccadeTimer += dt
+        if (!lookAtActive && idleGazeEnabled && saccadeTimer >= nextSaccadeAt) {
+            saccadeTimer = 0f
+            nextSaccadeAt = 0.9f + (Math.random().toFloat() * 2.2f)
+            saccadeX = (Math.random().toFloat() - 0.5f) * 0.08f
+            saccadeY = (Math.random().toFloat() - 0.5f) * 0.05f
+        }
+        val saccadeDecay = (1f - exp(-dt / 0.10f)).coerceIn(0.05f, 0.8f)
+        saccadeX += (0f - saccadeX) * saccadeDecay
+        saccadeY += (0f - saccadeY) * saccadeDecay
+
         val idleGazeX =
             (sin((idleTime * 0.37f) + idlePhaseA) * 0.07f) +
                 (sin((idleTime * 0.91f) + idlePhaseB) * 0.03f)
@@ -510,6 +525,8 @@ class LAppModel(
         } else {
             0f
         }
+        val targetWithSaccadeX = (targetX + saccadeX).coerceIn(-1f, 1f)
+        val targetWithSaccadeY = (targetY + saccadeY).coerceIn(-1f, 1f)
         val tau = if (physicsEnabled) {
             (0.11f * physicsDelayScale.coerceIn(0.1f, 3f)).coerceIn(0.04f, 0.35f)
         } else {
@@ -517,8 +534,8 @@ class LAppModel(
         }
         val smoothing = (1f - exp(-dt / tau)).coerceIn(0.02f, 0.85f)
 
-        lookAtCurrentX += (targetX - lookAtCurrentX) * smoothing
-        lookAtCurrentY += (targetY - lookAtCurrentY) * smoothing
+        lookAtCurrentX += (targetWithSaccadeX - lookAtCurrentX) * smoothing
+        lookAtCurrentY += (targetWithSaccadeY - lookAtCurrentY) * smoothing
 
         val clampedX = lookAtCurrentX.coerceIn(-1f, 1f)
         val clampedY = lookAtCurrentY.coerceIn(-1f, 1f)
@@ -542,6 +559,9 @@ class LAppModel(
 
     private fun updateIdleMotion(dt: Float) {
         idleTime += dt
+        val motionInfluence = motionManager?.let { manager ->
+            if (manager.isMotionPlaying()) 0.30f else 1.0f
+        } ?: 1.0f
         val idleSwayX =
             (sin((idleTime * 0.80f) + idlePhaseA) * 3.0f) +
                 (sin((idleTime * 1.65f) + idlePhaseB) * 1.2f)
@@ -550,10 +570,26 @@ class LAppModel(
         val bodySway = sin((idleTime * 0.42f) + (idlePhaseB * 0.6f)) * 4.5f
         val breathLinked = sin((breathTime * 0.9f) + idlePhaseA) * 2.0f
 
-        applyParameterIfExists("ParamAngleX", idleSwayX.coerceIn(-10f, 10f), addMode = true)
-        applyParameterIfExists("ParamAngleY", idleSwayY.coerceIn(-8f, 8f), addMode = true)
-        applyParameterIfExists("ParamBodyAngleX", bodySway.coerceIn(-12f, 12f), addMode = true)
-        applyParameterIfExists("ParamAngleZ", breathLinked.coerceIn(-6f, 6f), addMode = true)
+        applyParameterIfExists(
+            "ParamAngleX",
+            (idleSwayX * motionInfluence).coerceIn(-10f, 10f),
+            addMode = true,
+        )
+        applyParameterIfExists(
+            "ParamAngleY",
+            (idleSwayY * motionInfluence).coerceIn(-8f, 8f),
+            addMode = true,
+        )
+        applyParameterIfExists(
+            "ParamBodyAngleX",
+            (bodySway * motionInfluence).coerceIn(-12f, 12f),
+            addMode = true,
+        )
+        applyParameterIfExists(
+            "ParamAngleZ",
+            (breathLinked * motionInfluence).coerceIn(-6f, 6f),
+            addMode = true,
+        )
     }
 
     private fun updateExpression(dt: Float) {
@@ -720,6 +756,8 @@ class LAppModel(
             headLagX = 0f
             headLagY = 0f
             secondsSinceLookAtInput = idleGazeResumeDelaySeconds
+            saccadeX = 0f
+            saccadeY = 0f
         }
     }
 
@@ -728,6 +766,8 @@ class LAppModel(
         lookAtTargetY = y
         lookAtActive = true
         secondsSinceLookAtInput = 0f
+        saccadeX = 0f
+        saccadeY = 0f
     }
 
     fun clearLookAtTarget() {
