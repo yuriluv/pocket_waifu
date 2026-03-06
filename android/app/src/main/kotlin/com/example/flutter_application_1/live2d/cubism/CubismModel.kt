@@ -248,13 +248,31 @@ class CubismModel(
      */
     fun setExpression(expressionName: String): Boolean {
         if (!isLoaded) return false
-        
+
         val expressions = parser?.expressions ?: return false
-        val expression = expressions.find { it.name == expressionName } ?: return false
-        
-        
-        Live2DLogger.d("$TAG: Expression set", expressionName)
+        val normalized = expressionName.trim()
+        if (normalized.isEmpty()) return false
+
+        val expression = expressions.find {
+            it.name.equals(normalized, ignoreCase = true) ||
+                expressionFileStem(it.file).equals(normalized, ignoreCase = true)
+        } ?: return false
+
+        val applied = lappModel?.setExpression(expression) ?: false
+        if (!applied) {
+            Live2DLogger.w("$TAG: Expression apply failed", normalized)
+            return false
+        }
+
+        Live2DLogger.d("$TAG: Expression set", expression.name)
         return true
+    }
+
+    private fun expressionFileStem(filePath: String): String {
+        val name = filePath.substringAfterLast('/').substringAfterLast('\\')
+        return name
+            .removeSuffix(".exp3.json")
+            .removeSuffix(".json")
     }
     
     // === Transform Setters ===

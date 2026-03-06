@@ -4,10 +4,14 @@ import android.content.Context
 import android.opengl.GLES20
 import com.example.flutter_application_1.live2d.core.Live2DLogger
 import com.example.flutter_application_1.live2d.core.Model3JsonParser
+import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.sin
 
 /**
  * 
@@ -68,6 +72,32 @@ class LAppModel(
     private var physicsDelayScale = 1f
     private var physicsMobilityScale = 1f
     private val availableParameterIds = mutableSetOf<String>()
+    private var idleTime = 0f
+    private var idlePhaseA = (Math.random().toFloat() * Math.PI.toFloat() * 2f)
+    private var idlePhaseB = (Math.random().toFloat() * Math.PI.toFloat() * 2f)
+    private var headLagX = 0f
+    private var headLagY = 0f
+    private var secondsSinceLookAtInput = 999f
+    private val idleGazeResumeDelaySeconds = 0.75f
+
+    private data class ExpressionParam(
+        val id: String,
+        val value: Float,
+        val blend: String,
+    )
+
+    private data class ActiveExpression(
+        val name: String,
+        val fadeIn: Float,
+        val fadeOut: Float,
+        val params: List<ExpressionParam>,
+        var weight: Float,
+    )
+
+    private val expressionCache = mutableMapOf<String, ActiveExpression>()
+    private var currentExpression: ActiveExpression? = null
+    private var previousExpression: ActiveExpression? = null
+    private val parameterWriteCache = mutableMapOf<String, Float>()
     
     /**
      * 
@@ -241,10 +271,14 @@ class LAppModel(
         motionManager?.update(dt)
 
         if (lookAtEnabled && lookAtActive) {
-            updateLookAt(dt)
+            secondsSinceLookAtInput = 0f
         } else {
-            resetLookAt()
+            secondsSinceLookAtInput += dt
         }
+
+        updateLookAt(dt)
+        updateIdleMotion(dt)
+        updateExpression(dt)
 
         if (eyeBlinkEnabled) {
             updateEyeBlinkTimer(dt)
@@ -369,6 +403,10 @@ class LAppModel(
 
             isSdkRenderingActive = false
             availableParameterIds.clear()
+            parameterWriteCache.clear()
+            expressionCache.clear()
+            currentExpression = null
+            previousExpression = null
             
             mocBuffer = null
             
@@ -446,39 +484,157 @@ class LAppModel(
     private fun updateBreathTimer(dt: Float) {
         breathTime += dt
         val angularFrequency = (Math.PI * 2.0 / breathCycleSeconds.coerceAtLeast(1f)).toFloat()
-        val base = (kotlin.math.sin(breathTime * angularFrequency) + 1f) / 2f
+        val base = (sin(breathTime * angularFrequency) + 1f) / 2f
         val breathValue = (base * breathWeight).coerceIn(0f, 1f)
         applyParameterIfExists("ParamBreath", breathValue)
     }
 
     private fun updateLookAt(dt: Float) {
-        val smoothing = if (physicsEnabled) {
-            (dt / physicsDelayScale.coerceAtLeast(0.1f)).coerceIn(0.02f, 0.6f)
+        val idleGazeEnabled = secondsSinceLookAtInput >= idleGazeResumeDelaySeconds
+        val idleGazeX =
+            (sin((idleTime * 0.37f) + idlePhaseA) * 0.07f) +
+                (sin((idleTime * 0.91f) + idlePhaseB) * 0.03f)
+        val idleGazeY =
+            (sin((idleTime * 0.29f) + (idlePhaseA * 0.5f)) * 0.04f)
+        val targetX = if (lookAtEnabled && lookAtActive) {
+            lookAtTargetX
+        } else if (idleGazeEnabled) {
+            idleGazeX
         } else {
-            1.0f
+            0f
         }
-        lookAtCurrentX += (lookAtTargetX - lookAtCurrentX) * smoothing
-        lookAtCurrentY += (lookAtTargetY - lookAtCurrentY) * smoothing
+        val targetY = if (lookAtEnabled && lookAtActive) {
+            lookAtTargetY
+        } else if (idleGazeEnabled) {
+            idleGazeY
+        } else {
+            0f
+        }
+        val tau = if (physicsEnabled) {
+            (0.11f * physicsDelayScale.coerceIn(0.1f, 3f)).coerceIn(0.04f, 0.35f)
+        } else {
+            0.06f
+        }
+        val smoothing = (1f - exp(-dt / tau)).coerceIn(0.02f, 0.85f)
+
+        lookAtCurrentX += (targetX - lookAtCurrentX) * smoothing
+        lookAtCurrentY += (targetY - lookAtCurrentY) * smoothing
 
         val clampedX = lookAtCurrentX.coerceIn(-1f, 1f)
         val clampedY = lookAtCurrentY.coerceIn(-1f, 1f)
         val mobility = physicsMobilityScale.coerceIn(0.1f, 3f)
 
+        val lagSmoothing = (1f - exp(-dt / 0.22f)).coerceIn(0.01f, 0.45f)
+        headLagX += ((clampedX * 0.65f) - headLagX) * lagSmoothing
+        headLagY += ((clampedY * 0.65f) - headLagY) * lagSmoothing
+
         applyParameterIfExists("ParamEyeBallX", clampedX)
         applyParameterIfExists("ParamEyeBallY", clampedY)
-        applyParameterIfExists("ParamAngleX", (clampedX * 30f * mobility).coerceIn(-30f, 30f))
-        applyParameterIfExists("ParamAngleY", (clampedY * 30f * mobility).coerceIn(-30f, 30f))
+        applyParameterIfExists(
+            "ParamAngleX",
+            ((clampedX * 24f * mobility) + (headLagX * 10f)).coerceIn(-30f, 30f),
+        )
+        applyParameterIfExists(
+            "ParamAngleY",
+            ((clampedY * 18f * mobility) + (headLagY * 8f)).coerceIn(-30f, 30f),
+        )
     }
 
-    private fun resetLookAt() {
-        lookAtCurrentX = 0f
-        lookAtCurrentY = 0f
-        applyParameterIfExists("ParamEyeBallX", 0f)
-        applyParameterIfExists("ParamEyeBallY", 0f)
+    private fun updateIdleMotion(dt: Float) {
+        idleTime += dt
+        val idleSwayX =
+            (sin((idleTime * 0.80f) + idlePhaseA) * 3.0f) +
+                (sin((idleTime * 1.65f) + idlePhaseB) * 1.2f)
+        val idleSwayY =
+            (sin((idleTime * 0.55f) + (idlePhaseA * 0.7f)) * 2.0f)
+        val bodySway = sin((idleTime * 0.42f) + (idlePhaseB * 0.6f)) * 4.5f
+        val breathLinked = sin((breathTime * 0.9f) + idlePhaseA) * 2.0f
+
+        applyParameterIfExists("ParamAngleX", idleSwayX.coerceIn(-10f, 10f), addMode = true)
+        applyParameterIfExists("ParamAngleY", idleSwayY.coerceIn(-8f, 8f), addMode = true)
+        applyParameterIfExists("ParamBodyAngleX", bodySway.coerceIn(-12f, 12f), addMode = true)
+        applyParameterIfExists("ParamAngleZ", breathLinked.coerceIn(-6f, 6f), addMode = true)
+    }
+
+    private fun updateExpression(dt: Float) {
+        previousExpression?.let { prev ->
+            val fadeOut = prev.fadeOut.coerceAtLeast(0.02f)
+            prev.weight = (prev.weight - (dt / fadeOut)).coerceIn(0f, 1f)
+            applyExpression(prev)
+            if (prev.weight <= 0.001f) {
+                previousExpression = null
+            }
+        }
+
+        currentExpression?.let { cur ->
+            val fadeIn = cur.fadeIn.coerceAtLeast(0.02f)
+            cur.weight = (cur.weight + (dt / fadeIn)).coerceIn(0f, 1f)
+            applyExpression(cur)
+        }
+    }
+
+    private fun applyExpression(expression: ActiveExpression) {
+        val weight = expression.weight.coerceIn(0f, 1f)
+        if (weight <= 0f) {
+            return
+        }
+
+        for (param in expression.params) {
+            val current = Live2DNativeBridge.safeGetParameterValue(param.id) ?: continue
+            val next = when (param.blend) {
+                "add" -> current + (param.value * weight)
+                "multiply" -> current * (1f + ((param.value - 1f) * weight))
+                else -> current + ((param.value - current) * weight)
+            }
+            applyParameterIfExists(param.id, next)
+        }
+    }
+
+    fun setExpression(expression: Model3JsonParser.ExpressionInfo): Boolean {
+        val cached = expressionCache[expression.name]
+        val prepared = cached ?: loadExpression(expression) ?: return false
+        val started = prepared.copy(weight = 0f)
+        previousExpression = currentExpression
+        currentExpression = started
+        expressionCache[expression.name] = prepared
+        return true
+    }
+
+    private fun loadExpression(expression: Model3JsonParser.ExpressionInfo): ActiveExpression? {
+        return try {
+            val raw = File(expression.absolutePath).readText()
+            val json = JSONObject(raw)
+            val fadeIn = json.optDouble("FadeInTime", 0.2).toFloat().coerceAtLeast(0.02f)
+            val fadeOut = json.optDouble("FadeOutTime", 0.2).toFloat().coerceAtLeast(0.02f)
+            val paramsJson = json.optJSONArray("Parameters") ?: return null
+            val params = mutableListOf<ExpressionParam>()
+            for (index in 0 until paramsJson.length()) {
+                val item = paramsJson.optJSONObject(index) ?: continue
+                val id = item.optString("Id", "").trim()
+                if (id.isEmpty()) continue
+                val value = item.optDouble("Value", 0.0).toFloat()
+                val blend = item.optString("Blend", "Overwrite").lowercase()
+                params.add(ExpressionParam(id = id, value = value, blend = blend))
+            }
+            if (params.isEmpty()) {
+                return null
+            }
+            ActiveExpression(
+                name = expression.name,
+                fadeIn = fadeIn,
+                fadeOut = fadeOut,
+                params = params,
+                weight = 0f,
+            )
+        } catch (t: Throwable) {
+            Live2DLogger.w("$TAG: Failed to load expression ${expression.name}", t.message)
+            null
+        }
     }
 
     private fun refreshAvailableParameterIds() {
         availableParameterIds.clear()
+        parameterWriteCache.clear()
         try {
             availableParameterIds.addAll(Live2DNativeBridge.safeGetParameterIds())
         } catch (t: Throwable) {
@@ -486,11 +642,23 @@ class LAppModel(
         }
     }
 
-    private fun applyParameterIfExists(paramId: String, value: Float) {
+    private fun applyParameterIfExists(paramId: String, value: Float, addMode: Boolean = false) {
         if (!isSdkRenderingActive) return
         if (!availableParameterIds.contains(paramId)) return
         try {
-            Live2DNativeBridge.safeSetParameterValue(paramId, value)
+            val finalValue = if (addMode) {
+                val current = Live2DNativeBridge.safeGetParameterValue(paramId) ?: return
+                current + value
+            } else {
+                value
+            }
+
+            val previous = parameterWriteCache[paramId]
+            if (previous != null && abs(previous - finalValue) < 0.0005f) {
+                return
+            }
+            Live2DNativeBridge.safeSetParameterValue(paramId, finalValue)
+            parameterWriteCache[paramId] = finalValue
         } catch (t: Throwable) {
             Live2DLogger.w("$TAG: Failed to set parameter $paramId", t.message)
         }
@@ -547,7 +715,11 @@ class LAppModel(
             lookAtActive = false
             lookAtTargetX = 0f
             lookAtTargetY = 0f
-            resetLookAt()
+            lookAtCurrentX = 0f
+            lookAtCurrentY = 0f
+            headLagX = 0f
+            headLagY = 0f
+            secondsSinceLookAtInput = idleGazeResumeDelaySeconds
         }
     }
 
@@ -555,6 +727,7 @@ class LAppModel(
         lookAtTargetX = x
         lookAtTargetY = y
         lookAtActive = true
+        secondsSinceLookAtInput = 0f
     }
 
     fun clearLookAtTarget() {
