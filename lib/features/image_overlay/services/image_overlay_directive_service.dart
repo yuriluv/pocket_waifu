@@ -93,11 +93,6 @@ class ImageOverlayDirectiveService {
       return;
     }
 
-    final delayMs = int.tryParse(attrs['delay'] ?? '') ?? 0;
-    if (delayMs > 0) {
-      await Future<void>.delayed(Duration(milliseconds: delayMs));
-    }
-
     switch (tag) {
       case 'move':
       case 'img_move':
@@ -117,12 +112,49 @@ class ImageOverlayDirectiveService {
   }
 
   Future<void> _runMove(Map<String, String> attrs) async {
-    final x = int.tryParse(attrs['x'] ?? '');
-    final y = int.tryParse(attrs['y'] ?? '');
+    final x = double.tryParse(attrs['x'] ?? '');
+    final y = double.tryParse(attrs['y'] ?? '');
     if (x == null || y == null) {
       return;
     }
-    await _live2dBridge.setPosition(x.toDouble(), y.toDouble());
+
+    final operation = _resolveOperation(attrs['op'] ?? attrs['operation']);
+    final state = await _live2dBridge.getDisplayState();
+    final currentX = (state['x'] as num?)?.toDouble() ?? 0.0;
+    final currentY = (state['y'] as num?)?.toDouble() ?? 0.0;
+
+    final targetX = _applyOperation(
+      base: currentX,
+      operand: x,
+      operation: operation,
+    );
+    final targetY = _applyOperation(
+      base: currentY,
+      operand: y,
+      operation: operation,
+    );
+
+    final durationMs = _parseTransitionMs(
+      attrs['delay'],
+      fallbackMs: int.tryParse(attrs['dur'] ?? '') ?? 0,
+    );
+
+    if (durationMs <= 0) {
+      await _live2dBridge.setPosition(targetX, targetY);
+      return;
+    }
+
+    final stepCount = (durationMs / 16).ceil().clamp(1, 180);
+    final perStepMs = (durationMs / stepCount).round().clamp(1, 1000);
+    for (var step = 1; step <= stepCount; step++) {
+      final t = step / stepCount;
+      final nextX = currentX + ((targetX - currentX) * t);
+      final nextY = currentY + ((targetY - currentY) * t);
+      await _live2dBridge.setPosition(nextX, nextY);
+      if (step < stepCount) {
+        await Future<void>.delayed(Duration(milliseconds: perStepMs));
+      }
+    }
   }
 
   Future<void> _runEmotion(
@@ -184,4 +216,48 @@ class ImageOverlayDirectiveService {
     }
     return out;
   }
+
+  _DirectiveOperation _resolveOperation(String? raw) {
+    switch ((raw ?? 'set').trim().toLowerCase()) {
+      case 'del':
+      case 'subtract':
+      case '-':
+        return _DirectiveOperation.del;
+      case 'mul':
+      case 'multiply':
+      case '*':
+        return _DirectiveOperation.multiply;
+      default:
+        return _DirectiveOperation.set;
+    }
+  }
+
+  double _applyOperation({
+    required double base,
+    required double operand,
+    required _DirectiveOperation operation,
+  }) {
+    switch (operation) {
+      case _DirectiveOperation.del:
+        return base - operand;
+      case _DirectiveOperation.multiply:
+        return base * operand;
+      case _DirectiveOperation.set:
+        return operand;
+    }
+  }
+
+  int _parseTransitionMs(String? delayRaw, {required int fallbackMs}) {
+    final raw = delayRaw?.trim() ?? '';
+    if (raw.isEmpty) {
+      return fallbackMs.clamp(0, 60 * 1000);
+    }
+    final seconds = double.tryParse(raw);
+    if (seconds == null) {
+      return fallbackMs.clamp(0, 60 * 1000);
+    }
+    return (seconds * 1000).round().clamp(0, 60 * 1000);
+  }
 }
+
+enum _DirectiveOperation { set, del, multiply }
