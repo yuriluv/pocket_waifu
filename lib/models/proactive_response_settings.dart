@@ -1,4 +1,11 @@
 class ProactiveResponseSettings {
+  static const String defaultScheduleText =
+      'base=30m\n'
+      'deviation=10\n'
+      'overlayon=-20m\n'
+      'screenlandscape=+20m\n'
+      'screenoff=inf';
+
   final bool enabled;
   final String scheduleText;
   final String? promptPresetId;
@@ -6,12 +13,7 @@ class ProactiveResponseSettings {
 
   const ProactiveResponseSettings({
     this.enabled = false,
-    this.scheduleText =
-        'base=30m\n'
-        'deviation=10\n'
-        'overlayon=-20m\n'
-        'screenlandscape=+20m\n'
-        'screenoff=inf',
+    this.scheduleText = defaultScheduleText,
     this.promptPresetId = 'current',
     this.apiPresetId,
   });
@@ -44,9 +46,15 @@ class ProactiveResponseSettings {
   }
 
   factory ProactiveResponseSettings.fromMap(Map<String, dynamic> map) {
+    final rawScheduleText = map['scheduleText'];
+    final resolvedScheduleText =
+        rawScheduleText is String && rawScheduleText.trim().isNotEmpty
+        ? rawScheduleText
+        : defaultScheduleText;
+
     return ProactiveResponseSettings(
       enabled: map['enabled'] ?? false,
-      scheduleText: map['scheduleText'] ?? '',
+      scheduleText: resolvedScheduleText,
       promptPresetId: map['promptPresetId'],
       apiPresetId: map['apiPresetId'],
     );

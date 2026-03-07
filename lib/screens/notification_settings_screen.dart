@@ -11,6 +11,7 @@ import '../providers/settings_provider.dart';
 import '../models/api_config.dart';
 import '../services/notification_bridge.dart';
 import '../utils/ui_feedback.dart';
+import 'proactive_debug_screen.dart';
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -134,6 +135,12 @@ class _NotificationSettingsScreenState
               ignoring: !notificationSettings.notificationsEnabled,
               child: Column(
                 children: [
+                  SwitchListTile(
+                    title: const Text('선응답 사용'),
+                    subtitle: const Text('조건 충족 시 자동 선응답을 실행합니다.'),
+                    value: proactiveSettings.enabled,
+                    onChanged: settingsProvider.setProactiveEnabled,
+                  ),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _proactiveController,
@@ -185,6 +192,21 @@ class _NotificationSettingsScreenState
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.bug_report_outlined),
+              label: const Text('선응답 디버그'),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProactiveDebugScreen(),
+                  ),
+                );
+              },
             ),
           ),
           const Divider(height: 32),

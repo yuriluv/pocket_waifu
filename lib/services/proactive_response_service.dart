@@ -12,9 +12,75 @@ import '../services/notification_coordinator.dart';
 import '../services/pre_response_timer.dart';
 import '../services/proactive_config_parser.dart';
 
+class ProactiveDebugLogEntry {
+  const ProactiveDebugLogEntry({
+    required this.timestamp,
+    required this.event,
+    required this.detail,
+  });
+
+  final DateTime timestamp;
+  final String event;
+  final String detail;
+}
+
+class ProactiveDebugSnapshot {
+  const ProactiveDebugSnapshot({
+    required this.running,
+    required this.paused,
+    required this.inFlight,
+    required this.notificationsEnabled,
+    required this.proactiveEnabled,
+    required this.globalEnabled,
+    required this.overlayOn,
+    required this.screenLandscape,
+    required this.screenOff,
+    required this.cycleStartedAt,
+    required this.nextTriggerAt,
+    required this.scheduledDuration,
+    required this.remainingDuration,
+    required this.status,
+    required this.logCount,
+  });
+
+  const ProactiveDebugSnapshot.initial()
+    : running = false,
+      paused = false,
+      inFlight = false,
+      notificationsEnabled = false,
+      proactiveEnabled = false,
+      globalEnabled = true,
+      overlayOn = false,
+      screenLandscape = false,
+      screenOff = false,
+      cycleStartedAt = null,
+      nextTriggerAt = null,
+      scheduledDuration = null,
+      remainingDuration = null,
+      status = 'idle',
+      logCount = 0;
+
+  final bool running;
+  final bool paused;
+  final bool inFlight;
+  final bool notificationsEnabled;
+  final bool proactiveEnabled;
+  final bool globalEnabled;
+  final bool overlayOn;
+  final bool screenLandscape;
+  final bool screenOff;
+  final DateTime? cycleStartedAt;
+  final DateTime? nextTriggerAt;
+  final Duration? scheduledDuration;
+  final Duration? remainingDuration;
+  final String status;
+  final int logCount;
+}
+
 class ProactiveResponseService implements GlobalRuntimeListener {
   ProactiveResponseService(this._notificationCoordinator) {
     _timer = PreResponseTimer(onTimerFired: _trigger);
+    _logEvent('service_initialized');
   }
 
   final NotificationCoordinator _notificationCoordinator;
@@ -34,6 +100,62 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   bool _screenLandscape = false;
   bool _screenOff = false;
   bool _wasScreenOff = false;
+
+  static const int _maxDebugLogEntries = 200;
+  final ValueNotifier<ProactiveDebugSnapshot> _debugSnapshot =
+      ValueNotifier<ProactiveDebugSnapshot>(
+        const ProactiveDebugSnapshot.initial(),
+      );
+  final List<ProactiveDebugLogEntry> _debugLogs = <ProactiveDebugLogEntry>[];
+
+  ValueListenable<ProactiveDebugSnapshot> get debugSnapshot => _debugSnapshot;
+  List<ProactiveDebugLogEntry> get debugLogs =>
+      List<ProactiveDebugLogEntry>.unmodifiable(_debugLogs);
+
+  void clearDebugLogs() {
+    _debugLogs.clear();
+    _publishDebugSnapshot(status: 'logs_cleared');
+  }
+
+  void _appendDebugLog(String event, {String detail = ''}) {
+    _debugLogs.add(
+      ProactiveDebugLogEntry(
+        timestamp: DateTime.now(),
+        event: event,
+        detail: detail,
+      ),
+    );
+    if (_debugLogs.length > _maxDebugLogEntries) {
+      _debugLogs.removeRange(0, _debugLogs.length - _maxDebugLogEntries);
+    }
+  }
+
+  void _publishDebugSnapshot({String? status}) {
+    final notificationSettings = _notificationSettingsProvider?.notificationSettings;
+    final proactiveSettings = _notificationSettingsProvider?.proactiveSettings;
+    _debugSnapshot.value = ProactiveDebugSnapshot(
+      running: _timer.isRunning,
+      paused: _timer.isPaused,
+      inFlight: _inFlight,
+      notificationsEnabled: notificationSettings?.notificationsEnabled ?? false,
+      proactiveEnabled: proactiveSettings?.enabled ?? false,
+      globalEnabled: _globalRuntimeProvider?.isEnabled ?? true,
+      overlayOn: _overlayOn,
+      screenLandscape: _screenLandscape,
+      screenOff: _screenOff,
+      cycleStartedAt: _timer.cycleStartedAt,
+      nextTriggerAt: _timer.nextTriggerAt,
+      scheduledDuration: _timer.scheduledDuration,
+      remainingDuration: _timer.remainingDuration,
+      status: status ?? _debugSnapshot.value.status,
+      logCount: _debugLogs.length,
+    );
+  }
+
+  void _logEvent(String event, {String detail = ''}) {
+    _appendDebugLog(event, detail: detail);
+    _publishDebugSnapshot(status: event);
+  }
 
   void attach({
     required GlobalRuntimeProvider globalRuntimeProvider,
@@ -59,10 +181,12 @@ class ProactiveResponseService implements GlobalRuntimeListener {
 
     _userReplyListener ??= cancelInFlightDueToUserReply;
     _notificationCoordinator.addOnUserReplyListener(_userReplyListener!);
+    _logEvent('attached');
     _maybeStart();
   }
 
   void _handleNotificationSettingsChanged() {
+    _publishDebugSnapshot(status: 'settings_changed');
     _maybeStart();
   }
 
@@ -71,52 +195,80 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     bool? screenLandscape,
     bool? screenOff,
   }) {
-    if (overlayOn != null) _overlayOn = overlayOn;
-    if (screenLandscape != null) _screenLandscape = screenLandscape;
-    if (screenOff != null) _screenOff = screenOff;
+    var changed = false;
+    if (overlayOn != null && _overlayOn != overlayOn) {
+      _overlayOn = overlayOn;
+      changed = true;
+    }
+    if (screenLandscape != null && _screenLandscape != screenLandscape) {
+      _screenLandscape = screenLandscape;
+      changed = true;
+    }
+    if (screenOff != null && _screenOff != screenOff) {
+      _screenOff = screenOff;
+      changed = true;
+    }
 
     if (_screenOff != _wasScreenOff) {
       if (_screenOff) {
         _timer.pause();
+        _appendDebugLog('timer_paused', detail: 'screen_off');
       } else {
         _timer.resume();
+        _appendDebugLog('timer_resumed', detail: 'screen_on');
       }
       _wasScreenOff = _screenOff;
+      changed = true;
     }
 
     _timer.recalculate(_currentEnvironmentState());
+    if (changed) {
+      _logEvent(
+        'environment_updated',
+        detail:
+            'overlay=$_overlayOn, landscape=$_screenLandscape, screenOff=$_screenOff',
+      );
+      return;
+    }
+    _publishDebugSnapshot(status: 'environment_checked');
   }
 
   void cancelInFlightDueToUserReply() {
     if (_inFlight) {
       _notificationCoordinator.cancelProactiveInFlight();
       _inFlight = false;
+      _logEvent('cancelled_by_user_reply');
       _maybeStart();
+      return;
     }
+    _publishDebugSnapshot(status: 'user_reply_noop');
   }
 
   void _maybeStart() {
     final notificationSettings = _notificationSettingsProvider?.notificationSettings;
     final settings = _notificationSettingsProvider?.proactiveSettings;
-    if (settings == null || notificationSettings == null) return;
+    if (settings == null || notificationSettings == null) {
+      _publishDebugSnapshot(status: 'waiting_for_settings');
+      return;
+    }
     if (!notificationSettings.notificationsEnabled) {
       _notificationCoordinator.cancelProactiveInFlight();
       _inFlight = false;
-      stop();
+      stop(reason: 'notifications_disabled');
       return;
     }
     if (!settings.enabled) {
-      stop();
+      stop(reason: 'proactive_disabled');
       return;
     }
     if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
-      stop();
+      stop(reason: 'global_disabled');
       return;
     }
 
     final parsed = _parseConfig(settings.scheduleText);
     if (parsed == null) {
-      stop();
+      stop(reason: 'schedule_parse_failed');
       return;
     }
 
@@ -129,12 +281,17 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       if (_screenOff) {
         _timer.pause();
       }
+      _logEvent(
+        'timer_started',
+        detail:
+            'base=${timerConfig.baseInterval.inSeconds}s, deviation=${timerConfig.deviationPercent}%',
+      );
       return;
     }
 
     final fallbackInterval = _pickInterval(parsed);
     if (fallbackInterval == null) {
-      stop();
+      stop(reason: 'fallback_interval_unavailable');
       return;
     }
 
@@ -151,6 +308,10 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     if (_screenOff) {
       _timer.pause();
     }
+    _logEvent(
+      'timer_started_fallback',
+      detail: 'interval=${fallbackInterval.inSeconds}s',
+    );
   }
 
   ProactiveConfig? _parseConfig(String scheduleText) {
@@ -158,6 +319,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       return ProactiveConfigParser.parse(scheduleText);
     } catch (e) {
       debugPrint('Proactive schedule parse error: $e');
+      _appendDebugLog('schedule_parse_error', detail: e.toString());
       return null;
     }
   }
@@ -227,7 +389,10 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   }
 
   Future<void> _trigger() async {
-    if (_inFlight) return;
+    if (_inFlight) {
+      _publishDebugSnapshot(status: 'trigger_skipped_in_flight');
+      return;
+    }
     final settings = _notificationSettingsProvider?.proactiveSettings;
     final notificationSettings =
         _notificationSettingsProvider?.notificationSettings;
@@ -235,21 +400,22 @@ class ProactiveResponseService implements GlobalRuntimeListener {
         notificationSettings == null ||
         !settings.enabled ||
         !notificationSettings.notificationsEnabled) {
-      stop();
+      stop(reason: 'trigger_blocked_by_settings');
       return;
     }
     if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
-      stop();
+      stop(reason: 'trigger_blocked_by_global_disabled');
       return;
     }
 
     final resolvedSessionId = _notificationCoordinator.activeSessionId;
-    if (resolvedSessionId == null) return;
+    if (resolvedSessionId == null) {
+      _logEvent('trigger_skipped_no_active_session');
+      return;
+    }
 
     _inFlight = true;
-    debugPrint(
-      'ProactiveResponseService -> NotificationCoordinator: trigger session=$resolvedSessionId',
-    );
+    _logEvent('trigger_started', detail: 'session=$resolvedSessionId');
     try {
       final apiConfig = _resolveApiConfig(settings.apiPresetId);
       final result = await _notificationCoordinator.triggerProactiveResponse(
@@ -257,14 +423,16 @@ class ProactiveResponseService implements GlobalRuntimeListener {
         skipInputBlock: true,
         apiConfig: apiConfig,
       );
-      debugPrint(
-        'ProactiveResponseService <- NotificationCoordinator: result=$result session=$resolvedSessionId',
+      _logEvent(
+        'trigger_result',
+        detail: 'result=$result session=$resolvedSessionId',
       );
       if (result == NotificationRequestResult.cancelled) {
         _maybeStart();
       }
     } finally {
       _inFlight = false;
+      _publishDebugSnapshot(status: 'trigger_idle');
     }
   }
 
@@ -280,19 +448,26 @@ class ProactiveResponseService implements GlobalRuntimeListener {
     return settingsProvider.activeApiConfig;
   }
 
-  void stop() {
+  void stop({String reason = 'stopped'}) {
+    final wasActive = _timer.isRunning || _timer.isPaused;
     _timer.cancel();
+    if (wasActive) {
+      _appendDebugLog('timer_stopped', detail: reason);
+    }
+    _publishDebugSnapshot(status: reason);
   }
 
   @override
   void onGlobalDisabled() {
-    stop();
+    stop(reason: 'global_disabled');
     _notificationCoordinator.cancelProactiveInFlight();
     _inFlight = false;
+    _logEvent('global_disabled');
   }
 
   @override
   void onGlobalEnabled() {
+    _logEvent('global_enabled');
     _maybeStart();
   }
 }

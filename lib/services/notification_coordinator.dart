@@ -463,7 +463,11 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     final boundedMaxIterations = maxIterations.clamp(1, 30).toInt();
     final boundedTimeoutSeconds = timeout.inSeconds.clamp(10, 900).toInt();
 
-    cancelProactiveInFlight();
+    if (_activeOrigin == NotificationRequestOrigin.proactive) {
+      debugPrint('Agent mode loop skipped: proactive request in flight');
+      return NotificationRequestResult.cancelled;
+    }
+
     final requestHandle = _apiService.createRequestHandle();
     _activeRequest = requestHandle;
     _activeOrigin = NotificationRequestOrigin.agent;

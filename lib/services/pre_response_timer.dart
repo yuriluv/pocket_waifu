@@ -59,6 +59,27 @@ class PreResponseTimer {
 
   bool get isRunning => _timer != null;
   bool get isPaused => _paused;
+  PreResponseTimerConfig? get activeConfig => _config;
+  TimerEnvironmentState get environment => _environment;
+  DateTime? get cycleStartedAt => _cycleStartedAt;
+  Duration? get scheduledDuration => _scheduledDuration;
+  Duration? get remainingDuration {
+    if (_paused) {
+      return _remainingAtPause;
+    }
+    if (_cycleStartedAt == null || _scheduledDuration == null) {
+      return null;
+    }
+    return _remainingFromNow();
+  }
+
+  DateTime? get nextTriggerAt {
+    final remaining = remainingDuration;
+    if (remaining == null) {
+      return null;
+    }
+    return DateTime.now().add(remaining);
+  }
 
   void start({
     required PreResponseTimerConfig config,
