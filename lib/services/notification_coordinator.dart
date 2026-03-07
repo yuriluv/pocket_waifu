@@ -20,6 +20,7 @@ import '../services/live2d_quick_toggle_service.dart';
 import '../services/mini_menu_service.dart';
 import '../services/notification_bridge.dart';
 import '../services/prompt_builder.dart';
+import '../utils/api_preset_resolver.dart';
 
 enum NotificationRequestOrigin { reply, proactive, agent }
 
@@ -278,10 +279,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       final apiConfig = _resolveApiConfig(notificationSettings.apiPresetId);
 
       final requestHandle = _apiService.createRequestHandle();
-      _activeRequest = requestHandle;
-      _activeOrigin = NotificationRequestOrigin.reply;
-      final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
-        requestHandle.cancel,
+      final cancelListener = _bindActiveRequest(
+        requestHandle: requestHandle,
+        origin: NotificationRequestOrigin.reply,
       );
 
       try {
@@ -328,9 +328,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           );
         }
       } finally {
-        _activeRequest = null;
-        _activeOrigin = null;
-        GlobalRuntimeRegistry.instance.unregister(cancelListener);
+        _unbindActiveRequest(cancelListener);
       }
     });
     return assistantResponse;
@@ -368,10 +366,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     return sessionProvider.runSerialized(() async {
       cancelAgentInFlight();
       final requestHandle = _apiService.createRequestHandle();
-      _activeRequest = requestHandle;
-      _activeOrigin = NotificationRequestOrigin.proactive;
-      final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
-        requestHandle.cancel,
+      final cancelListener = _bindActiveRequest(
+        requestHandle: requestHandle,
+        origin: NotificationRequestOrigin.proactive,
       );
 
       try {
@@ -424,9 +421,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           return NotificationRequestResult.failed;
         }
       } finally {
-        _activeRequest = null;
-        _activeOrigin = null;
-        GlobalRuntimeRegistry.instance.unregister(cancelListener);
+        _unbindActiveRequest(cancelListener);
       }
     });
   }
@@ -469,10 +464,9 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     }
 
     final requestHandle = _apiService.createRequestHandle();
-    _activeRequest = requestHandle;
-    _activeOrigin = NotificationRequestOrigin.agent;
-    final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
-      requestHandle.cancel,
+    final cancelListener = _bindActiveRequest(
+      requestHandle: requestHandle,
+      origin: NotificationRequestOrigin.agent,
     );
 
     final stopwatch = Stopwatch()..start();
@@ -558,9 +552,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       return NotificationRequestResult.failed;
     } finally {
       stopwatch.stop();
-      _activeRequest = null;
-      _activeOrigin = null;
-      GlobalRuntimeRegistry.instance.unregister(cancelListener);
+      _unbindActiveRequest(cancelListener);
     }
   }
 
@@ -967,13 +959,11 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   ApiConfig? _resolveApiConfig(String? presetId) {
     final settingsProvider = _settingsProvider;
     if (settingsProvider == null) return null;
-    if (presetId != null) {
-      final match = settingsProvider.apiConfigs
-          .where((config) => config.id == presetId)
-          .toList();
-      if (match.isNotEmpty) return match.first;
-    }
-    return settingsProvider.activeApiConfig;
+    return resolveApiConfigByPreset(
+      apiConfigs: settingsProvider.apiConfigs,
+      activeApiConfig: settingsProvider.activeApiConfig,
+      presetId: presetId,
+    );
   }
 
   Future<String> _sendWithPromptBlocks({
@@ -1031,6 +1021,23 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       settings: _settingsProvider!.settings,
       requestHandle: requestHandle,
     );
+  }
+
+  VoidCallback _bindActiveRequest({
+    required ApiRequestHandle requestHandle,
+    required NotificationRequestOrigin origin,
+  }) {
+    _activeRequest = requestHandle;
+    _activeOrigin = origin;
+    return GlobalRuntimeRegistry.instance.registerCancelable(
+      requestHandle.cancel,
+    );
+  }
+
+  void _unbindActiveRequest(VoidCallback cancelListener) {
+    _activeRequest = null;
+    _activeOrigin = null;
+    GlobalRuntimeRegistry.instance.unregister(cancelListener);
   }
 
   @override

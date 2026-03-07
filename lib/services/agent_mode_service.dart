@@ -12,6 +12,7 @@ import '../providers/notification_settings_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/global_runtime_registry.dart';
 import '../services/notification_coordinator.dart';
+import '../utils/api_preset_resolver.dart';
 
 class AgentModeService implements GlobalRuntimeListener {
   AgentModeService(this._notificationCoordinator);
@@ -196,13 +197,11 @@ class AgentModeService implements GlobalRuntimeListener {
   ApiConfig? _resolveApiConfig(String? presetId) {
     final settingsProvider = _settingsProvider;
     if (settingsProvider == null) return null;
-    if (presetId != null) {
-      final match = settingsProvider.apiConfigs
-          .where((config) => config.id == presetId)
-          .toList();
-      if (match.isNotEmpty) return match.first;
-    }
-    return settingsProvider.activeApiConfig;
+    return resolveApiConfigByPreset(
+      apiConfigs: settingsProvider.apiConfigs,
+      activeApiConfig: settingsProvider.activeApiConfig,
+      presetId: presetId,
+    );
   }
 
   void stop() {

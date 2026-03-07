@@ -126,6 +126,37 @@ class NotificationSettingsProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _notifyAndSaveAsync() async {
+    notifyListeners();
+    await _save();
+  }
+
+  void _notifyAndSave() {
+    notifyListeners();
+    _save();
+  }
+
+  void _updateNotificationSettings(
+    NotificationSettings Function(NotificationSettings current) updater,
+  ) {
+    _notificationSettings = updater(_notificationSettings);
+    _notifyAndSave();
+  }
+
+  void _updateProactiveSettings(
+    ProactiveResponseSettings Function(ProactiveResponseSettings current) updater,
+  ) {
+    _proactiveSettings = updater(_proactiveSettings);
+    _notifyAndSave();
+  }
+
+  void _updateAgentModeSettings(
+    AgentModeSettings Function(AgentModeSettings current) updater,
+  ) {
+    _agentModeSettings = updater(_agentModeSettings);
+    _notifyAndSave();
+  }
+
   Future<bool> ensureNotificationPermission() async {
     final status = await Permission.notification.status;
     if (status.isGranted) return true;
@@ -140,105 +171,81 @@ class NotificationSettingsProvider extends ChangeNotifier {
         _notificationSettings = _notificationSettings.copyWith(
           notificationsEnabled: false,
         );
-        notifyListeners();
-        await _save();
+        await _notifyAndSaveAsync();
         return false;
       }
     }
     _notificationSettings = _notificationSettings.copyWith(
       notificationsEnabled: enabled,
     );
-    notifyListeners();
-    await _save();
+    await _notifyAndSaveAsync();
     return true;
   }
 
   void setOutputAsNewNotification(bool enabled) {
-    _notificationSettings = _notificationSettings.copyWith(
-      outputAsNewNotification: enabled,
+    _updateNotificationSettings(
+      (current) => current.copyWith(outputAsNewNotification: enabled),
     );
-    notifyListeners();
-    _save();
   }
 
   void setNotificationPromptPreset(String? id) {
-    _notificationSettings = _notificationSettings.copyWith(promptPresetId: id);
-    notifyListeners();
-    _save();
+    _updateNotificationSettings((current) => current.copyWith(promptPresetId: id));
   }
 
   void setNotificationApiPreset(String? id) {
-    _notificationSettings = _notificationSettings.copyWith(apiPresetId: id);
-    notifyListeners();
-    _save();
+    _updateNotificationSettings((current) => current.copyWith(apiPresetId: id));
   }
 
   void setProactiveEnabled(bool enabled) {
-    _proactiveSettings = _proactiveSettings.copyWith(enabled: enabled);
-    notifyListeners();
-    _save();
+    _updateProactiveSettings((current) => current.copyWith(enabled: enabled));
   }
 
   void setProactivePromptPreset(String? id) {
-    _proactiveSettings = _proactiveSettings.copyWith(promptPresetId: id);
-    notifyListeners();
-    _save();
+    _updateProactiveSettings((current) => current.copyWith(promptPresetId: id));
   }
 
   void setProactiveApiPreset(String? id) {
-    _proactiveSettings = _proactiveSettings.copyWith(apiPresetId: id);
-    notifyListeners();
-    _save();
+    _updateProactiveSettings((current) => current.copyWith(apiPresetId: id));
   }
 
   void setAgentModeEnabled(bool enabled) {
-    _agentModeSettings = _agentModeSettings.copyWith(enabled: enabled);
-    notifyListeners();
-    _save();
+    _updateAgentModeSettings((current) => current.copyWith(enabled: enabled));
   }
 
   void setAgentPromptPreset(String? id) {
-    _agentModeSettings = _agentModeSettings.copyWith(promptPresetId: id);
-    notifyListeners();
-    _save();
+    _updateAgentModeSettings((current) => current.copyWith(promptPresetId: id));
   }
 
   void setAgentApiPreset(String? id) {
-    _agentModeSettings = _agentModeSettings.copyWith(apiPresetId: id);
-    notifyListeners();
-    _save();
+    _updateAgentModeSettings((current) => current.copyWith(apiPresetId: id));
   }
 
   void setAgentTriggerIntervalMinutes(int minutes) {
-    _agentModeSettings = _agentModeSettings.copyWith(
-      triggerIntervalMinutes: minutes.clamp(1, 1440).toInt(),
+    _updateAgentModeSettings(
+      (current) => current.copyWith(
+        triggerIntervalMinutes: minutes.clamp(1, 1440).toInt(),
+      ),
     );
-    notifyListeners();
-    _save();
   }
 
   void setAgentMaxIterations(int count) {
-    _agentModeSettings = _agentModeSettings.copyWith(
-      maxIterations: count.clamp(1, 30).toInt(),
+    _updateAgentModeSettings(
+      (current) => current.copyWith(maxIterations: count.clamp(1, 30).toInt()),
     );
-    notifyListeners();
-    _save();
   }
 
   void setAgentLoopTimeoutSeconds(int seconds) {
-    _agentModeSettings = _agentModeSettings.copyWith(
-      loopTimeoutSeconds: seconds.clamp(10, 900).toInt(),
+    _updateAgentModeSettings(
+      (current) => current.copyWith(
+        loopTimeoutSeconds: seconds.clamp(10, 900).toInt(),
+      ),
     );
-    notifyListeners();
-    _save();
   }
 
   void updateProactiveSchedule(String scheduleText) {
-    _proactiveSettings = _proactiveSettings.copyWith(
-      scheduleText: scheduleText,
+    _updateProactiveSettings(
+      (current) => current.copyWith(scheduleText: scheduleText),
     );
-    notifyListeners();
-    _save();
   }
 
   void validateProactiveSchedule(String scheduleText) {
@@ -264,8 +271,7 @@ class NotificationSettingsProvider extends ChangeNotifier {
       changed = true;
     }
     if (changed) {
-      notifyListeners();
-      _save();
+      _notifyAndSave();
     }
   }
 
@@ -277,8 +283,7 @@ class NotificationSettingsProvider extends ChangeNotifier {
       _agentModeSettings = _agentModeSettings.copyWith(
         promptPresetId: presets.first.id,
       );
-      notifyListeners();
-      _save();
+      _notifyAndSave();
     }
   }
 
@@ -308,8 +313,7 @@ class NotificationSettingsProvider extends ChangeNotifier {
       changed = true;
     }
     if (changed) {
-      notifyListeners();
-      _save();
+      _notifyAndSave();
     }
   }
 }

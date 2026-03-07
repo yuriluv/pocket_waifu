@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/proactive_debug_models.dart';
 import '../services/proactive_response_service.dart';
 
 class ProactiveDebugScreen extends StatefulWidget {
