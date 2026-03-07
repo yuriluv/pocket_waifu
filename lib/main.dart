@@ -17,6 +17,7 @@ import 'providers/theme_provider.dart';
 import 'providers/global_runtime_provider.dart';
 import 'providers/notification_settings_provider.dart';
 import 'providers/prompt_preset_provider.dart';
+import 'providers/agent_prompt_preset_provider.dart';
 import 'providers/screen_share_provider.dart';
 import 'providers/screen_capture_provider.dart';
 import 'models/screen_share_settings.dart';
@@ -25,6 +26,7 @@ import 'services/unified_capture_service.dart';
 import 'services/notification_bridge.dart';
 import 'services/notification_coordinator.dart';
 import 'services/proactive_response_service.dart';
+import 'services/agent_mode_service.dart';
 import 'services/mini_menu_service.dart';
 import 'services/live2d_global_runtime_handler.dart';
 import 'services/image_overlay_global_runtime_handler.dart';
@@ -118,6 +120,8 @@ class PocketWaifuApp extends StatelessWidget {
           },
         ),
 
+        ChangeNotifierProvider(create: (_) => AgentPromptPresetProvider()),
+
         Provider(
           create: (_) {
             final handler = Live2DGlobalRuntimeHandler();
@@ -167,6 +171,9 @@ class PocketWaifuApp extends StatelessWidget {
                 notificationSettings.rebindPromptPresets(
                   context.read<PromptPresetProvider>().presets,
                 );
+                notificationSettings.rebindAgentPromptPresets(
+                  context.read<AgentPromptPresetProvider>().references,
+                );
                 instance.attach(
                   settingsProvider: settings,
                   promptBlockProvider: prompt,
@@ -203,6 +210,41 @@ class PocketWaifuApp extends StatelessWidget {
                   globalRuntimeProvider: globalRuntime,
                   notificationSettingsProvider: notificationSettings,
                   settingsProvider: settingsProvider,
+                );
+                return instance;
+              },
+        ),
+
+        ProxyProvider6<
+          NotificationCoordinator,
+          NotificationSettingsProvider,
+          SettingsProvider,
+          GlobalRuntimeProvider,
+          AgentPromptPresetProvider,
+          ChatSessionProvider,
+          AgentModeService
+        >(
+          lazy: false,
+          create: (context) =>
+              AgentModeService(context.read<NotificationCoordinator>()),
+          update:
+              (
+                _,
+                coordinator,
+                notificationSettings,
+                settingsProvider,
+                globalRuntime,
+                agentPromptPresetProvider,
+                chatSessionProvider,
+                service,
+              ) {
+                final instance = service ?? AgentModeService(coordinator);
+                instance.attach(
+                  notificationSettingsProvider: notificationSettings,
+                  settingsProvider: settingsProvider,
+                  globalRuntimeProvider: globalRuntime,
+                  agentPromptPresetProvider: agentPromptPresetProvider,
+                  chatSessionProvider: chatSessionProvider,
                 );
                 return instance;
               },

@@ -24,6 +24,7 @@ class ProactiveResponseService implements GlobalRuntimeListener {
   bool _inFlight = false;
   bool _registered = false;
   VoidCallback? _notificationSettingsListener;
+  VoidCallback? _userReplyListener;
 
   GlobalRuntimeProvider? _globalRuntimeProvider;
   NotificationSettingsProvider? _notificationSettingsProvider;
@@ -56,7 +57,8 @@ class ProactiveResponseService implements GlobalRuntimeListener {
       _registered = true;
     }
 
-    _notificationCoordinator.setOnUserReplyHandler(cancelInFlightDueToUserReply);
+    _userReplyListener ??= cancelInFlightDueToUserReply;
+    _notificationCoordinator.addOnUserReplyListener(_userReplyListener!);
     _maybeStart();
   }
 

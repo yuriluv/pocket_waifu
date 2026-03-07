@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/api_config.dart';
+import '../models/agent_prompt_preset.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
 import '../features/live2d_llm/services/live2d_directive_service.dart';
@@ -20,9 +21,35 @@ import '../services/mini_menu_service.dart';
 import '../services/notification_bridge.dart';
 import '../services/prompt_builder.dart';
 
-enum NotificationRequestOrigin { reply, proactive }
+enum NotificationRequestOrigin { reply, proactive, agent }
 
 enum NotificationRequestResult { completed, cancelled, failed }
+
+class _AgentLoopLuaResult {
+  const _AgentLoopLuaResult({
+    required this.transformedOutput,
+    this.notifyText,
+    this.notifyOptions = const <String, String>{},
+    this.shouldEnd = false,
+  });
+
+  final String transformedOutput;
+  final String? notifyText;
+  final Map<String, String> notifyOptions;
+  final bool shouldEnd;
+}
+
+class _ParsedAgentAction {
+  const _ParsedAgentAction({
+    this.notifyText,
+    this.notifyOptions = const <String, String>{},
+    this.shouldEnd = false,
+  });
+
+  final String? notifyText;
+  final Map<String, String> notifyOptions;
+  final bool shouldEnd;
+}
 
 class NotificationCoordinator implements GlobalRuntimeListener {
   NotificationCoordinator({required NotificationBridge bridge})
@@ -47,7 +74,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   bool _initialized = false;
   ApiRequestHandle? _activeRequest;
   NotificationRequestOrigin? _activeOrigin;
-  VoidCallback? _onUserReply;
+  final Set<VoidCallback> _onUserReplyListeners = <VoidCallback>{};
 
   void attach({
     required SettingsProvider settingsProvider,
@@ -71,7 +98,18 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   }
 
   void setOnUserReplyHandler(VoidCallback? handler) {
-    _onUserReply = handler;
+    _onUserReplyListeners.clear();
+    if (handler != null) {
+      _onUserReplyListeners.add(handler);
+    }
+  }
+
+  void addOnUserReplyListener(VoidCallback listener) {
+    _onUserReplyListeners.add(listener);
+  }
+
+  void removeOnUserReplyListener(VoidCallback listener) {
+    _onUserReplyListeners.remove(listener);
   }
 
   Future<void> _initialize() async {
@@ -179,7 +217,14 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     }
 
     cancelProactiveInFlight();
-    _onUserReply?.call();
+    cancelAgentInFlight();
+    for (final listener in List<VoidCallback>.from(_onUserReplyListeners)) {
+      try {
+        listener();
+      } catch (e) {
+        debugPrint('NotificationCoordinator user-reply listener error: $e');
+      }
+    }
     final sessionProvider = _sessionProvider;
     final settingsProvider = _settingsProvider;
     final promptProvider = _promptBlockProvider;
@@ -321,6 +366,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     );
 
     return sessionProvider.runSerialized(() async {
+      cancelAgentInFlight();
       final requestHandle = _apiService.createRequestHandle();
       _activeRequest = requestHandle;
       _activeOrigin = NotificationRequestOrigin.proactive;
@@ -383,6 +429,401 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         GlobalRuntimeRegistry.instance.unregister(cancelListener);
       }
     });
+  }
+
+  Future<NotificationRequestResult> triggerAgentModeLoop({
+    required String sessionId,
+    required ApiConfig? apiConfig,
+    required AgentPromptPreset promptPreset,
+    required int maxIterations,
+    required Duration timeout,
+  }) async {
+    if (!(_globalRuntimeProvider?.isEnabled ?? true)) {
+      debugPrint('NotificationCoordinator: Master OFF, agent mode ignored');
+      return NotificationRequestResult.cancelled;
+    }
+
+    final sessionProvider = _sessionProvider;
+    final settingsProvider = _settingsProvider;
+    final notificationSettings =
+        _notificationSettingsProvider?.notificationSettings;
+    if (sessionProvider == null ||
+        settingsProvider == null ||
+        notificationSettings == null ||
+        !notificationSettings.notificationsEnabled) {
+      return NotificationRequestResult.failed;
+    }
+
+    final resolvedConfig = apiConfig ?? _settingsProvider?.activeApiConfig;
+    if (resolvedConfig == null) {
+      return NotificationRequestResult.failed;
+    }
+
+    final title = settingsProvider.character.name;
+    final boundedMaxIterations = maxIterations.clamp(1, 30).toInt();
+    final boundedTimeoutSeconds = timeout.inSeconds.clamp(10, 900).toInt();
+
+    cancelProactiveInFlight();
+    final requestHandle = _apiService.createRequestHandle();
+    _activeRequest = requestHandle;
+    _activeOrigin = NotificationRequestOrigin.agent;
+    final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
+      requestHandle.cancel,
+    );
+
+    final stopwatch = Stopwatch()..start();
+    final stepHistory = <String>[];
+
+    try {
+      for (var step = 0; step < boundedMaxIterations; step++) {
+        debugPrint('Agent mode loop iteration ${step + 1}/$boundedMaxIterations');
+
+        if (requestHandle.isCancelled) {
+          return NotificationRequestResult.cancelled;
+        }
+
+        final remaining =
+            Duration(seconds: boundedTimeoutSeconds) - stopwatch.elapsed;
+        if (remaining <= Duration.zero) {
+          debugPrint('Agent mode loop timeout reached');
+          requestHandle.cancel();
+          return NotificationRequestResult.cancelled;
+        }
+
+        final response = await _sendAgentLoopStep(
+          sessionProvider: sessionProvider,
+          sessionId: sessionId,
+          promptPreset: promptPreset,
+          stepHistory: stepHistory,
+          apiConfig: resolvedConfig,
+          settings: settingsProvider.settings,
+          requestHandle: requestHandle,
+        ).timeout(remaining, onTimeout: () {
+          requestHandle.cancel();
+          throw TimeoutException('Agent loop step timed out');
+        });
+
+        final luaResult = await _processAgentLoopResponse(
+          response: response,
+          promptPreset: promptPreset,
+          settings: settingsProvider.settings,
+          characterId: settingsProvider.character.id,
+          characterName: settingsProvider.character.name,
+          userName: settingsProvider.userName,
+        );
+
+        if (luaResult.notifyText != null && luaResult.notifyText!.isNotEmpty) {
+          final emotion = luaResult.notifyOptions['emotion'];
+          if (emotion != null && emotion.isNotEmpty) {
+            await _directiveService.processAssistantOutput(
+              '<live2d><emotion name="$emotion"/></live2d>',
+              parsingEnabled:
+                  settingsProvider.settings.live2dLlmIntegrationEnabled &&
+                  settingsProvider.settings.live2dDirectiveParsingEnabled,
+            );
+          }
+
+          await _bridge.showPreResponseNotification(
+            title: luaResult.notifyOptions['title'] ?? title,
+            message: luaResult.notifyText!,
+            sessionId: sessionId,
+          );
+          return NotificationRequestResult.completed;
+        }
+
+        if (luaResult.shouldEnd) {
+          return NotificationRequestResult.cancelled;
+        }
+
+        stepHistory.add(
+          _buildAgentStepHistoryEntry(
+            stepIndex: step + 1,
+            response: response,
+            processedOutput: luaResult.transformedOutput,
+          ),
+        );
+      }
+
+      return NotificationRequestResult.cancelled;
+    } catch (e) {
+      if (e is ApiCancelledException || e is TimeoutException) {
+        debugPrint('Agent mode loop cancelled: $e');
+        return NotificationRequestResult.cancelled;
+      }
+      debugPrint('Agent mode loop failed: $e');
+      return NotificationRequestResult.failed;
+    } finally {
+      stopwatch.stop();
+      _activeRequest = null;
+      _activeOrigin = null;
+      GlobalRuntimeRegistry.instance.unregister(cancelListener);
+    }
+  }
+
+  Future<String> _sendAgentLoopStep({
+    required ChatSessionProvider sessionProvider,
+    required String sessionId,
+    required AgentPromptPreset promptPreset,
+    required List<String> stepHistory,
+    required ApiConfig apiConfig,
+    required AppSettings settings,
+    required ApiRequestHandle requestHandle,
+  }) async {
+    final sessionMessages = sessionProvider.getMessagesForSession(sessionId);
+    final contextWindow = sessionMessages.length > 24
+        ? sessionMessages.sublist(sessionMessages.length - 24)
+        : sessionMessages;
+
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': promptPreset.systemPrompt},
+      ...contextWindow.map(
+        (message) => {
+          'role': message.roleString,
+          'content': message.content,
+        },
+      ),
+      {
+        'role': 'user',
+        'content': _buildAgentTriggerPrompt(
+          replyPrompt: promptPreset.replyPrompt,
+          stepHistory: stepHistory,
+        ),
+      },
+    ];
+
+    return _apiService.sendMessageWithConfig(
+      apiConfig: apiConfig,
+      messages: messages,
+      settings: settings,
+      requestHandle: requestHandle,
+    );
+  }
+
+  String _buildAgentTriggerPrompt({
+    required String replyPrompt,
+    required List<String> stepHistory,
+  }) {
+    final buffer = StringBuffer();
+    if (replyPrompt.trim().isNotEmpty) {
+      buffer.writeln(replyPrompt.trim());
+      buffer.writeln();
+    }
+
+    buffer.writeln('[Trigger Event]');
+    buffer.writeln(
+      'Periodic trigger fired at ${DateTime.now().toIso8601String()}.',
+    );
+
+    if (stepHistory.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('[Loop History]');
+      for (final entry in stepHistory) {
+        buffer.writeln(entry);
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  String _buildAgentStepHistoryEntry({
+    required int stepIndex,
+    required String response,
+    required String processedOutput,
+  }) {
+    final rawSummary = response.length > 240
+        ? '${response.substring(0, 240)}...'
+        : response;
+    final processedSummary = processedOutput.length > 240
+        ? '${processedOutput.substring(0, 240)}...'
+        : processedOutput;
+
+    return '[Step $stepIndex]\nassistant=$rawSummary\nprocessed=$processedSummary';
+  }
+
+  Future<_AgentLoopLuaResult> _processAgentLoopResponse({
+    required String response,
+    required AgentPromptPreset promptPreset,
+    required AppSettings settings,
+    required String characterId,
+    required String characterName,
+    required String userName,
+  }) async {
+    final context = LuaHookContext(
+      characterId: characterId,
+      characterName: characterName,
+      userName: userName,
+    );
+
+    if (settings.runRegexBeforeLua) {
+      final regexApplied = _applyAgentRegexRules(response, promptPreset.regexRules);
+      return _runAgentLuaStage(
+        regexApplied,
+        promptPreset,
+        context,
+        luaEnabled: settings.live2dLuaExecutionEnabled,
+      );
+    }
+
+    final luaApplied = await _runAgentLuaStage(
+      response,
+      promptPreset,
+      context,
+      luaEnabled: settings.live2dLuaExecutionEnabled,
+    );
+    final regexApplied = _applyAgentRegexRules(
+      luaApplied.transformedOutput,
+      promptPreset.regexRules,
+    );
+
+    return _AgentLoopLuaResult(
+      transformedOutput: regexApplied,
+      notifyText: luaApplied.notifyText,
+      notifyOptions: luaApplied.notifyOptions,
+      shouldEnd: luaApplied.shouldEnd,
+    );
+  }
+
+  String _applyAgentRegexRules(
+    String input,
+    List<AgentPromptRegexRule> rules,
+  ) {
+    var output = input;
+    final applicable = rules.where((rule) {
+      return rule.isEnabled && rule.pattern.trim().isNotEmpty;
+    }).toList()..sort((a, b) => a.priority.compareTo(b.priority));
+
+    for (final rule in applicable) {
+      try {
+        final regex = RegExp(
+          rule.pattern,
+          multiLine: rule.multiLine,
+          dotAll: rule.dotAll,
+          caseSensitive: rule.caseSensitive,
+        );
+        output = output.replaceAllMapped(regex, (match) {
+          return _expandRegexReplacement(rule.replacement, match);
+        });
+      } catch (e) {
+        debugPrint('Agent regex rule failed (${rule.name}): $e');
+      }
+    }
+
+    return output;
+  }
+
+  String _expandRegexReplacement(String replacement, Match match) {
+    var out = replacement.replaceAll(r'$$', '\u0000');
+    for (var index = match.groupCount; index >= 0; index--) {
+      out = out.replaceAll('\$$index', match.group(index) ?? '');
+    }
+    return out.replaceAll('\u0000', r'$');
+  }
+
+  Future<_AgentLoopLuaResult> _runAgentLuaStage(
+    String input,
+    AgentPromptPreset promptPreset,
+    LuaHookContext context,
+    {required bool luaEnabled}
+  ) async {
+    var output = input;
+    if (luaEnabled) {
+      output = await _luaScriptingService.onAssistantMessage(output, context);
+      output = await _luaScriptingService.onDisplayRender(output, context);
+    }
+
+    final actionSource = _buildAgentActionSource(
+      output: output,
+      luaScript: promptPreset.luaScript,
+    );
+    final parsed = _parseAgentLuaAction(actionSource) ?? _parseAgentLuaAction(output);
+    if (parsed == null) {
+      return _AgentLoopLuaResult(transformedOutput: output);
+    }
+
+    return _AgentLoopLuaResult(
+      transformedOutput: output,
+      notifyText: parsed.notifyText,
+      notifyOptions: parsed.notifyOptions,
+      shouldEnd: parsed.shouldEnd,
+    );
+  }
+
+  String _buildAgentActionSource({
+    required String output,
+    required String luaScript,
+  }) {
+    final source = luaScript.contains('{{response}}')
+        ? luaScript.replaceAll('{{response}}', output)
+        : output;
+    final lines = source.split('\n');
+    final nonCommentLines = lines.where((line) {
+      return !line.trimLeft().startsWith('--');
+    });
+    return nonCommentLines.join('\n');
+  }
+
+  _ParsedAgentAction? _parseAgentLuaAction(String input) {
+    final notifyPattern = RegExp(
+      r'''notify\s*\(\s*(["'])([\s\S]*?)\1(?:\s*,\s*\{([\s\S]*?)\}\s*)?\)''',
+      multiLine: true,
+    );
+    final endPattern = RegExp(r'\bend\s*\(\s*\)', multiLine: true);
+
+    final notifyMatch = notifyPattern.firstMatch(input);
+    final endMatch = endPattern.firstMatch(input);
+    if (notifyMatch == null && endMatch == null) {
+      return null;
+    }
+
+    if (notifyMatch != null &&
+        (endMatch == null || notifyMatch.start < endMatch.start)) {
+      final notifyText = notifyMatch.group(2)?.trim();
+      if (notifyText != null && notifyText.isNotEmpty) {
+        final optionsRaw = notifyMatch.group(3) ?? '';
+        final options = _parseNotifyOptions(optionsRaw);
+        return _ParsedAgentAction(
+          notifyText: notifyText,
+          notifyOptions: options,
+        );
+      }
+    }
+
+    if (endMatch != null) {
+      return const _ParsedAgentAction(shouldEnd: true);
+    }
+
+    return null;
+  }
+
+  Map<String, String> _parseNotifyOptions(String optionsRaw) {
+    final options = <String, String>{};
+    if (optionsRaw.trim().isEmpty) return options;
+
+    final plainKeyPattern = RegExp(
+      r'''([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(["'])([\s\S]*?)\2''',
+      multiLine: true,
+    );
+    for (final match in plainKeyPattern.allMatches(optionsRaw)) {
+      final key = match.group(1)?.trim();
+      final value = match.group(3)?.trim();
+      if (key != null && key.isNotEmpty && value != null) {
+        options[key] = value;
+      }
+    }
+
+    final quotedKeyPattern = RegExp(
+      r'''(["'])([A-Za-z_][A-Za-z0-9_]*)\1\s*:\s*(["'])([\s\S]*?)\3''',
+      multiLine: true,
+    );
+    for (final match in quotedKeyPattern.allMatches(optionsRaw)) {
+      final key = match.group(2)?.trim();
+      final value = match.group(4)?.trim();
+      if (key != null && key.isNotEmpty && value != null) {
+        options[key] = value;
+      }
+    }
+
+    return options;
   }
 
   Future<String> _prepareUserInput(
@@ -603,6 +1044,14 @@ class NotificationCoordinator implements GlobalRuntimeListener {
 
   void cancelProactiveInFlight() {
     if (_activeOrigin == NotificationRequestOrigin.proactive) {
+      _activeRequest?.cancel();
+      _activeRequest = null;
+      _activeOrigin = null;
+    }
+  }
+
+  void cancelAgentInFlight() {
+    if (_activeOrigin == NotificationRequestOrigin.agent) {
       _activeRequest?.cancel();
       _activeRequest = null;
       _activeOrigin = null;
