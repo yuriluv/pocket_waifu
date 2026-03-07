@@ -14,6 +14,7 @@ import 'theme_editor_screen.dart';
 import 'settings_screen.dart';
 import 'screen_share_settings_screen.dart';
 import 'notification_settings_screen.dart';
+import 'agent_mode_settings_screen.dart';
 import 'regex_lua_management_screen.dart';
 import '../features/live2d/live2d_module.dart';
 import '../features/image_overlay/presentation/screens/image_overlay_settings_screen.dart';
@@ -111,6 +112,21 @@ class MenuDrawer extends StatelessWidget {
                       MaterialPageRoute(
                         builder: (context) =>
                             const NotificationSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+
+                _DrawerMenuItem(
+                  icon: Icons.smart_toy_outlined,
+                  title: 'Agent Mode',
+                  subtitle: '자율 관찰/판단/행동 루프 설정',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AgentModeSettingsScreen(),
                       ),
                     );
                   },
