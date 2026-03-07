@@ -1023,7 +1023,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     );
   }
 
-  VoidCallback _bindActiveRequest({
+  GlobalRuntimeListener _bindActiveRequest({
     required ApiRequestHandle requestHandle,
     required NotificationRequestOrigin origin,
   }) {
@@ -1034,7 +1034,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     );
   }
 
-  void _unbindActiveRequest(VoidCallback cancelListener) {
+  void _unbindActiveRequest(GlobalRuntimeListener cancelListener) {
     _activeRequest = null;
     _activeOrigin = null;
     GlobalRuntimeRegistry.instance.unregister(cancelListener);
