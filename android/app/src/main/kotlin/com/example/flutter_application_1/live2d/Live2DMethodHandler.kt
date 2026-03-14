@@ -34,6 +34,7 @@ class Live2DMethodHandler(
                 
                 "showOverlay" -> showOverlay(result)
                 "hideOverlay" -> hideOverlay(result)
+                "suspendOverlayForCapture" -> suspendOverlayForCapture(result)
                 "isOverlayVisible" -> isOverlayVisible(result)
                 "setOverlayMode" -> setOverlayMode(call, result)
                 "getOverlayMode" -> getOverlayMode(result)
@@ -204,6 +205,22 @@ class Live2DMethodHandler(
             result.success(true)
         } catch (e: Exception) {
             Live2DLogger.e("오버레이 숨김 실패", e)
+            result.error("OVERLAY_ERROR", e.message, null)
+        }
+    }
+
+    private fun suspendOverlayForCapture(result: MethodChannel.Result) {
+        try {
+            Live2DLogger.Overlay.d("오버레이 일시 숨김 요청", "screenshot_capture")
+
+            val intent = Intent(context, Live2DOverlayService::class.java).apply {
+                action = Live2DOverlayService.ACTION_SUSPEND_FOR_CAPTURE
+            }
+            context.startService(intent)
+
+            result.success(true)
+        } catch (e: Exception) {
+            Live2DLogger.e("오버레이 일시 숨김 실패", e)
             result.error("OVERLAY_ERROR", e.message, null)
         }
     }

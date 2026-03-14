@@ -57,6 +57,7 @@ class Live2DOverlayService : Service() {
         
         const val ACTION_SHOW = "com.example.flutter_application_1.live2d.SHOW"
         const val ACTION_HIDE = "com.example.flutter_application_1.live2d.HIDE"
+        const val ACTION_SUSPEND_FOR_CAPTURE = "com.example.flutter_application_1.live2d.SUSPEND_FOR_CAPTURE"
         const val ACTION_LOAD_MODEL = "com.example.flutter_application_1.live2d.LOAD_MODEL"
         const val ACTION_UNLOAD_MODEL = "com.example.flutter_application_1.live2d.UNLOAD_MODEL"
         const val ACTION_PLAY_MOTION = "com.example.flutter_application_1.live2d.PLAY_MOTION"
@@ -371,6 +372,7 @@ class Live2DOverlayService : Service() {
         when (intent?.action) {
             ACTION_SHOW -> showOverlay()
             ACTION_HIDE -> hideOverlay()
+            ACTION_SUSPEND_FOR_CAPTURE -> suspendOverlayForCapture()
             ACTION_LOAD_MODEL -> loadModel(intent.getStringExtra(EXTRA_MODEL_PATH) ?: "")
             ACTION_UNLOAD_MODEL -> unloadModel()
             ACTION_PLAY_MOTION -> playMotion(
@@ -445,7 +447,14 @@ class Live2DOverlayService : Service() {
         try {
             application.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
         } catch (_: Exception) {}
-        hideOverlay()
+        teardownOverlay(
+            releaseRuntime = true,
+            stopService = false,
+            startMessage = "오버레이 종료 정리 시작",
+            startDetails = "서비스 종료",
+            completionMessage = "오버레이 종료 정리 완료",
+            completionDetails = "서비스 종료",
+        )
         super.onDestroy()
     }
     
@@ -747,13 +756,49 @@ class Live2DOverlayService : Service() {
     }
     
     private fun hideOverlay() {
+        teardownOverlay(
+            releaseRuntime = true,
+            stopService = true,
+            startMessage = "오버레이 숨김 시작",
+            startDetails = "리소스 정리",
+            completionMessage = "오버레이 숨김 완료",
+            completionDetails = "서비스 중지",
+        )
+    }
+
+    private fun suspendOverlayForCapture() {
+        teardownOverlay(
+            releaseRuntime = false,
+            stopService = false,
+            startMessage = "오버레이 일시 숨김 시작",
+            startDetails = "스크린샷 캡처",
+            completionMessage = "오버레이 일시 숨김 완료",
+            completionDetails = "캡처 후 복구 대기",
+        )
+    }
+
+    private fun teardownOverlay(
+        releaseRuntime: Boolean,
+        stopService: Boolean,
+        startMessage: String,
+        startDetails: String,
+        completionMessage: String,
+        completionDetails: String,
+    ) {
         closeMiniMenu()
         stopStateChecks()
 
         detachImageRenderOverlay()
+
+        val hadOverlayResources =
+            overlayView != null ||
+                overlayContainer != null ||
+                glSurfaceView != null ||
+                imageRenderOverlayView != null ||
+                imageOverlayView != null
         
         overlayView?.let { view ->
-            Live2DLogger.Overlay.i("오버레이 숨김 시작", "리소스 정리")
+            Live2DLogger.Overlay.i(startMessage, startDetails)
             
             gestureDetector?.dispose()
             gestureDetector = null
@@ -779,24 +824,28 @@ class Live2DOverlayService : Service() {
         imageOverlayView = null
         isRunning = false
 
-        try {
-            CubismTextureManager.invalidateGlobalCache()
-        } catch (e: Exception) {
-            Live2DLogger.Overlay.w("텍스처 캐시 무효화 실패", e.message)
-        }
+        if (releaseRuntime && hadOverlayResources) {
+            try {
+                CubismTextureManager.invalidateGlobalCache()
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("텍스처 캐시 무효화 실패", e.message)
+            }
 
-        try {
-            CubismFrameworkManager.dispose()
-            Live2DLogger.Overlay.d("CubismFramework 정리완료", null)
-        } catch (e: Exception) {
-            Live2DLogger.Overlay.e("CubismFramework dispose 실패", null, e)
+            try {
+                CubismFrameworkManager.dispose()
+                Live2DLogger.Overlay.d("CubismFramework 정리완료", null)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.e("CubismFramework dispose 실패", null, e)
+            }
         }
         
         Live2DEventStreamHandler.getInstance()?.sendOverlayHidden()
-        Live2DLogger.Overlay.i("오버레이 숨김 완료", "서비스 중지")
+        Live2DLogger.Overlay.i(completionMessage, completionDetails)
         
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (stopService) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     private fun forwardTouchToRenderer(event: MotionEvent) {
