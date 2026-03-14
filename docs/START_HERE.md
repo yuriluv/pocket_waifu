@@ -76,6 +76,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 - Flutter uses `Live2DNativeBridge` and image overlay bridges.
 - Android runs one overlay service: `android/app/src/main/kotlin/com/example/flutter_application_1/live2d/overlay/Live2DOverlayService.kt`.
 - That service can host a Live2D renderer, an image overlay, and the native mini menu.
+- Touch-through is owned by that shared Android service; when enabled it now applies immediately instead of waiting for the app to move to the background.
 
 ### 4. Notifications and Screenshots
 

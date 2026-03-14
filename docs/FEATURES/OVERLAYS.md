@@ -36,6 +36,7 @@ Flutter does not talk to separate native services for Live2D and image overlay. 
 - Overlay visibility is shared.
 - Mini-menu hosting is shared.
 - A change to the native overlay service can break both Live2D and image overlay behavior at once.
+- Android 12+ can clamp non-touchable overlay windows to `alpha <= 0.8`, so normal image opacity must stay separate from touch-through pass-through state.
 
 ## Flutter-Side Overlay Flow
 
@@ -114,8 +115,10 @@ Native events include:
 - Root folder can also contain `.charx` packages alongside normal character folders.
 - Each character folder contains emotion image files.
 - The controller scans that structure through `ImageOverlayStorageService`.
+- On Android, folder picker results can arrive as `file://`, `primary:`, or `raw:`-style paths. `ImageOverlayStorageService` normalizes those before scanning.
 - `.charx` packages are treated as one character each. Flutter extracts `card.json` plus referenced `assets/other/image/*` files into app documents storage, renames emotion images from numeric filenames to `asset.name + "." + asset.ext`, and then feeds those extracted files through the normal character/emotion selection flow.
 - Extracted `.charx` assets are cached by source path plus file metadata so repeated scans can reuse the same generated files until the package changes.
+- On Android 11+, direct `dart:io` scanning of user-selected folders can still fail under scoped storage. When that happens, the storage service now surfaces a permission-specific error instead of collapsing everything into an empty folder result.
 
 ### Runtime behavior
 
@@ -173,7 +176,11 @@ Shared state lives in the Android overlay service and is synchronized with Flutt
 - `miniMenuToggleTouchThrough`
 - direct `setTouchThroughEnabled` bridge calls from the normal settings flows
 
-When touch-through is enabled and the app is not foregrounded, the overlay can reduce character/image alpha to the configured touch-through alpha.
+When touch-through is enabled, the overlay immediately switches to native pass-through behavior and uses the configured touch-through alpha.
+
+`image_basic` is only a geometry variant. It must not implicitly force touch-through behavior, but when touch-through is explicitly enabled it follows the same always-on pass-through rule as other overlay modes.
+
+On Android 12+, the native service keeps pass-through window alpha and rendered content alpha separate so normal mode can stay fully opaque while pass-through mode still works.
 
 ## Global Runtime Interaction
 
@@ -211,6 +218,7 @@ Prefer extending the shared bridge instead of bypassing it through ad hoc platfo
 - Forgetting that mini menu lifecycle is owned by the native overlay service.
 - Updating touch-through logic in Flutter without updating the native alpha/interactivity behavior.
 - Breaking `image_basic` while testing only `image` or `live2d`.
+- Treating an Android storage permission failure like a missing `.charx` or empty character folder. Those need different user guidance.
 
 ## Cross-Links
 
