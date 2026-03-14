@@ -4,11 +4,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 
 import '../models/image_overlay_character.dart';
+import 'image_overlay_charx_service.dart';
 
 class ImageOverlayStorageService {
   ImageOverlayStorageService._();
 
-  static final ImageOverlayStorageService instance = ImageOverlayStorageService._();
+  static final ImageOverlayStorageService instance =
+      ImageOverlayStorageService._();
+  final ImageOverlayCharxService _charxService =
+      ImageOverlayCharxService.instance;
 
   String? _rootPath;
 
@@ -46,6 +50,10 @@ class ImageOverlayStorageService {
     _rootPath = null;
   }
 
+  Future<void> clearCharxCache() {
+    return _charxService.clearCache();
+  }
+
   Future<List<ImageOverlayCharacter>> scanCharacters() async {
     final root = _rootPath;
     if (root == null) {
@@ -59,36 +67,48 @@ class ImageOverlayStorageService {
     final characters = <ImageOverlayCharacter>[];
     try {
       await for (final entity in dir.list(followLinks: false)) {
-        if (entity is! Directory) {
+        if (entity is Directory) {
+          final characterName = path.basename(entity.path);
+          final emotions = await _scanEmotions(entity);
+          if (emotions.isEmpty) {
+            continue;
+          }
+          characters.add(
+            ImageOverlayCharacter(
+              name: characterName,
+              folderPath: entity.path,
+              emotions: emotions,
+            ),
+          );
           continue;
         }
-        final characterName = path.basename(entity.path);
-        final emotions = await _scanEmotions(entity);
-        if (emotions.isEmpty) {
-          continue;
+
+        if (entity is File && _isCharxFile(entity.path)) {
+          final character = await _charxService.loadCharacter(entity);
+          if (character != null) {
+            characters.add(character);
+          }
         }
-        characters.add(
-          ImageOverlayCharacter(
-            name: characterName,
-            folderPath: entity.path,
-            emotions: emotions,
-          ),
-        );
       }
     } on FileSystemException {
       return const [];
     }
 
     if (characters.isEmpty) {
-      final recursiveCharacters = await _scanCharactersRecursiveFallback(dir, root);
+      final recursiveCharacters = await _scanCharactersRecursiveFallback(
+        dir,
+        root,
+      );
       characters.addAll(recursiveCharacters);
     }
 
-    characters.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    characters.sort(_compareCharacters);
     return characters;
   }
 
-  Future<List<ImageOverlayEmotion>> _scanEmotions(Directory characterDir) async {
+  Future<List<ImageOverlayEmotion>> _scanEmotions(
+    Directory characterDir,
+  ) async {
     final out = <ImageOverlayEmotion>[];
     try {
       await for (final entity in characterDir.list(followLinks: false)) {
@@ -115,12 +135,25 @@ class ImageOverlayStorageService {
   ) async {
     final map = <String, List<ImageOverlayEmotion>>{};
     final names = <String, String>{};
+    final charxCharacters = <ImageOverlayCharacter>[];
 
     try {
-      await for (final entity in rootDir.list(recursive: true, followLinks: false)) {
+      await for (final entity in rootDir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
         if (entity is! File) {
           continue;
         }
+
+        if (_isCharxFile(entity.path)) {
+          final character = await _charxService.loadCharacter(entity);
+          if (character != null) {
+            charxCharacters.add(character);
+          }
+          continue;
+        }
+
         final ext = path.extension(entity.path).toLowerCase();
         if (!_supportedEmotionExtensions.contains(ext)) {
           continue;
@@ -152,7 +185,9 @@ class ImageOverlayStorageService {
           name: path.basenameWithoutExtension(entity.path),
           filePath: entity.path,
         );
-        map.putIfAbsent(characterFolder, () => <ImageOverlayEmotion>[]).add(emotion);
+        map
+            .putIfAbsent(characterFolder, () => <ImageOverlayEmotion>[])
+            .add(emotion);
         names[characterFolder] = characterName;
       }
     } on FileSystemException {
@@ -160,8 +195,11 @@ class ImageOverlayStorageService {
     }
 
     final characters = <ImageOverlayCharacter>[];
+    characters.addAll(charxCharacters);
     map.forEach((folderPath, emotions) {
-      emotions.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      emotions.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
       characters.add(
         ImageOverlayCharacter(
           name: names[folderPath] ?? path.basename(folderPath),
@@ -171,8 +209,20 @@ class ImageOverlayStorageService {
       );
     });
 
-    characters.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    characters.sort(_compareCharacters);
     return characters;
+  }
+
+  int _compareCharacters(ImageOverlayCharacter a, ImageOverlayCharacter b) {
+    final nameCompare = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    if (nameCompare != 0) {
+      return nameCompare;
+    }
+    return a.folderPath.toLowerCase().compareTo(b.folderPath.toLowerCase());
+  }
+
+  bool _isCharxFile(String filePath) {
+    return path.extension(filePath).toLowerCase() == '.charx';
   }
 
   String _normalizeFolderPath(String rawPath) {
@@ -203,28 +253,28 @@ class ImageOverlayStorageService {
     return path.join('/storage/emulated/0', relative);
   }
 
-  Future<bool> renameEmotionFile({
+  Future<String?> renameEmotionFile({
     required String originalPath,
     required String nextName,
   }) async {
     final nextTrimmed = nextName.trim();
     if (nextTrimmed.isEmpty) {
-      return false;
+      return null;
     }
     final file = File(originalPath);
     if (!await file.exists()) {
-      return false;
+      return null;
     }
     final ext = path.extension(originalPath);
     final newPath = path.join(path.dirname(originalPath), '$nextTrimmed$ext');
     if (newPath == originalPath) {
-      return true;
+      return originalPath;
     }
     final nextFile = File(newPath);
     if (await nextFile.exists()) {
-      return false;
+      return null;
     }
     await file.rename(newPath);
-    return true;
+    return newPath;
   }
 }

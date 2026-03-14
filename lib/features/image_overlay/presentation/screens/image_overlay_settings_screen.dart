@@ -83,6 +83,11 @@ class _FolderSection extends StatelessWidget {
             Text('데이터 폴더', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
+              '일반 캐릭터 폴더 구조와 .charx 파일이 함께 있는 폴더를 모두 지원합니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
               controller.folderPath ?? '선택된 폴더 없음',
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -130,13 +135,13 @@ class _CharacterSection extends StatelessWidget {
             Text('캐릭터/감정 이미지', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             if (controller.characters.isEmpty)
-              const Text('캐릭터 폴더를 찾지 못했습니다.')
+              const Text('캐릭터 폴더 또는 .charx 파일을 찾지 못했습니다.')
             else ...[
               DropdownButtonFormField<String>(
                 initialValue: selectedCharacter?.folderPath,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: '캐릭터 폴더',
+                  labelText: '캐릭터',
                 ),
                 items: controller.characters
                     .map(
@@ -767,8 +772,12 @@ class _AdvancedSection extends StatelessWidget {
                   subtitle: Text(emotion.filePath),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
-                    onPressed: () =>
-                        _showRenameDialog(context, controller, emotion),
+                    tooltip: emotion.supportsRename
+                        ? '이름 변경'
+                        : 'CHARX 자동 추출 이미지는 이름 변경을 지원하지 않습니다.',
+                    onPressed: emotion.supportsRename
+                        ? () => _showRenameDialog(context, controller, emotion)
+                        : null,
                   ),
                 ),
               ),

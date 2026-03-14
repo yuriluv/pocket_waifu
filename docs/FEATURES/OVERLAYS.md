@@ -111,8 +111,11 @@ Native events include:
 ### Data model
 
 - Root folder contains character folders.
+- Root folder can also contain `.charx` packages alongside normal character folders.
 - Each character folder contains emotion image files.
 - The controller scans that structure through `ImageOverlayStorageService`.
+- `.charx` packages are treated as one character each. Flutter extracts `card.json` plus referenced `assets/other/image/*` files into app documents storage, renames emotion images from numeric filenames to `asset.name + "." + asset.ext`, and then feeds those extracted files through the normal character/emotion selection flow.
+- Extracted `.charx` assets are cached by source path plus file metadata so repeated scans can reuse the same generated files until the package changes.
 
 ### Runtime behavior
 
@@ -121,6 +124,8 @@ Native events include:
 - touch-through -> forwarded through the shared native bridge
 - geometry -> forwarded through shared overlay size/hitbox/position APIs
 - preset load/save -> stores hitbox and position presets per image overlay setup
+- generated emotion files extracted from `.charx` are treated as read-only cache files in the settings UI; manual rename is reserved for directly managed folder images
+- clearing the selected image-overlay folder also clears the generated `.charx` cache so stale extracted assets do not survive a reset
 
 ### Character sync option
 

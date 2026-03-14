@@ -132,6 +132,7 @@ class ImageOverlayController extends ChangeNotifier {
   Future<void> clearFolder() async {
     await setEnabled(false);
     _storage.clear();
+    await _storage.clearCharxCache();
     _characters = const [];
     _settings = _settings.copyWith(clearDataFolder: true, clearSelection: true);
     await _settings.save();
@@ -182,14 +183,24 @@ class ImageOverlayController extends ChangeNotifier {
     ImageOverlayEmotion emotion,
     String nextName,
   ) async {
-    final ok = await _storage.renameEmotionFile(
+    if (!emotion.supportsRename) {
+      return false;
+    }
+    final renamedPath = await _storage.renameEmotionFile(
       originalPath: emotion.filePath,
       nextName: nextName,
     );
-    if (!ok) {
+    if (renamedPath == null) {
       return false;
     }
+    final renamedSelectedEmotion =
+        _settings.selectedEmotionFile == emotion.filePath;
     await refreshCharacters();
+    if (renamedSelectedEmotion) {
+      _settings = _settings.copyWith(selectedEmotionFile: renamedPath);
+      await _settings.save();
+      notifyListeners();
+    }
     if (_settings.isEnabled && _settings.selectedEmotionFile != null) {
       await _imageBridge.loadOverlayImage(_settings.selectedEmotionFile!);
     }

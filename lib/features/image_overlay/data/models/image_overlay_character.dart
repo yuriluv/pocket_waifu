@@ -14,8 +14,10 @@ class ImageOverlayEmotion {
   const ImageOverlayEmotion({
     required this.name,
     required this.filePath,
+    this.supportsRename = true,
   });
 
   final String name;
   final String filePath;
+  final bool supportsRename;
 }
