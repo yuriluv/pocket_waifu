@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../live2d/data/models/live2d_settings.dart';
 import '../../../live2d/data/services/live2d_native_bridge.dart';
 import '../../../../providers/settings_provider.dart';
+import '../../../../services/global_runtime_registry.dart';
 import '../../data/models/image_overlay_character.dart';
 import '../../data/models/image_overlay_preset.dart';
 import '../../data/models/image_overlay_settings.dart';
@@ -537,10 +538,19 @@ class ImageOverlayController extends ChangeNotifier {
   }
 
   Future<void> _ensureImageOverlayVisible() async {
+    if (!GlobalRuntimeRegistry.instance.isEnabled) {
+      await _live2dBridge.hideOverlay();
+      return;
+    }
+
     await _imageBridge.setOverlayMode(
       isBasicOverlayMode ? 'image_basic' : 'image',
     );
-    await _live2dBridge.showOverlay();
+    final overlayShown = await _live2dBridge.showOverlay();
+    if (!overlayShown) {
+      return;
+    }
+
     if (isBasicOverlayMode) {
       await _live2dBridge.setCharacterPinned(false);
       await _live2dBridge.setEditMode(false);
