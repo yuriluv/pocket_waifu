@@ -72,7 +72,7 @@ class UnifiedCaptureService {
       await miniMenuService.closeMiniMenu();
     }
     if (overlayVisibleBefore) {
-      await overlayService.hideOverlay();
+      await overlayService.suspendOverlayForCapture();
     }
 
     return _OverlaySnapshot(

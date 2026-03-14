@@ -189,6 +189,38 @@ class Live2DNativeBridge {
     }
   }
 
+  Future<bool> suspendOverlayForCapture() async {
+    try {
+      live2dLog.info(_tag, '오버레이 캡처 일시 숨김 요청');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'suspendOverlayForCapture',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'suspendOverlayForCapture 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      live2dLog.error(_tag, 'Native 플러그인이 등록되지 않음');
+      return false;
+    }
+  }
+
+  Future<bool> resumeOverlayAfterCapture() async {
+    try {
+      live2dLog.info(_tag, '오버레이 캡처 일시 숨김 복구 요청');
+      final result = await _methodChannel.invokeMethod<bool>(
+        'resumeOverlayAfterCapture',
+      );
+      return result ?? false;
+    } on PlatformException catch (e) {
+      live2dLog.error(_tag, 'resumeOverlayAfterCapture 실패', error: e);
+      return false;
+    } on MissingPluginException {
+      live2dLog.error(_tag, 'Native 플러그인이 등록되지 않음');
+      return false;
+    }
+  }
+
   Future<bool> isOverlayVisible() async {
     try {
       final result = await _methodChannel.invokeMethod<bool>(

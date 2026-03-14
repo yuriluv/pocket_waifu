@@ -87,9 +87,6 @@ class Live2DOverlayService {
       _isOverlayVisible = isRunning;
     }
     
-    if (!isRunning && _currentModelPath != null) {
-      _currentModelPath = null;
-    }
   }
 
   // ============================================================================
@@ -272,6 +269,26 @@ class Live2DOverlayService {
       return result;
     } catch (e) {
       live2dLog.error(_tag, '오버레이 숨기기 실패', error: e);
+      return false;
+    }
+  }
+
+  Future<bool> suspendOverlayForCapture() async {
+    try {
+      final isActive = await _bridge.isOverlayVisible();
+      if (!isActive) {
+        _isOverlayVisible = false;
+        return true;
+      }
+
+      final result = await _bridge.suspendOverlayForCapture();
+      if (result) {
+        _isOverlayVisible = false;
+        live2dLog.info(_tag, '오버레이 캡처 일시 숨김');
+      }
+      return result;
+    } catch (e) {
+      live2dLog.error(_tag, '오버레이 캡처 일시 숨김 실패', error: e);
       return false;
     }
   }
