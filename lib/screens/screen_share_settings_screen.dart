@@ -38,12 +38,8 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                 'All features are paused. Toggle Master Switch to resume.',
               ),
             ),
-          Opacity(
-            opacity: masterEnabled ? 1 : 0.4,
-            child: IgnorePointer(
-              ignoring: !masterEnabled,
-              child: Column(
-                children: [
+          Column(
+            children: [
                   _SectionCard(
                     title: 'Capture Method',
                     child: RadioGroup<CaptureMethod>(
@@ -202,9 +198,7 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                     title: 'Screenshot Test',
                     child: _ScreenshotTestWidget(),
                   ),
-                ],
-              ),
-            ),
+            ],
           ),
         ],
       ),
