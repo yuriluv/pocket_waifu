@@ -28,6 +28,7 @@ class OAuthAccount {
     this.cloudProjectId,
     this.oauthClientId,
     this.oauthClientSecret,
+    this.chatgptAccountId,
     this.organizationId,
     this.projectId,
     this.planType,
@@ -49,6 +50,7 @@ class OAuthAccount {
   final String? cloudProjectId;
   final String? oauthClientId;
   final String? oauthClientSecret;
+  final String? chatgptAccountId;
   final String? organizationId;
   final String? projectId;
   final String? planType;
@@ -92,6 +94,7 @@ class OAuthAccount {
     String? cloudProjectId,
     String? oauthClientId,
     String? oauthClientSecret,
+    String? chatgptAccountId,
     String? organizationId,
     String? projectId,
     String? planType,
@@ -105,6 +108,7 @@ class OAuthAccount {
     bool clearCloudProjectId = false,
     bool clearOAuthClientId = false,
     bool clearOAuthClientSecret = false,
+    bool clearChatgptAccountId = false,
     bool clearOrganizationId = false,
     bool clearProjectId = false,
     bool clearPlanType = false,
@@ -128,6 +132,9 @@ class OAuthAccount {
       oauthClientSecret: clearOAuthClientSecret
           ? null
           : (oauthClientSecret ?? this.oauthClientSecret),
+      chatgptAccountId: clearChatgptAccountId
+          ? null
+          : (chatgptAccountId ?? this.chatgptAccountId),
       organizationId: clearOrganizationId
           ? null
           : (organizationId ?? this.organizationId),
@@ -152,6 +159,7 @@ class OAuthAccount {
       'cloudProjectId': cloudProjectId,
       'oauthClientId': oauthClientId,
       'oauthClientSecret': oauthClientSecret,
+      'chatgptAccountId': chatgptAccountId,
       'organizationId': organizationId,
       'projectId': projectId,
       'planType': planType,
@@ -177,6 +185,7 @@ class OAuthAccount {
       cloudProjectId: map['cloudProjectId'] as String?,
       oauthClientId: map['oauthClientId'] as String?,
       oauthClientSecret: map['oauthClientSecret'] as String?,
+      chatgptAccountId: map['chatgptAccountId'] as String?,
       organizationId: map['organizationId'] as String?,
       projectId: map['projectId'] as String?,
       planType: map['planType'] as String?,

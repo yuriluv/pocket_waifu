@@ -24,7 +24,7 @@ class OAuthResolvedCredential {
 }
 
 class OAuthAuthorizationSession {
-  OAuthAuthorizationSession({
+  OAuthAuthorizationSession._({
     required this.id,
     required this.provider,
     required this.clientId,
@@ -74,6 +74,9 @@ class OAuthAccountService {
   static const _codexAuthUrl = 'https://auth.openai.com/oauth/authorize';
   static const _codexTokenUrl = 'https://auth.openai.com/oauth/token';
   static const _codexRedirectUri = 'http://localhost:1455/auth/callback';
+  static const _codexOriginator = 'codex_cli_rs';
+  static const _codexScope =
+      'openid profile email offline_access api.connectors.read api.connectors.invoke';
   static const _googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
   static const _googleTokenUrl = 'https://oauth2.googleapis.com/token';
   static const _googleUserInfoUrl =
@@ -164,18 +167,19 @@ class OAuthAccountService {
         final codeChallenge = _codeChallengeForVerifier(codeVerifier);
         final authUrl = Uri.parse(_codexAuthUrl).replace(
           queryParameters: {
-            'response_type': 'code',
-            'client_id': _codexClientId,
-            'redirect_uri': _codexRedirectUri,
-            'scope': 'openid profile email offline_access',
-            'code_challenge': codeChallenge,
-            'code_challenge_method': 'S256',
-            'state': state,
-            'id_token_add_organizations': 'true',
-            'codex_cli_simplified_flow': 'true',
-          },
-        );
-        return OAuthAuthorizationSession(
+             'response_type': 'code',
+             'client_id': _codexClientId,
+             'redirect_uri': _codexRedirectUri,
+             'scope': _codexScope,
+             'code_challenge': codeChallenge,
+             'code_challenge_method': 'S256',
+             'state': state,
+             'id_token_add_organizations': 'true',
+             'codex_cli_simplified_flow': 'true',
+             'originator': _codexOriginator,
+           },
+         );
+         return OAuthAuthorizationSession._(
           id: const Uuid().v4(),
           provider: provider,
           clientId: _codexClientId,
@@ -221,7 +225,7 @@ class OAuthAccountService {
             'prompt': 'consent',
           },
         );
-        return OAuthAuthorizationSession(
+         return OAuthAuthorizationSession._(
           id: const Uuid().v4(),
           provider: provider,
           clientId: resolvedClientId,
@@ -509,6 +513,7 @@ class OAuthAccountService {
     return account.copyWith(
       email: claims['email']?.toString(),
       displayName: profileClaims['name']?.toString() ?? claims['name']?.toString(),
+      chatgptAccountId: authClaims['chatgpt_account_id']?.toString(),
       organizationId: authClaims['organization_id']?.toString(),
       projectId: authClaims['project_id']?.toString(),
       planType: authClaims['chatgpt_plan_type']?.toString(),
