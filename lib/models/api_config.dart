@@ -4,6 +4,8 @@
 
 import 'package:uuid/uuid.dart';
 
+import '../utils/api_preset_parameter_policy.dart';
+
 enum ApiFormat {
   openAICompatible,
   openAIResponses,
@@ -79,7 +81,13 @@ class ApiConfig {
        createdAt = createdAt ?? DateTime.now();
 
   static Map<String, dynamic> _defaultParams() {
-    return {'temperature': 0.9, 'top_p': 1.0};
+    return {
+      ApiPresetParameterPolicy.temperatureKey: 0.9,
+      ApiPresetParameterPolicy.topPKey: 1.0,
+      ApiPresetParameterPolicy.maxTokensKey: 1024,
+      ApiPresetParameterPolicy.frequencyPenaltyKey: 0.0,
+      ApiPresetParameterPolicy.presencePenaltyKey: 0.0,
+    };
   }
 
   bool get hasApiKey => apiKey.isNotEmpty;
@@ -89,6 +97,11 @@ class ApiConfig {
   bool get hasValidUrl => baseUrl.isNotEmpty && baseUrl.startsWith('http');
 
   bool get isConfigured => (hasApiKey || usesOAuth) && hasValidUrl && modelName.isNotEmpty;
+
+  bool get isCodexPreset => ApiPresetParameterPolicy.isCodexPreset(this);
+
+  bool get isGeminiCodeAssistPreset =>
+      ApiPresetParameterPolicy.isGeminiCodeAssistPreset(this);
 
   Map<String, dynamic> toMap() {
     return {

@@ -12,12 +12,15 @@ import '../models/oauth_account.dart';
 import '../models/settings.dart';
 import '../features/image_overlay/data/services/image_overlay_character_sync_service.dart';
 import '../services/oauth_account_service.dart';
+import '../utils/api_preset_parameter_policy.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _settingsKey = 'app_settings';
   static const String _characterKey = 'character';
   static const String _apiConfigsKey = 'api_configs';
   static const String _activeApiConfigKey = 'active_api_config_id';
+  static const String _apiPresetParamsMigrationKey =
+      'api_preset_generation_params_migrated_v1';
 
   AppSettings _settings = AppSettings();
   Character _character = Character.defaultCharacter();
@@ -85,6 +88,11 @@ class SettingsProvider extends ChangeNotifier {
         _migrateOldApiSettings();
       }
 
+      final migratedPresetParams = await _migratePresetParameterOwnership(prefs);
+      if (migratedPresetParams) {
+        await saveSettings();
+      }
+
       if (_activeApiConfigId == null ||
           !_apiConfigs.any((c) => c.id == _activeApiConfigId)) {
         if (_apiConfigs.isNotEmpty) {
@@ -135,6 +143,57 @@ class SettingsProvider extends ChangeNotifier {
       debugPrint('기존 API 설정 마이그레이션 완료: ${_apiConfigs.length}개 프리셋');
       saveSettings();
     }
+  }
+
+  Future<bool> _migratePresetParameterOwnership(SharedPreferences prefs) async {
+    final alreadyMigrated = prefs.getBool(_apiPresetParamsMigrationKey) ?? false;
+    if (alreadyMigrated) {
+      return false;
+    }
+
+    bool mutated = false;
+    _apiConfigs = _apiConfigs.map((config) {
+      final additionalParams = Map<String, dynamic>.from(config.additionalParams);
+
+      if (ApiPresetParameterPolicy.isCodexPreset(config)) {
+        for (final key in ApiPresetParameterPolicy.codexBlockedParamKeys) {
+          if (additionalParams.remove(key) != null) {
+            mutated = true;
+          }
+        }
+      } else {
+        void putIfMissing(String key, Object value) {
+          if (!additionalParams.containsKey(key)) {
+            additionalParams[key] = value;
+            mutated = true;
+          }
+        }
+
+        putIfMissing(
+          ApiPresetParameterPolicy.temperatureKey,
+          _settings.temperature,
+        );
+        putIfMissing(ApiPresetParameterPolicy.topPKey, _settings.topP);
+        putIfMissing(
+          ApiPresetParameterPolicy.maxTokensKey,
+          _settings.maxTokens,
+        );
+        putIfMissing(
+          ApiPresetParameterPolicy.frequencyPenaltyKey,
+          _settings.frequencyPenalty,
+        );
+        putIfMissing(
+          ApiPresetParameterPolicy.presencePenaltyKey,
+          _settings.presencePenalty,
+        );
+      }
+
+      final sanitized = config.copyWith(additionalParams: additionalParams);
+      return sanitized;
+    }).toList(growable: true);
+
+    await prefs.setBool(_apiPresetParamsMigrationKey, true);
+    return mutated;
   }
 
   Future<void> saveSettings() async {

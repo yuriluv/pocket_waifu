@@ -5,7 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/features/live2d/data/models/display_preset.dart';
 import 'package:flutter_application_1/features/live2d/data/models/live2d_settings.dart';
+import 'package:flutter_application_1/models/api_config.dart';
 import 'package:flutter_application_1/models/prompt_block.dart';
+import 'package:flutter_application_1/models/settings.dart';
+import 'package:flutter_application_1/providers/settings_provider.dart';
 import 'package:flutter_application_1/providers/prompt_block_provider.dart';
 
 void main() {
@@ -159,6 +162,57 @@ void main() {
       expect(preset.blocks[1].type, PromptBlock.typeInput);
       expect(preset.blocks[2].type, PromptBlock.typePrompt);
       expect(preset.blocks[2].content, 'System prompt');
+    });
+  });
+
+  group('API preset parameter migration', () {
+    test('global generation params are migrated into non-Codex presets once', () async {
+      final appSettings = AppSettings(
+        temperature: 0.33,
+        topP: 0.44,
+        maxTokens: 777,
+        frequencyPenalty: 0.55,
+        presencePenalty: 0.66,
+      );
+      final apiConfigs = [
+        ApiConfig.openaiDefault().copyWith(
+          id: 'openai-1',
+          additionalParams: {'temperature': 0.11},
+        ),
+        ApiConfig.codexOAuth(
+          oauthAccountId: 'oauth-1',
+          modelName: 'gpt-5.3-codex',
+          name: 'Codex',
+        ).copyWith(
+          additionalParams: {
+            'temperature': 1.0,
+            'top_p': 0.2,
+            'max_output_tokens': 999,
+            'reasoning': {'effort': 'low'},
+          },
+        ),
+      ];
+
+      SharedPreferences.setMockInitialValues({
+        'app_settings': jsonEncode(appSettings.toMap()),
+        'api_configs': jsonEncode(apiConfigs.map((config) => config.toMap()).toList()),
+      });
+
+      final provider = SettingsProvider();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final openai = provider.apiConfigs.firstWhere((config) => config.id == 'openai-1');
+      expect(openai.additionalParams['temperature'], 0.11);
+      expect(openai.additionalParams['top_p'], 0.44);
+      expect(openai.additionalParams['max_output_tokens'], 777);
+      expect(openai.additionalParams['frequency_penalty'], 0.55);
+      expect(openai.additionalParams['presence_penalty'], 0.66);
+
+      final codex = provider.apiConfigs.firstWhere((config) => config.name == 'Codex');
+      expect(codex.additionalParams.containsKey('temperature'), isFalse);
+      expect(codex.additionalParams.containsKey('top_p'), isFalse);
+      expect(codex.additionalParams.containsKey('max_output_tokens'), isFalse);
+      expect(codex.additionalParams['reasoning'], {'effort': 'low'});
     });
   });
 }
