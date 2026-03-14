@@ -104,6 +104,16 @@ Future<void> showOAuthPresetTemplateDialog(
   );
 }
 
+Future<void> showOAuthAccountLoginDialog(
+  BuildContext context, {
+  OAuthAccount? existingAccount,
+}) {
+  return _showOAuthAccountLoginDialog(
+    context,
+    existingAccount: existingAccount,
+  );
+}
+
 class _OAuthAccountCard extends StatelessWidget {
   const _OAuthAccountCard({required this.account});
 
@@ -649,6 +659,7 @@ class _OAuthAccountLoginDialogState extends State<_OAuthAccountLoginDialog> {
     });
 
     try {
+      final settingsProvider = context.read<SettingsProvider>();
       await OAuthAccountService.instance.completeAuthorization(
         session: session,
         callbackOrCode: input,
@@ -658,7 +669,7 @@ class _OAuthAccountLoginDialogState extends State<_OAuthAccountLoginDialog> {
             : null,
         replaceAccountId: widget.existingAccount?.id,
       );
-      await context.read<SettingsProvider>().reloadOAuthAccounts();
+      await settingsProvider.reloadOAuthAccounts();
       if (!mounted) return;
       context.showInfoSnackBar('OAuth 계정을 저장했습니다.');
       Navigator.pop(context);

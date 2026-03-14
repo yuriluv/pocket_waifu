@@ -9,8 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/api_config.dart';
 import '../providers/global_runtime_provider.dart';
 import '../providers/settings_provider.dart';
-import '../services/api_service.dart';
 import '../services/image_cache_manager.dart';
+import 'api_preset_editor_screen.dart';
 import 'live2d_llm_settings_screen.dart';
 import '../widgets/empty_state_view.dart';
 import '../widgets/oauth_management_widgets.dart';
@@ -51,7 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           tabs: const [
             Tab(icon: Icon(Icons.api), text: 'API 프리셋'),
             Tab(icon: Icon(Icons.verified_user), text: 'OAuth'),
-            Tab(icon: Icon(Icons.tune), text: '파라미터'),
+            Tab(icon: Icon(Icons.build_outlined), text: '보조'),
           ],
         ),
       ),
@@ -77,13 +77,13 @@ class _SettingsScreenState extends State<SettingsScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: const [
-                _ApiPresetsTab(),
-                OAuthAccountsTab(),
-                _ParameterSettingsTab(),
-              ],
+                children: const [
+                  _ApiPresetsTab(),
+                  OAuthAccountsTab(),
+                  _ApiUtilitiesTab(),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -124,7 +124,7 @@ class _ApiPresetsTab extends StatelessWidget {
               Expanded(
                 child: Text(
                   'API 프리셋을 선택하거나 새로 만들어 사용하세요.\n'
-                  '각 프리셋은 Base URL, API Key 또는 OAuth 계정, 모델, 헤더를 설정할 수 있습니다.',
+                   '각 프리셋은 Base URL, 인증 방식, 모델, 헤더, 생성 파라미터를 독립적으로 가집니다.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onPrimaryContainer,
                   ),
@@ -147,7 +147,10 @@ class _ApiPresetsTab extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               OutlinedButton.icon(
-                onPressed: () => _showEditPresetDialog(context, null),
+                onPressed: () => _openPresetEditor(
+                  context,
+                  seedConfig: ApiConfig.custom(),
+                ),
                 icon: const Icon(Icons.edit_note),
                 label: const Text('커스텀'),
               ),
@@ -180,14 +183,7 @@ class _ApiPresetsTab extends StatelessWidget {
                       onTap: () =>
                           settingsProvider.setActiveApiConfig(config.id),
                       onEdit: () {
-                        if (config.usesOAuth) {
-                          showOAuthPresetTemplateDialog(
-                            context,
-                            existingConfig: config,
-                          );
-                          return;
-                        }
-                        _showEditPresetDialog(context, config);
+                        _openPresetEditor(context, existingConfig: config);
                       },
                       onDelete: () => _confirmDeletePreset(context, config),
                     );
@@ -230,11 +226,10 @@ class _ApiPresetsTab extends StatelessWidget {
   }
 
   void _showPresetTemplateDialog(BuildContext context) {
-    final settingsProvider = context.read<SettingsProvider>();
-
+    final screenContext = context;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('프리셋 템플릿 선택'),
         content: SizedBox(
           width: double.maxFinite,
@@ -246,8 +241,11 @@ class _ApiPresetsTab extends StatelessWidget {
                 title: 'GitHub Copilot',
                 subtitle: 'Copilot API (gho_ 토큰 필요)',
                 onTap: () {
-                  Navigator.pop(context);
-                  settingsProvider.addApiConfig(ApiConfig.copilotDefault());
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig.copilotDefault(),
+                  );
                 },
               ),
               _TemplateOption(
@@ -255,8 +253,11 @@ class _ApiPresetsTab extends StatelessWidget {
                 title: 'OpenAI',
                 subtitle: 'GPT 모델 (sk- API 키 필요)',
                 onTap: () {
-                  Navigator.pop(context);
-                  settingsProvider.addApiConfig(ApiConfig.openaiDefault());
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig.openaiDefault(),
+                  );
                 },
               ),
               _TemplateOption(
@@ -264,8 +265,11 @@ class _ApiPresetsTab extends StatelessWidget {
                 title: 'Anthropic',
                 subtitle: 'Claude 모델 (sk-ant- API 키 필요)',
                 onTap: () {
-                  Navigator.pop(context);
-                  settingsProvider.addApiConfig(ApiConfig.anthropicDefault());
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig.anthropicDefault(),
+                  );
                 },
               ),
               _TemplateOption(
@@ -273,17 +277,48 @@ class _ApiPresetsTab extends StatelessWidget {
                 title: 'OpenRouter',
                 subtitle: '여러 모델 지원 (openrouter.ai)',
                 onTap: () {
-                  Navigator.pop(context);
-                  settingsProvider.addApiConfig(ApiConfig.openRouterDefault());
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig.openRouterDefault(),
+                  );
                 },
               ),
               _TemplateOption(
                 icon: Icons.verified_user,
-                title: '새 OAuth 추가',
-                subtitle: 'Codex / Gemini CLI 계정 기반 프리셋',
+                title: 'Codex OAuth',
+                subtitle: 'Codex 계정 기반 프리셋',
                 onTap: () {
-                  Navigator.pop(context);
-                  showOAuthPresetTemplateDialog(context);
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig(
+                      name: 'Codex OAuth',
+                      baseUrl: 'https://chatgpt.com/backend-api/codex/responses',
+                      modelName: 'gpt-5.3-codex',
+                      format: ApiFormat.openAIResponses,
+                      additionalParams: const {},
+                    ),
+                  );
+                },
+              ),
+              _TemplateOption(
+                icon: Icons.auto_awesome,
+                title: 'Gemini CLI OAuth',
+                subtitle: 'Gemini CLI / GCA 계정 기반 프리셋',
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _openPresetEditor(
+                    screenContext,
+                    seedConfig: ApiConfig(
+                      name: 'Gemini CLI OAuth',
+                      baseUrl:
+                          'https://cloudcode-pa.googleapis.com/v1internal:generateContent',
+                      modelName: 'gemini-2.5-pro',
+                      format: ApiFormat.googleCodeAssist,
+                      additionalParams: const {},
+                    ),
+                  );
                 },
               ),
             ],
@@ -291,7 +326,7 @@ class _ApiPresetsTab extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('취소'),
           ),
         ],
@@ -299,11 +334,18 @@ class _ApiPresetsTab extends StatelessWidget {
     );
   }
 
-  void _showEditPresetDialog(BuildContext context, ApiConfig? existingConfig) {
-    showDialog(
-      context: context,
-      builder: (context) =>
-          _ApiPresetEditDialog(existingConfig: existingConfig),
+  Future<void> _openPresetEditor(
+    BuildContext context, {
+    ApiConfig? existingConfig,
+    ApiConfig? seedConfig,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ApiPresetEditorScreen(
+          existingConfig: existingConfig,
+          seedConfig: seedConfig,
+        ),
+      ),
     );
   }
 
@@ -524,654 +566,24 @@ class _ApiPresetCard extends StatelessWidget {
   }
 }
 
-class _ApiPresetEditDialog extends StatefulWidget {
-  final ApiConfig? existingConfig;
-
-  const _ApiPresetEditDialog({this.existingConfig});
-
-  @override
-  State<_ApiPresetEditDialog> createState() => _ApiPresetEditDialogState();
-}
-
-class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
-  late TextEditingController _nameController;
-  late TextEditingController _baseUrlController;
-  late TextEditingController _apiKeyController;
-  late TextEditingController _modelController;
-  late Map<String, String> _customHeaders;
-  bool _showAdvanced = false;
-  bool _isTesting = false;
-  String? _testResult;
-
-  late ApiFormat _format;
-  late bool _useStreaming;
-  late bool _hasFirstSystemPrompt;
-  late bool _requiresAlternateRole;
-  late bool _mergeSystemPrompts;
-  late bool _mustStartWithUserInput;
-  late bool _useMaxOutputTokens;
-
-  @override
-  void initState() {
-    super.initState();
-    final config = widget.existingConfig;
-    _nameController = TextEditingController(text: config?.name ?? '새 프리셋');
-    _baseUrlController = TextEditingController(
-      text: config?.baseUrl ?? 'https://api.openai.com/v1/chat/completions',
-    );
-    _apiKeyController = TextEditingController(text: config?.apiKey ?? '');
-    _modelController = TextEditingController(
-      text: config?.modelName ?? 'gpt-4o',
-    );
-    _customHeaders = Map.from(config?.customHeaders ?? {});
-
-    _format = config?.format ?? ApiFormat.openAICompatible;
-    _useStreaming = config?.useStreaming ?? true;
-    _hasFirstSystemPrompt = config?.hasFirstSystemPrompt ?? true;
-    _requiresAlternateRole = config?.requiresAlternateRole ?? true;
-    _mergeSystemPrompts = config?.mergeSystemPrompts ?? false;
-    _mustStartWithUserInput = config?.mustStartWithUserInput ?? false;
-    _useMaxOutputTokens = config?.useMaxOutputTokens ?? false;
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _baseUrlController.dispose();
-    _apiKeyController.dispose();
-    _modelController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _testConnection() async {
-    setState(() {
-      _isTesting = true;
-      _testResult = null;
-    });
-
-    final testConfig = ApiConfig.custom(
-      name: _nameController.text.trim(),
-      baseUrl: _baseUrlController.text.trim(),
-      apiKey: _apiKeyController.text,
-      modelName: _modelController.text.trim(),
-      customHeaders: _customHeaders,
-    ).copyWith(format: _format);
-
-    debugPrint('>>> 연결 테스트 시작: ${testConfig.baseUrl}');
-
-    final apiService = ApiService();
-    final (success, message) = await apiService.testConnection(testConfig);
-
-    setState(() {
-      _isTesting = false;
-      _testResult = success ? '✅ $message' : '❌ $message';
-    });
-  }
+class _ApiUtilitiesTab extends StatelessWidget {
+  const _ApiUtilitiesTab();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
-    return Dialog(
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        constraints: const BoxConstraints(maxHeight: 700),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.existingConfig == null ? '새 프리셋 만들기' : '프리셋 편집',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: '프리셋 이름',
-                        hintText: '예: My OpenAI, Copilot...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.label),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Base URL
-                    TextFormField(
-                      controller: _baseUrlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Base URL',
-                        hintText: 'https://api.openai.com/v1/chat/completions',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.link),
-                        helperText: 'API 엔드포인트 URL (⭐ 변경 시 반드시 저장)',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // API Key
-                    TextFormField(
-                      controller: _apiKeyController,
-                      decoration: const InputDecoration(
-                        labelText: 'API Key',
-                        hintText: 'sk-..., gho_...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.key),
-                        helperText: '여러 키는 줄바꿈으로 구분',
-                      ),
-                      obscureText: true,
-                      maxLines: 1,
-                    ),
-                    const SizedBox(height: 16),
-
-                    TextFormField(
-                      controller: _modelController,
-                      decoration: const InputDecoration(
-                        labelText: '모델',
-                        hintText: 'gpt-4o, claude-3-opus...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.memory),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    DropdownButtonFormField<ApiFormat>(
-                      initialValue: _format,
-                      decoration: const InputDecoration(
-                        labelText: 'API 규격',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.api),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: ApiFormat.openAICompatible,
-                          child: Text('OpenAI Compatible'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.anthropic,
-                          child: Text('Anthropic Claude'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.openRouter,
-                          child: Text('OpenRouter'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.google,
-                          child: Text('Google Gemini'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.googleCodeAssist,
-                          child: Text('Google Code Assist'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.openAIResponses,
-                          child: Text('OpenAI Responses'),
-                        ),
-                        DropdownMenuItem(
-                          value: ApiFormat.custom,
-                          child: Text('Custom'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) setState(() => _format = value);
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    InkWell(
-                      onTap: () =>
-                          setState(() => _showAdvanced = !_showAdvanced),
-                      child: Row(
-                        children: [
-                          Icon(
-                            _showAdvanced
-                                ? Icons.expand_less
-                                : Icons.expand_more,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text('고급 설정'),
-                        ],
-                      ),
-                    ),
-
-                    if (_showAdvanced) ...[
-                      const SizedBox(height: 12),
-                      _buildAdvancedOptions(),
-                      const SizedBox(height: 12),
-                      _buildHeadersEditor(),
-                    ],
-
-                    if (_testResult != null) ...[
-                      const SizedBox(height: 16),
-                      Builder(
-                        builder: (context) {
-                          final isSuccess = _testResult!.startsWith('✅');
-                          final statusBackground = isSuccess
-                              ? colorScheme.tertiaryContainer.withValues(
-                                  alpha: 0.5,
-                                )
-                              : colorScheme.errorContainer.withValues(
-                                  alpha: 0.65,
-                                );
-                          final statusBorder = isSuccess
-                              ? colorScheme.tertiary.withValues(alpha: 0.65)
-                              : colorScheme.error.withValues(alpha: 0.7);
-                          final statusTextColor = isSuccess
-                              ? colorScheme.onTertiaryContainer
-                              : colorScheme.onErrorContainer;
-
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: statusBackground,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: statusBorder),
-                            ),
-                            child: Text(
-                              _testResult!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: statusTextColor,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _isTesting ? null : _testConnection,
-                  icon: _isTesting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.wifi_tethering, size: 18),
-                  label: Text(_isTesting ? '테스트 중...' : '연결 테스트'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('취소'),
-                ),
-                ElevatedButton(
-                  onPressed: _saveConfig,
-                  child: Text(widget.existingConfig == null ? '추가' : '저장'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAdvancedOptions() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '고급 옵션',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          CheckboxListTile(
-            title: const Text('스트리밍 사용'),
-            subtitle: const Text('응답을 실시간으로 표시'),
-            value: _useStreaming,
-            onChanged: (v) => setState(() => _useStreaming = v ?? true),
-            dense: true,
-          ),
-          CheckboxListTile(
-            title: const Text('첫 시스템 프롬프트 포함'),
-            subtitle: const Text('시스템 메시지를 첫 번째로'),
-            value: _hasFirstSystemPrompt,
-            onChanged: (v) => setState(() => _hasFirstSystemPrompt = v ?? true),
-            dense: true,
-          ),
-          CheckboxListTile(
-            title: const Text('역할 교대 필수'),
-            subtitle: const Text('user-assistant 번갈아 배치'),
-            value: _requiresAlternateRole,
-            onChanged: (v) =>
-                setState(() => _requiresAlternateRole = v ?? true),
-            dense: true,
-          ),
-          CheckboxListTile(
-            title: const Text('시스템 프롬프트 합치기'),
-            subtitle: const Text('여러 system을 하나로'),
-            value: _mergeSystemPrompts,
-            onChanged: (v) => setState(() => _mergeSystemPrompts = v ?? false),
-            dense: true,
-          ),
-          CheckboxListTile(
-            title: const Text('사용자 입력으로 시작 필수'),
-            value: _mustStartWithUserInput,
-            onChanged: (v) =>
-                setState(() => _mustStartWithUserInput = v ?? false),
-            dense: true,
-          ),
-          CheckboxListTile(
-            title: const Text('max_output_tokens 사용'),
-            subtitle: const Text('max_tokens 대신 사용'),
-            value: _useMaxOutputTokens,
-            onChanged: (v) => setState(() => _useMaxOutputTokens = v ?? false),
-            dense: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeadersEditor() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.45),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '커스텀 HTTP 헤더',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _addHeader,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('추가'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (_customHeaders.isEmpty)
-            Text(
-              '커스텀 헤더가 없습니다',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            )
-          else
-            ..._customHeaders.entries.map((entry) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: Text(
-                        entry.key,
-                        style: const TextStyle(fontFamily: 'monospace'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 3,
-                      child: Text(
-                        entry.value,
-                        style: const TextStyle(fontFamily: 'monospace'),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, size: 18),
-                      onPressed: () {
-                        setState(() => _customHeaders.remove(entry.key));
-                      },
-                    ),
-                  ],
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-
-  void _addHeader() {
-    final keyController = TextEditingController();
-    final valueController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('헤더 추가'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: keyController,
-              decoration: const InputDecoration(
-                labelText: '헤더 이름',
-                hintText: 'X-Custom-Header',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: valueController,
-              decoration: const InputDecoration(
-                labelText: '헤더 값',
-                hintText: 'value',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (keyController.text.isNotEmpty) {
-                setState(() {
-                  _customHeaders[keyController.text] = valueController.text;
-                });
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('추가'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _saveConfig() {
-    final settingsProvider = context.read<SettingsProvider>();
-
-    if (_nameController.text.trim().isEmpty ||
-        _baseUrlController.text.trim().isEmpty ||
-        _modelController.text.trim().isEmpty) {
-      context.showErrorSnackBar('이름, Base URL, 모델은 필수 입력 항목입니다.');
-      return;
-    }
-
-    final newConfig =
-        ApiConfig.custom(
-          id: widget.existingConfig?.id,
-          name: _nameController.text.trim(),
-          baseUrl: _baseUrlController.text.trim(),
-          apiKey: _apiKeyController.text,
-          modelName: _modelController.text.trim(),
-          customHeaders: _customHeaders,
-        ).copyWith(
-          format: _format,
-          useStreaming: _useStreaming,
-          hasFirstSystemPrompt: _hasFirstSystemPrompt,
-          requiresAlternateRole: _requiresAlternateRole,
-          mergeSystemPrompts: _mergeSystemPrompts,
-          mustStartWithUserInput: _mustStartWithUserInput,
-          useMaxOutputTokens: _useMaxOutputTokens,
-        );
-
-    debugPrint('╔════════════════════════════════════════════════════════════');
-    debugPrint('║ >>> API Config 저장');
-    debugPrint('║ >>> ID: ${newConfig.id}');
-    debugPrint('║ >>> Name: ${newConfig.name}');
-    debugPrint('║ >>> URL: ${newConfig.baseUrl}');
-    debugPrint('║ >>> Model: ${newConfig.modelName}');
-    debugPrint('║ >>> Format: ${newConfig.format.name}');
-    debugPrint('╚════════════════════════════════════════════════════════════');
-
-    if (widget.existingConfig == null) {
-      settingsProvider.addApiConfig(newConfig);
-    } else {
-      settingsProvider.updateApiConfig(newConfig);
-    }
-
-    Navigator.pop(context);
-
-    context.showInfoSnackBar('${newConfig.name} 프리셋이 저장되었습니다.');
-  }
-}
-
-// ============================================================================
-// ============================================================================
-
-class _ParameterSettingsTab extends StatelessWidget {
-  const _ParameterSettingsTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final settingsProvider = context.watch<SettingsProvider>();
-    final settings = settingsProvider.settings;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _SectionTitle(title: '생성 파라미터'),
+        _SectionTitle(title: '보조 설정'),
         const SizedBox(height: 8),
         Text(
-          'AI가 텍스트를 생성할 때 사용하는 설정입니다.',
+          'API 생성 파라미터는 이제 각 프리셋 편집 화면에서 관리합니다. 이 탭은 캐시와 연동 도구만 다룹니다.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),
-        ),
-
-        const SizedBox(height: 16),
-
-        _ParameterSlider(
-          label: 'Temperature (온도)',
-          value: settings.temperature,
-          min: 0.0,
-          max: 2.0,
-          divisions: 20,
-          description: '높을수록 창의적이고 다양한 응답, 낮을수록 일관적인 응답',
-          onChanged: settingsProvider.setTemperature,
-        ),
-
-        const SizedBox(height: 16),
-
-        _ParameterSlider(
-          label: 'Top-P',
-          value: settings.topP,
-          min: 0.0,
-          max: 1.0,
-          divisions: 20,
-          description: '단어 선택의 다양성을 조절합니다 (보통 1.0 권장)',
-          onChanged: settingsProvider.setTopP,
-        ),
-
-        const SizedBox(height: 16),
-
-        TextFormField(
-          initialValue: settings.maxTokens.toString(),
-          decoration: const InputDecoration(
-            labelText: 'Max Tokens (최대 토큰)',
-            hintText: '1024',
-            border: OutlineInputBorder(),
-            helperText: 'AI 응답의 최대 길이 (1000 토큰 ≈ 한글 500자)',
-          ),
-          keyboardType: TextInputType.number,
-          onChanged: (value) {
-            final int? tokens = int.tryParse(value);
-            if (tokens != null && tokens > 0) {
-              settingsProvider.setMaxTokens(tokens);
-            }
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        _ParameterSlider(
-          label: 'Frequency Penalty (빈도 패널티)',
-          value: settings.frequencyPenalty,
-          min: -2.0,
-          max: 2.0,
-          divisions: 40,
-          description: '같은 단어의 반복을 억제합니다',
-          onChanged: settingsProvider.setFrequencyPenalty,
-        ),
-
-        const SizedBox(height: 16),
-
-        _ParameterSlider(
-          label: 'Presence Penalty (존재 패널티)',
-          value: settings.presencePenalty,
-          min: -2.0,
-          max: 2.0,
-          divisions: 40,
-          description: '새로운 주제로 대화를 유도합니다',
-          onChanged: settingsProvider.setPresencePenalty,
         ),
 
         const SizedBox(height: 24),
@@ -1381,63 +793,6 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-    );
-  }
-}
-
-class _ParameterSlider extends StatelessWidget {
-  final String label;
-  final double value;
-  final double min;
-  final double max;
-  final int divisions;
-  final String description;
-  final ValueChanged<double> onChanged;
-
-  const _ParameterSlider({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.description,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-            Text(
-              value.toStringAsFixed(2),
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          divisions: divisions,
-          onChanged: onChanged,
-        ),
-        Text(
-          description,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
     );
   }
 }
