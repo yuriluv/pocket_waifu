@@ -250,12 +250,14 @@ class Live2DOverlayService : Service() {
         override fun onActivityResumed(activity: Activity) {
             if (activity is MainActivity) {
                 isAppForeground = true
+                Live2DLogger.Overlay.d("앱 포그라운드 상태", "MainActivity resumed -> foreground=true")
                 updateTouchMode()
             }
         }
         override fun onActivityPaused(activity: Activity) {
             if (activity is MainActivity) {
                 isAppForeground = false
+                Live2DLogger.Overlay.d("앱 포그라운드 상태", "MainActivity paused -> foreground=false")
                 updateTouchMode()
             }
         }
@@ -321,10 +323,11 @@ class Live2DOverlayService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
             format = PixelFormat.TRANSLUCENT
             gravity = Gravity.TOP or Gravity.START
-            width = WindowManager.LayoutParams.MATCH_PARENT
-            height = WindowManager.LayoutParams.MATCH_PARENT
-            x = 0
-            y = 0
+            width = currentWidth
+            height = currentHeight
+            x = overlayParams.x
+            y = overlayParams.y
+            alpha = 1.0f
         }
     }
     
@@ -598,17 +601,14 @@ class Live2DOverlayService : Service() {
             isClickable = false
             isFocusable = false
             isFocusableInTouchMode = false
-            alpha = characterOpacity
+            alpha = resolveContentAlphaForCurrentWindow(characterOpacity)
         }
 
         val frameParams = FrameLayout.LayoutParams(
-            currentWidth,
-            currentHeight,
-            Gravity.TOP or Gravity.START,
-        ).apply {
-            leftMargin = overlayParams.x
-            topMargin = overlayParams.y
-        }
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER,
+        )
         renderRoot.addView(imageView, frameParams)
 
         imageRenderOverlayView = renderRoot
@@ -645,24 +645,35 @@ class Live2DOverlayService : Service() {
     }
 
     private fun updateImageRenderBounds() {
+        val renderView = imageRenderOverlayView ?: return
         val imageView = imageOverlayView ?: return
+        imageRenderParams.width = currentWidth
+        imageRenderParams.height = currentHeight
+        imageRenderParams.x = overlayParams.x
+        imageRenderParams.y = overlayParams.y
+        imageRenderParams.alpha = resolveWindowAlpha()
+
+        if (renderView.parent != null) {
+            try {
+                windowManager.updateViewLayout(renderView, imageRenderParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("이미지 렌더 bounds 업데이트 실패", e.message)
+            }
+        }
+
         val frameParams = imageView.layoutParams as? FrameLayout.LayoutParams
             ?: FrameLayout.LayoutParams(
-                currentWidth,
-                currentHeight,
-                Gravity.TOP or Gravity.START,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
             )
 
-        frameParams.width = currentWidth
-        frameParams.height = currentHeight
-        frameParams.leftMargin = overlayParams.x
-        frameParams.topMargin = overlayParams.y
+        frameParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+        frameParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+        frameParams.leftMargin = 0
+        frameParams.topMargin = 0
         imageView.layoutParams = frameParams
-        imageView.alpha = if (touchThroughEnabled && !isAppForeground) {
-            touchThroughAlpha
-        } else {
-            characterOpacity
-        }
+        imageView.alpha = resolveActiveContentAlpha()
     }
 
     private fun setOverlayMode(mode: String) {
@@ -1063,10 +1074,9 @@ class Live2DOverlayService : Service() {
         val normalizedAlpha = (alpha / 100f).coerceIn(0f, 1.0f)
         Live2DLogger.Overlay.d("터치스루 알파", "input=$alpha, applied=$normalizedAlpha")
         touchThroughAlpha = normalizedAlpha
-        
-        if (touchThroughEnabled && !isAppForeground) {
-            glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
-            imageOverlayView?.alpha = touchThroughAlpha
+
+        if (overlayView != null) {
+            updateTouchMode()
         }
     }
     
@@ -1075,9 +1085,8 @@ class Live2DOverlayService : Service() {
     private fun setCharacterOpacity(opacity: Float) {
         Live2DLogger.Overlay.d("캐릭터 투명도", "opacity=$opacity")
         characterOpacity = opacity.coerceIn(0f, 1f)
-        if (!(touchThroughEnabled && !isAppForeground)) {
-            glSurfaceView?.setCharacterOpacity(characterOpacity)
-            imageOverlayView?.alpha = characterOpacity
+        if (overlayView != null) {
+            updateTouchMode()
         }
     }
     
@@ -1277,16 +1286,20 @@ class Live2DOverlayService : Service() {
      */
     private fun updateTouchMode() {
         if (overlayView == null) return
+        val touchPassthroughActive = isTouchPassthroughActive()
+        val contentAlpha = resolveActiveContentAlpha()
 
-        syncAppForegroundState()
+        overlayParams.alpha = resolveWindowAlpha()
+        updateImageRenderTouchMode(touchPassthroughActive)
 
         if (currentOverlayMode == "image" && imageBasicModeEnabled) {
-            applyTouchPassthrough()
-            imageOverlayView?.alpha = if (touchThroughEnabled && !isAppForeground) {
-                touchThroughAlpha
+            if (touchPassthroughActive) {
+                applyTouchPassthrough()
             } else {
-                characterOpacity
+                applyTouchReceiving()
             }
+            imageOverlayView?.alpha = contentAlpha
+            updateImageRenderBounds()
             overlayView?.let {
                 try {
                     windowManager.updateViewLayout(it, overlayParams)
@@ -1294,25 +1307,23 @@ class Live2DOverlayService : Service() {
                     Live2DLogger.Overlay.w("기본 오버레이 터치 모드 업데이트 실패", e.message)
                 }
             }
+            Live2DLogger.Overlay.d(
+                "기본 이미지 터치 모드",
+                "passThrough=$touchPassthroughActive, windowAlpha=${overlayParams.alpha}, contentAlpha=$contentAlpha",
+            )
             return
         }
-        
-        overlayParams.alpha = 1.0f
-        
-        if (touchThroughEnabled) {
-            if (isAppForeground) {
-                applyTouchReceiving()
-                glSurfaceView?.setCharacterOpacity(characterOpacity)
-                imageOverlayView?.alpha = characterOpacity
-            } else {
-                applyTouchPassthrough()
-                glSurfaceView?.setCharacterOpacity(touchThroughAlpha)
-                imageOverlayView?.alpha = touchThroughAlpha
-            }
+
+        if (touchPassthroughActive) {
+            applyTouchPassthrough()
         } else {
             applyTouchReceiving()
-            glSurfaceView?.setCharacterOpacity(characterOpacity)
-            imageOverlayView?.alpha = characterOpacity
+        }
+
+        glSurfaceView?.setCharacterOpacity(contentAlpha)
+        imageOverlayView?.alpha = contentAlpha
+        if (currentOverlayMode == "image") {
+            updateImageRenderBounds()
         }
         
         overlayView?.let {
@@ -1320,6 +1331,55 @@ class Live2DOverlayService : Service() {
                 windowManager.updateViewLayout(it, overlayParams)
             } catch (e: Exception) {
                 Live2DLogger.Overlay.w("터치 모드 업데이트 실패", e.message)
+            }
+        }
+
+        Live2DLogger.Overlay.d(
+            "터치 모드 적용",
+            "passThrough=$touchPassthroughActive, overlayMode=$currentOverlayMode, windowAlpha=${overlayParams.alpha}, contentAlpha=$contentAlpha",
+        )
+    }
+
+    private fun isTouchPassthroughActive(): Boolean {
+        return touchThroughEnabled
+    }
+
+    private fun resolveWindowAlpha(): Float {
+        return if (isTouchPassthroughActive()) MAX_OVERLAY_ALPHA else 1.0f
+    }
+
+    private fun resolveContentAlphaForCurrentWindow(targetAlpha: Float): Float {
+        val desiredAlpha = targetAlpha.coerceIn(0f, 1f)
+        val windowAlpha = resolveWindowAlpha()
+        if (windowAlpha <= 0f) {
+            return 0f
+        }
+        return (desiredAlpha / windowAlpha).coerceIn(0f, 1f)
+    }
+
+    private fun resolveActiveContentAlpha(): Float {
+        val targetAlpha = if (isTouchPassthroughActive()) {
+            touchThroughAlpha
+        } else {
+            characterOpacity
+        }
+        return resolveContentAlphaForCurrentWindow(targetAlpha)
+    }
+
+    private fun updateImageRenderTouchMode(touchPassthroughActive: Boolean) {
+        val renderView = imageRenderOverlayView ?: return
+        imageRenderParams.flags = if (touchPassthroughActive) {
+            imageRenderParams.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        } else {
+            imageRenderParams.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        }
+        imageRenderParams.alpha = resolveWindowAlpha()
+
+        if (renderView.parent != null) {
+            try {
+                windowManager.updateViewLayout(renderView, imageRenderParams)
+            } catch (e: Exception) {
+                Live2DLogger.Overlay.w("이미지 렌더 터치 모드 업데이트 실패", e.message)
             }
         }
     }
@@ -1340,7 +1400,7 @@ class Live2DOverlayService : Service() {
                 Live2DLogger.Overlay.w("터치 패스스루 적용 실패", e.message)
             }
         }
-        Live2DLogger.Overlay.d("터치 모드", "패스스루 (앱 배경)")
+        Live2DLogger.Overlay.d("터치 모드", "패스스루 (항상 활성화)")
     }
     
     /**
@@ -1361,7 +1421,7 @@ class Live2DOverlayService : Service() {
         }
         
         setupDragListener()
-        Live2DLogger.Overlay.d("터치 모드", "수신 (앱 전경, 드래그 가능)")
+        Live2DLogger.Overlay.d("터치 모드", "수신 (터치스루 비활성화)")
     }
     
     private fun setPosition(x: Int, y: Int) {
