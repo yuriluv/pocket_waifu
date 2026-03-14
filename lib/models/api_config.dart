@@ -6,8 +6,10 @@ import 'package:uuid/uuid.dart';
 
 enum ApiFormat {
   openAICompatible,
+  openAIResponses,
   anthropic, // Anthropic Claude
   google, // Google Gemini
+  googleCodeAssist,
   openRouter, // OpenRouter
   custom,
 }
@@ -20,6 +22,7 @@ class ApiConfig {
   String modelName;
   Map<String, String> customHeaders;
   Map<String, dynamic> additionalParams;
+  String? oauthAccountId;
   bool isDefault;
   DateTime createdAt;
 
@@ -51,6 +54,7 @@ class ApiConfig {
     this.modelName = '',
     Map<String, String>? customHeaders,
     Map<String, dynamic>? additionalParams,
+    this.oauthAccountId,
     this.isDefault = false,
     DateTime? createdAt,
     this.format = ApiFormat.openAICompatible,
@@ -80,9 +84,11 @@ class ApiConfig {
 
   bool get hasApiKey => apiKey.isNotEmpty;
 
+  bool get usesOAuth => oauthAccountId != null && oauthAccountId!.isNotEmpty;
+
   bool get hasValidUrl => baseUrl.isNotEmpty && baseUrl.startsWith('http');
 
-  bool get isConfigured => hasApiKey && hasValidUrl && modelName.isNotEmpty;
+  bool get isConfigured => (hasApiKey || usesOAuth) && hasValidUrl && modelName.isNotEmpty;
 
   Map<String, dynamic> toMap() {
     return {
@@ -93,6 +99,7 @@ class ApiConfig {
       'modelName': modelName,
       'customHeaders': customHeaders,
       'additionalParams': additionalParams,
+      'oauthAccountId': oauthAccountId,
       'isDefault': isDefault,
       'createdAt': createdAt.toIso8601String(),
       'format': format.name,
@@ -137,6 +144,7 @@ class ApiConfig {
       additionalParams: Map<String, dynamic>.from(
         map['additionalParams'] ?? _defaultParams(),
       ),
+      oauthAccountId: map['oauthAccountId'] as String?,
       isDefault: map['isDefault'] ?? false,
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'])
@@ -168,6 +176,7 @@ class ApiConfig {
     String? modelName,
     Map<String, String>? customHeaders,
     Map<String, dynamic>? additionalParams,
+    String? oauthAccountId,
     bool? isDefault,
     DateTime? createdAt,
     ApiFormat? format,
@@ -186,6 +195,7 @@ class ApiConfig {
     double? inputPrice,
     double? outputPrice,
     double? cachedPrice,
+    bool clearOAuthAccount = false,
   }) {
     return ApiConfig(
       id: id ?? this.id,
@@ -195,6 +205,7 @@ class ApiConfig {
       modelName: modelName ?? this.modelName,
       customHeaders: customHeaders ?? Map.from(this.customHeaders),
       additionalParams: additionalParams ?? Map.from(this.additionalParams),
+      oauthAccountId: clearOAuthAccount ? null : (oauthAccountId ?? this.oauthAccountId),
       isDefault: isDefault ?? this.isDefault,
       createdAt: createdAt ?? this.createdAt,
       format: format ?? this.format,
@@ -313,7 +324,7 @@ class ApiConfig {
     String? modelName,
     Map<String, String>? customHeaders,
     Map<String, dynamic>? additionalParams,
-  }) {
+    }) {
     return ApiConfig(
       id: id,
       name: name ?? 'Custom API',
@@ -323,6 +334,52 @@ class ApiConfig {
       customHeaders: customHeaders ?? {},
       additionalParams: additionalParams ?? _defaultParams(),
       isDefault: false,
+    );
+  }
+
+  factory ApiConfig.codexOAuth({
+    required String oauthAccountId,
+    required String modelName,
+    String? name,
+  }) {
+    return ApiConfig(
+      name: name ?? 'Codex OAuth',
+      baseUrl: 'https://chatgpt.com/backend-api/codex/responses',
+      apiKey: '',
+      modelName: modelName,
+      customHeaders: const {},
+      additionalParams: const {},
+      oauthAccountId: oauthAccountId,
+      isDefault: false,
+      format: ApiFormat.openAIResponses,
+      hasFirstSystemPrompt: true,
+      requiresAlternateRole: false,
+      supportsVision: true,
+    );
+  }
+
+  factory ApiConfig.geminiCodeAssistOAuth({
+    required String oauthAccountId,
+    required String modelName,
+    String? name,
+    String? cloudProjectId,
+  }) {
+    return ApiConfig(
+      name: name ?? 'Gemini CLI OAuth',
+      baseUrl: 'https://cloudcode-pa.googleapis.com/v1internal:generateContent',
+      apiKey: '',
+      modelName: modelName,
+      customHeaders: const {},
+      additionalParams: {
+        if (cloudProjectId != null && cloudProjectId.isNotEmpty)
+          'googleCloudProject': cloudProjectId,
+      },
+      oauthAccountId: oauthAccountId,
+      isDefault: false,
+      format: ApiFormat.googleCodeAssist,
+      hasFirstSystemPrompt: true,
+      requiresAlternateRole: false,
+      supportsVision: true,
     );
   }
 
