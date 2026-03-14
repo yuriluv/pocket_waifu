@@ -8,8 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/api_config.dart';
 import '../models/character.dart';
+import '../models/oauth_account.dart';
 import '../models/settings.dart';
 import '../features/image_overlay/data/services/image_overlay_character_sync_service.dart';
+import '../services/oauth_account_service.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _settingsKey = 'app_settings';
@@ -24,6 +26,7 @@ class SettingsProvider extends ChangeNotifier {
 
   List<ApiConfig> _apiConfigs = [];
   String? _activeApiConfigId;
+  List<OAuthAccount> _oauthAccounts = [];
 
   AppSettings get settings => _settings;
   Character get character => _character;
@@ -31,6 +34,7 @@ class SettingsProvider extends ChangeNotifier {
   String get userName => _userName;
 
   List<ApiConfig> get apiConfigs => List.unmodifiable(_apiConfigs);
+  List<OAuthAccount> get oauthAccounts => List.unmodifiable(_oauthAccounts);
   String? get activeApiConfigId => _activeApiConfigId;
 
   ApiConfig? get activeApiConfig {
@@ -86,6 +90,12 @@ class SettingsProvider extends ChangeNotifier {
         if (_apiConfigs.isNotEmpty) {
           _activeApiConfigId = _apiConfigs.first.id;
         }
+      }
+
+      _oauthAccounts = await OAuthAccountService.instance.loadAccounts();
+      final cleanedUp = _cleanupDanglingOAuthReferences();
+      if (cleanedUp) {
+        await saveSettings();
       }
     } catch (e) {
       debugPrint('설정 불러오기 실패: $e');
@@ -328,5 +338,77 @@ class SettingsProvider extends ChangeNotifier {
 
   void resetCharacter() {
     updateCharacter(Character.defaultCharacter());
+  }
+
+  OAuthAccount? getOAuthAccountById(String? id) {
+    if (id == null || id.isEmpty) {
+      return null;
+    }
+    for (final account in _oauthAccounts) {
+      if (account.id == id) {
+        return account;
+      }
+    }
+    return null;
+  }
+
+  Future<void> reloadOAuthAccounts() async {
+    _oauthAccounts = await OAuthAccountService.instance.loadAccounts();
+    final hadCleanup = _cleanupDanglingOAuthReferences();
+    if (hadCleanup) {
+      await saveSettings();
+    }
+    notifyListeners();
+  }
+
+  Future<void> upsertOAuthAccount(OAuthAccount account) async {
+    await OAuthAccountService.instance.upsertAccount(account);
+    _oauthAccounts = await OAuthAccountService.instance.loadAccounts();
+    notifyListeners();
+  }
+
+  Future<void> updateOAuthAccountMetadata({
+    required String accountId,
+    String? label,
+    String? cloudProjectId,
+  }) async {
+    await OAuthAccountService.instance.updateAccountMetadata(
+      accountId: accountId,
+      label: label,
+      cloudProjectId: cloudProjectId,
+    );
+    _oauthAccounts = await OAuthAccountService.instance.loadAccounts();
+    notifyListeners();
+  }
+
+  Future<void> removeOAuthAccount(String accountId) async {
+    await OAuthAccountService.instance.removeAccount(accountId);
+    _oauthAccounts = await OAuthAccountService.instance.loadAccounts();
+    bool mutated = false;
+    _apiConfigs = _apiConfigs.map((config) {
+      if (config.oauthAccountId != accountId) {
+        return config;
+      }
+      mutated = true;
+      return config.copyWith(clearOAuthAccount: true);
+    }).toList(growable: true);
+    if (mutated) {
+      await saveSettings();
+    }
+    notifyListeners();
+  }
+
+  bool _cleanupDanglingOAuthReferences() {
+    final validIds = _oauthAccounts.map((account) => account.id).toSet();
+    bool mutated = false;
+    _apiConfigs = _apiConfigs.map((config) {
+      final accountId = config.oauthAccountId;
+      if (accountId == null || validIds.contains(accountId)) {
+        return config;
+      }
+      mutated = true;
+      return config.copyWith(clearOAuthAccount: true);
+    }).toList(growable: true);
+    return mutated;
   }
 }
