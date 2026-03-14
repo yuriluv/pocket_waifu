@@ -40,6 +40,8 @@ class ImageOverlayController extends ChangeNotifier {
   bool get isAdvancedOverlayMode => !isBasicOverlayMode;
   bool get isLoading => _state == ImageOverlayControllerState.loading;
   String? get errorMessage => _errorMessage;
+  String? get folderIssueMessage => _storage.lastScanMessage;
+  bool get needsFolderAccessPermission => _storage.needsStoragePermission;
 
   bool get hasFolderSelected => _storage.hasFolderSelected;
   String? get folderPath => _storage.rootPath;
@@ -100,6 +102,20 @@ class ImageOverlayController extends ChangeNotifier {
     _settings = _sanitizeSelection(_settings);
     await _settings.save();
     notifyListeners();
+  }
+
+  Future<void> requestFolderAccessPermission() async {
+    final granted = await _storage.requestStoragePermission();
+    if (granted && _storage.rootPath != null) {
+      _characters = await _storage.scanCharacters();
+      _settings = _sanitizeSelection(_settings);
+      await _settings.save();
+    }
+    notifyListeners();
+  }
+
+  Future<void> openFolderAccessSettings() async {
+    await _storage.openStoragePermissionSettings();
   }
 
   Future<void> pickFolder() async {

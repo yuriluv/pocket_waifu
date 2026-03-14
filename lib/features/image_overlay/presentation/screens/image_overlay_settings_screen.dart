@@ -91,6 +91,15 @@ class _FolderSection extends StatelessWidget {
               controller.folderPath ?? '선택된 폴더 없음',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            if (controller.folderIssueMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                controller.folderIssueMessage!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
@@ -109,6 +118,25 @@ class _FolderSection extends StatelessWidget {
                 ),
               ],
             ),
+            if (controller.needsFolderAccessPermission) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: controller.requestFolderAccessPermission,
+                    icon: const Icon(Icons.lock_open),
+                    label: const Text('권한 다시 요청'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: controller.openFolderAccessSettings,
+                    icon: const Icon(Icons.settings),
+                    label: const Text('앱 설정 열기'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
