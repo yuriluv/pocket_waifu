@@ -11,6 +11,8 @@ import '../providers/screen_share_provider.dart';
 import '../services/adb_screen_capture_service.dart';
 import '../services/unified_capture_service.dart';
 
+const List<int> _maxResolutionOptions = <int>[720, 1024, 1080, 1440];
+
 class ScreenShareSettingsScreen extends StatelessWidget {
   const ScreenShareSettingsScreen({super.key});
 
@@ -20,6 +22,11 @@ class ScreenShareSettingsScreen extends StatelessWidget {
     final globalRuntimeProvider = context.watch<GlobalRuntimeProvider>();
     final masterEnabled = globalRuntimeProvider.isEnabled;
     final settings = provider.settings;
+    final selectedMaxResolution = _maxResolutionOptions.contains(
+      settings.maxResolution,
+    )
+        ? settings.maxResolution
+        : 1080;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Screen Share Settings')),
@@ -166,13 +173,13 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Max resolution'),
                           trailing: DropdownButton<int>(
-                            value: settings.maxResolution,
+                            value: selectedMaxResolution,
                             onChanged: (value) {
                               if (value != null) {
                                 provider.setMaxResolution(value);
                               }
                             },
-                            items: const [720, 1024, 1440]
+                            items: _maxResolutionOptions
                                 .map(
                                   (size) => DropdownMenuItem(
                                     value: size,
