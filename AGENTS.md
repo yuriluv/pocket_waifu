@@ -3,34 +3,49 @@
 - Do NOT run `flutter build apk --debug` for code verification or testing purposes.
 - Skip APK builds during validation steps.
 
-## Feature Docs (Read Before Editing)
+## Architecture Docs (Read Before Editing)
 
-When touching a feature, read its colocated documentation first and keep docs in sync with code changes.
+When touching a feature, read the centralized docs first, implement against those contracts, and keep docs in sync with code changes.
 
-- `lib/services/notification_coordinator.md`
-- `lib/services/proactive_response_service.md`
-- `lib/services/agent_mode_service.md`
-- `lib/providers/notification_settings_provider.md`
-- `lib/features/live2d/README.md`
-- `lib/features/image_overlay/README.md`
-- `lib/features/live2d_llm/README.md`
-- `lib/features/lua/README.md`
-- `lib/features/regex/README.md`
+- `docs/QUICK_CONTEXT.md`
+- `docs/START_HERE.md`
+- `docs/SYSTEM_ARCHITECTURE.md`
+- `docs/FEATURES/LLM_AND_PROMPTS.md`
+- `docs/FEATURES/OVERLAYS.md`
+- `docs/FEATURES/LIVE2D_RUNTIME.md`
+- `docs/FEATURES/TRANSFORMS.md`
+- `docs/FEATURES/NOTIFICATIONS.md`
+- `docs/FEATURES/SCREENSHOTS.md`
+- `docs/EXTENSION_PLAYBOOK.md`
 
-Each feature doc should cover at least:
-- Overview
-- Internal/main structure
+Each architecture doc should preserve at least:
+- Ownership / entry points
+- Main runtime flow
 - Cross-feature links
-- Known risks
+- Extension guidance and known risks
+
+## Docs Gate (Mandatory For Feature Work)
+
+For feature requests, architecture changes, runtime behavior changes, or platform integrations:
+
+1. Read the relevant docs before editing code.
+2. Treat the docs as the source of truth for ownership and runtime flow.
+3. If the docs are missing or stale, update the docs first or alongside the implementation.
+4. Do not finish a feature change while leaving the matching docs outdated.
 
 ## Default Delivery Workflow
 
 For feature/bugfix implementation requests, use this execution sequence unless user explicitly asks otherwise:
-1. Analyze and map impact scope.
-2. Implement and review code changes.
-3. Commit and push.
-4. Trigger Android release via GitHub Actions (not local Flutter APK build).
-5. Report commit hash, workflow run URL, and release/APK URL.
+1. Analyze the request and map impact scope.
+2. Read the relevant architecture docs before implementation.
+3. Implement and review code changes.
+4. Update the matching docs so the final behavior and ownership are current.
+5. Commit and push.
+6. If the user explicitly wants a release, trigger the Android release pipeline via GitHub Actions (not local Flutter APK build), then report the workflow run URL and release/APK URL.
+
+Short form:
+- feature request -> docs check -> implementation -> docs update -> commit/push
+- optional release only when the user explicitly wants the Android Actions release pipeline
 
 ## Response Tail Requirement
 
