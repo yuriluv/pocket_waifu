@@ -6,24 +6,66 @@ import '../models/prompt_preset_reference.dart';
 import '../providers/agent_prompt_preset_provider.dart';
 import '../providers/global_runtime_provider.dart';
 import '../providers/notification_settings_provider.dart';
+import '../providers/prompt_preset_provider.dart';
 import '../providers/settings_provider.dart';
+import '../utils/ui_feedback.dart';
 
-class AgentModeSettingsScreen extends StatelessWidget {
+class AgentModeSettingsScreen extends StatefulWidget {
   const AgentModeSettingsScreen({super.key});
+
+  @override
+  State<AgentModeSettingsScreen> createState() =>
+      _AgentModeSettingsScreenState();
+}
+
+class _AgentModeSettingsScreenState extends State<AgentModeSettingsScreen> {
+  late final TextEditingController _proactiveScheduleController;
+
+  @override
+  void initState() {
+    super.initState();
+    final scheduleText = context
+        .read<NotificationSettingsProvider>()
+        .proactiveSettings
+        .scheduleText;
+    _proactiveScheduleController = TextEditingController(text: scheduleText);
+  }
+
+  @override
+  void dispose() {
+    _proactiveScheduleController.dispose();
+    super.dispose();
+  }
+
+  void _syncProactiveScheduleText(String scheduleText) {
+    if (_proactiveScheduleController.text == scheduleText) return;
+    _proactiveScheduleController.value = TextEditingValue(
+      text: scheduleText,
+      selection: TextSelection.collapsed(offset: scheduleText.length),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final notificationProvider = context.watch<NotificationSettingsProvider>();
     final runtimeProvider = context.watch<GlobalRuntimeProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
+    final promptPresetProvider = context.watch<PromptPresetProvider>();
     final agentPresetProvider = context.watch<AgentPromptPresetProvider>();
 
     final modeSettings = notificationProvider.agentModeSettings;
+    final proactiveSettings = notificationProvider.proactiveSettings;
     final apiConfigs = settingsProvider.apiConfigs;
-    final promptPresets = agentPresetProvider.references;
+    final promptPresets = promptPresetProvider.presets;
+    final agentPromptPresets = agentPresetProvider.references;
+
+    notificationProvider.rebindPromptPresets(promptPresets);
+    notificationProvider.rebindAgentPromptPresets(agentPromptPresets);
+    notificationProvider.rebindApiPresets(apiConfigs);
+    _syncProactiveScheduleText(proactiveSettings.scheduleText);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agent Mode')),
+      appBar: AppBar(title: const Text('에이전트 모드 설정')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -36,7 +78,7 @@ class AgentModeSettingsScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
-                'All features are paused. Toggle Master Switch to resume.',
+                '전체 기능이 일시 중지되었습니다. 전체 기능 On/Off를 켜면 다시 동작합니다.',
               ),
             ),
 
@@ -44,9 +86,9 @@ class AgentModeSettingsScreen extends StatelessWidget {
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('Agent Mode Enabled'),
+                  title: const Text('에이전트 모드 사용'),
                   subtitle: const Text(
-                    'Run periodic observe-reason-act loop independently from proactive replies.',
+                    '선응답과 별개로 관찰-판단-행동 루프를 주기적으로 실행합니다.',
                   ),
                   value: modeSettings.enabled,
                   onChanged: runtimeProvider.isEnabled
@@ -59,16 +101,16 @@ class AgentModeSettingsScreen extends StatelessWidget {
                   child: Column(
                     children: [
                       _PresetDropdown(
-                        label: 'Agent Prompt Preset',
+                        label: '에이전트 프롬프트 프리셋',
                         value: modeSettings.promptPresetId,
-                        presets: promptPresets,
+                        presets: agentPromptPresets,
                         onChanged: runtimeProvider.isEnabled
                             ? notificationProvider.setAgentPromptPreset
                             : null,
                       ),
                       const SizedBox(height: 12),
                       _ApiPresetDropdown(
-                        label: 'Agent API Preset',
+                        label: '에이전트 API 프리셋',
                         value: modeSettings.apiPresetId,
                         apiConfigs: apiConfigs,
                         onChanged: runtimeProvider.isEnabled
@@ -91,20 +133,92 @@ class AgentModeSettingsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Trigger Interval: ${modeSettings.triggerIntervalMinutes} min',
+                    '선응답(프로액티브) 설정',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  Slider(
-                    value: modeSettings.triggerIntervalMinutes.toDouble(),
-                    min: 1,
-                    max: 120,
-                    divisions: 119,
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('선응답 사용'),
+                    subtitle: const Text('조건 충족 시 자동 선응답을 실행합니다.'),
+                    value: proactiveSettings.enabled,
                     onChanged: runtimeProvider.isEnabled
-                        ? (value) => notificationProvider
-                              .setAgentTriggerIntervalMinutes(value.round())
+                        ? notificationProvider.setProactiveEnabled
                         : null,
                   ),
                   const SizedBox(height: 8),
-                  Text('Max Iterations: ${modeSettings.maxIterations}'),
+                  TextField(
+                    controller: _proactiveScheduleController,
+                    maxLines: 6,
+                    enabled: runtimeProvider.isEnabled,
+                    decoration: const InputDecoration(
+                      labelText: '프로액티브 스케줄',
+                      border: OutlineInputBorder(),
+                      helperText:
+                          '예: base=30m\ndeviation=10\noverlayon=-20m\nscreenlandscape=+20m\nscreenoff=inf',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.check),
+                      label: const Text('스케줄 검증 및 저장'),
+                      onPressed: runtimeProvider.isEnabled
+                          ? () {
+                              final scheduleText =
+                                  _proactiveScheduleController.text.trim();
+                              try {
+                                notificationProvider.validateProactiveSchedule(
+                                  scheduleText,
+                                );
+                                notificationProvider.updateProactiveSchedule(
+                                  scheduleText,
+                                );
+                                context.showInfoSnackBar(
+                                  '프로액티브 스케줄을 저장했습니다.',
+                                );
+                              } catch (e) {
+                                context.showErrorSnackBar(e.toString());
+                              }
+                            }
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _PresetDropdown(
+                    label: '프로액티브 프롬프트 프리셋',
+                    value: proactiveSettings.promptPresetId,
+                    presets: promptPresets,
+                    onChanged: runtimeProvider.isEnabled
+                        ? notificationProvider.setProactivePromptPreset
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _ApiPresetDropdown(
+                    label: '프로액티브 API 프리셋',
+                    value: proactiveSettings.apiPresetId,
+                    apiConfigs: apiConfigs,
+                    onChanged: runtimeProvider.isEnabled
+                        ? notificationProvider.setProactiveApiPreset
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('최대 반복 횟수: ${modeSettings.maxIterations}회'),
                   Slider(
                     value: modeSettings.maxIterations.toDouble(),
                     min: 1,
@@ -116,7 +230,7 @@ class AgentModeSettingsScreen extends StatelessWidget {
                         : null,
                   ),
                   const SizedBox(height: 8),
-                  Text('Loop Timeout: ${modeSettings.loopTimeoutSeconds} sec'),
+                  Text('루프 제한 시간: ${modeSettings.loopTimeoutSeconds}초'),
                   Slider(
                     value: modeSettings.loopTimeoutSeconds.toDouble(),
                     min: 30,
@@ -138,7 +252,7 @@ class AgentModeSettingsScreen extends StatelessWidget {
             child: const Padding(
               padding: EdgeInsets.all(12),
               child: Text(
-                'Agent Mode can issue multiple API calls per trigger. Keep max iterations conservative to control cost.',
+                '에이전트 모드는 한 번의 실행에서 여러 API 호출이 발생할 수 있습니다. 비용 관리를 위해 최대 반복 횟수는 보수적으로 설정하세요.',
               ),
             ),
           ),
