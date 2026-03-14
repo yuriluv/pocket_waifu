@@ -18,6 +18,7 @@ import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/oauth_account_service.dart';
 import '../services/prompt_builder.dart';
 import '../services/release_log_service.dart';
+import '../utils/api_preset_parameter_policy.dart';
 
 class ApiCancelledException implements Exception {
   const ApiCancelledException([this.message = 'Request was cancelled.']);
@@ -66,16 +67,15 @@ class ApiService {
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
 
   static const String _anthropicVersion = '2023-06-01';
+  static const String _defaultResponsesInstructions =
+      'You are a helpful assistant.';
+  static const String _codexOriginator = 'codex_cli_rs';
+  static const String _codexResponsesBeta = 'responses=experimental';
+  static const String _codexUserAgent = 'PocketWaifu/Android';
   static const Set<String> _tokenLimitKeys = {
     'max_tokens',
     'max_completion_tokens',
     'max_output_tokens',
-  };
-  static const Set<String> _runtimeControlledParamKeys = {
-    'temperature',
-    'top_p',
-    'frequency_penalty',
-    'presence_penalty',
   };
 
   ApiRequestHandle createRequestHandle() => ApiRequestHandle();
@@ -117,8 +117,8 @@ class ApiService {
       return await _sendToOpenAIResponses(
         apiConfig: apiConfig,
         messages: transformedMessages,
-        settings: settings,
         authToken: resolvedToken,
+        oauthAccount: resolvedCredential?.account,
         requestHandle: requestHandle,
       );
     }
@@ -505,8 +505,8 @@ class ApiService {
   Future<String> _sendToOpenAIResponses({
     required ApiConfig apiConfig,
     required List<Map<String, dynamic>> messages,
-    required AppSettings settings,
     required String authToken,
+    required OAuthAccount? oauthAccount,
     ApiRequestHandle? requestHandle,
   }) async {
     requestHandle?.throwIfCancelled();
@@ -514,14 +514,13 @@ class ApiService {
     final requestBody = _buildOpenAIResponsesRequestBody(
       apiConfig: apiConfig,
       messages: messages,
-      settings: settings,
     );
 
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $authToken',
-      ...apiConfig.customHeaders,
-    };
+    final headers = _buildOpenAIResponsesHeaders(
+      apiConfig: apiConfig,
+      authToken: authToken,
+      oauthAccount: oauthAccount,
+    );
 
     final client = requestHandle?.client ?? http.Client();
     try {
@@ -535,8 +534,10 @@ class ApiService {
       );
       final responseBody = _decodeUtf8ResponseBody(response.bodyBytes);
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(responseBody);
-        final content = _extractResponsesTextContent(data);
+        final content = _extractResponsesResponseContent(
+          responseBody: responseBody,
+          contentType: response.headers['content-type'],
+        );
         return content.trim();
       }
       throw Exception(
@@ -676,6 +677,68 @@ class ApiService {
     return buffer.join('\n');
   }
 
+  String _extractResponsesResponseContent({
+    required String responseBody,
+    String? contentType,
+  }) {
+    final normalizedContentType = contentType?.toLowerCase() ?? '';
+    if (normalizedContentType.contains('text/event-stream')) {
+      return _extractResponsesStreamContent(responseBody);
+    }
+    final Map<String, dynamic> data = jsonDecode(responseBody);
+    return _extractResponsesTextContent(data);
+  }
+
+  String _extractResponsesStreamContent(String responseBody) {
+    final buffer = StringBuffer();
+    Map<String, dynamic>? completedResponse;
+
+    for (final rawLine in const LineSplitter().convert(responseBody)) {
+      final line = rawLine.trim();
+      if (!line.startsWith('data:')) {
+        continue;
+      }
+      final data = line.substring(5).trim();
+      if (data.isEmpty || data == '[DONE]') {
+        continue;
+      }
+
+      Map<String, dynamic> event;
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map<String, dynamic>) {
+          event = decoded;
+        } else if (decoded is Map) {
+          event = Map<String, dynamic>.from(decoded);
+        } else {
+          continue;
+        }
+      } catch (_) {
+        continue;
+      }
+
+      final type = event['type']?.toString();
+      if ((type == 'response.output_text.delta' ||
+              type == 'response.text.delta') &&
+          event['delta'] is String) {
+        buffer.write(event['delta'] as String);
+        continue;
+      }
+
+      if (type == 'response.completed' && event['response'] is Map) {
+        completedResponse = Map<String, dynamic>.from(event['response'] as Map);
+      }
+    }
+
+    if (buffer.isNotEmpty) {
+      return buffer.toString();
+    }
+    if (completedResponse != null) {
+      return _extractResponsesTextContent(completedResponse);
+    }
+    throw const FormatException('Responses stream did not contain text output.');
+  }
+
   String _extractGoogleCodeAssistTextContent(Map<String, dynamic> payload) {
     final response = payload['response'];
     if (response is! Map) {
@@ -807,42 +870,152 @@ class ApiService {
     required List<Map<String, dynamic>> messages,
     required AppSettings settings,
   }) {
-    // Keep preset-specific extras, but never let them overwrite runtime sliders.
+    final runtimeParams = _runtimeAdditionalParams(apiConfig);
     final Map<String, dynamic> requestBody = {
-      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
+      ..._passthroughAdditionalParams(runtimeParams),
       'model': apiConfig.modelName,
       'messages': messages,
-      'temperature': settings.temperature,
-      'top_p': settings.topP,
-      'frequency_penalty': settings.frequencyPenalty,
-      'presence_penalty': settings.presencePenalty,
     };
+
+    _setIfPresent(
+      requestBody,
+      'temperature',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.temperatureKey) ??
+          settings.temperature,
+    );
+    _setIfPresent(
+      requestBody,
+      'top_p',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.topPKey) ??
+          settings.topP,
+    );
+    _setIfPresent(
+      requestBody,
+      'frequency_penalty',
+      _readDoubleParam(
+        runtimeParams,
+        ApiPresetParameterPolicy.frequencyPenaltyKey,
+      ) ??
+          settings.frequencyPenalty,
+    );
+    _setIfPresent(
+      requestBody,
+      'presence_penalty',
+      _readDoubleParam(
+        runtimeParams,
+        ApiPresetParameterPolicy.presencePenaltyKey,
+      ) ??
+          settings.presencePenalty,
+    );
 
     final tokenKey = _preferredTokenLimitKey(
       apiConfig: apiConfig,
       isAnthropic: false,
     );
-    requestBody[tokenKey] = settings.maxTokens;
+    final maxTokens = _readMaxTokensParam(runtimeParams) ?? settings.maxTokens;
+    requestBody[tokenKey] = maxTokens;
 
     return requestBody;
+  }
+
+  @visibleForTesting
+  Map<String, dynamic> buildOpenAICompatibleRequestBodyForTest({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+    required AppSettings settings,
+  }) {
+    return _buildOpenAICompatibleRequestBody(
+      apiConfig: apiConfig,
+      messages: messages,
+      settings: settings,
+    );
   }
 
   Map<String, dynamic> _buildOpenAIResponsesRequestBody({
     required ApiConfig apiConfig,
     required List<Map<String, dynamic>> messages,
-    required AppSettings settings,
   }) {
+    final instructions = _buildResponsesInstructions(messages);
+    final runtimeParams = _runtimeAdditionalParams(apiConfig);
     final requestBody = <String, dynamic>{
-      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
+      ..._passthroughAdditionalParams(runtimeParams),
       'model': apiConfig.modelName,
       'input': _toResponsesInput(messages),
-      'temperature': settings.temperature,
-      'top_p': settings.topP,
-      'max_output_tokens': settings.maxTokens,
-      'presence_penalty': settings.presencePenalty,
-      'frequency_penalty': settings.frequencyPenalty,
+      'instructions': instructions,
+      'store': false,
+      'stream': true,
     };
     return requestBody;
+  }
+
+  @visibleForTesting
+  Map<String, dynamic> buildOpenAIResponsesRequestBodyForTest({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+  }) {
+    return _buildOpenAIResponsesRequestBody(
+      apiConfig: apiConfig,
+      messages: messages,
+    );
+  }
+
+  @visibleForTesting
+  Map<String, String> buildOpenAIResponsesHeadersForTest({
+    required ApiConfig apiConfig,
+    required String authToken,
+    required OAuthAccount? oauthAccount,
+  }) {
+    return _buildOpenAIResponsesHeaders(
+      apiConfig: apiConfig,
+      authToken: authToken,
+      oauthAccount: oauthAccount,
+    );
+  }
+
+  @visibleForTesting
+  String extractResponsesResponseContentForTest({
+    required String responseBody,
+    String? contentType,
+  }) {
+    return _extractResponsesResponseContent(
+      responseBody: responseBody,
+      contentType: contentType,
+    );
+  }
+
+  Map<String, String> _buildOpenAIResponsesHeaders({
+    required ApiConfig apiConfig,
+    required String authToken,
+    required OAuthAccount? oauthAccount,
+  }) {
+    final headers = <String, String>{
+      ...apiConfig.customHeaders,
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $authToken',
+    };
+    if (_isCodexResponsesRequest(apiConfig, oauthAccount)) {
+      headers['Accept'] = 'text/event-stream';
+      headers['originator'] = _codexOriginator;
+      headers['OpenAI-Beta'] = _codexResponsesBeta;
+      headers['User-Agent'] = _codexUserAgent;
+      final chatgptAccountId = oauthAccount?.chatgptAccountId;
+      if (chatgptAccountId != null && chatgptAccountId.trim().isNotEmpty) {
+        headers['ChatGPT-Account-Id'] = chatgptAccountId.trim();
+      }
+    }
+    return headers;
+  }
+
+  bool _isCodexResponsesRequest(ApiConfig apiConfig, OAuthAccount? oauthAccount) {
+    if (oauthAccount?.provider == OAuthAccountProvider.codex) {
+      return true;
+    }
+    final uri = Uri.tryParse(apiConfig.baseUrl);
+    if (uri == null) {
+      return false;
+    }
+    return uri.host == 'chatgpt.com' &&
+        uri.path.contains('/backend-api/codex/responses');
   }
 
   Map<String, dynamic> _buildGoogleCodeAssistRequestBody({
@@ -878,13 +1051,43 @@ class ApiService {
       });
     }
 
-    final generationConfig = <String, dynamic>{
-      'temperature': settings.temperature,
-      'topP': settings.topP,
-      'maxOutputTokens': settings.maxTokens,
-      'presencePenalty': settings.presencePenalty,
-      'frequencyPenalty': settings.frequencyPenalty,
-    };
+    final generationConfig = <String, dynamic>{};
+    final runtimeParams = _runtimeAdditionalParams(apiConfig);
+    _setIfPresent(
+      generationConfig,
+      'temperature',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.temperatureKey) ??
+          settings.temperature,
+    );
+    _setIfPresent(
+      generationConfig,
+      'topP',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.topPKey) ??
+          settings.topP,
+    );
+    _setIfPresent(
+      generationConfig,
+      'maxOutputTokens',
+      _readMaxTokensParam(runtimeParams) ?? settings.maxTokens,
+    );
+    _setIfPresent(
+      generationConfig,
+      'presencePenalty',
+      _readDoubleParam(
+        runtimeParams,
+        ApiPresetParameterPolicy.presencePenaltyKey,
+      ) ??
+          settings.presencePenalty,
+    );
+    _setIfPresent(
+      generationConfig,
+      'frequencyPenalty',
+      _readDoubleParam(
+        runtimeParams,
+        ApiPresetParameterPolicy.frequencyPenaltyKey,
+      ) ??
+          settings.frequencyPenalty,
+    );
     final project = _googleCloudProjectFor(apiConfig, oauthAccount);
 
     return {
@@ -913,15 +1116,30 @@ class ApiService {
     required List<Map<String, dynamic>> chatMessages,
     required AppSettings settings,
   }) {
-    // Anthropic also follows runtime settings first for shared parameters.
+    final runtimeParams = _runtimeAdditionalParams(apiConfig);
     final Map<String, dynamic> requestBody = {
-      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
+      ..._passthroughAdditionalParams(runtimeParams),
       'model': apiConfig.modelName,
-      'temperature': settings.temperature,
-      'top_p': settings.topP,
       'messages': chatMessages,
     };
-    requestBody['max_tokens'] = settings.maxTokens;
+
+    _setIfPresent(
+      requestBody,
+      'temperature',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.temperatureKey) ??
+          settings.temperature,
+    );
+    _setIfPresent(
+      requestBody,
+      'top_p',
+      _readDoubleParam(runtimeParams, ApiPresetParameterPolicy.topPKey) ??
+          settings.topP,
+    );
+    _setIfPresent(
+      requestBody,
+      'max_tokens',
+      _readMaxTokensParam(runtimeParams) ?? settings.maxTokens,
+    );
 
     return requestBody;
   }
@@ -929,13 +1147,46 @@ class ApiService {
   List<Map<String, dynamic>> _toResponsesInput(
     List<Map<String, dynamic>> messages,
   ) {
-    return messages.map((message) {
+    final input = <Map<String, dynamic>>[];
+    for (final message in messages) {
       final role = message['role']?.toString() ?? 'user';
-      return {
+      if (role == 'system') {
+        continue;
+      }
+      input.add({
         'role': role,
         'content': _toResponsesContent(message['content']),
-      };
-    }).toList(growable: false);
+      });
+    }
+    if (input.isEmpty) {
+      return const <Map<String, dynamic>>[
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'input_text', 'text': ''},
+          ],
+        },
+      ];
+    }
+    return input;
+  }
+
+  String _buildResponsesInstructions(List<Map<String, dynamic>> messages) {
+    final parts = <String>[];
+    for (final message in messages) {
+      final role = message['role']?.toString() ?? 'user';
+      if (role != 'system') {
+        continue;
+      }
+      final text = _extractTextOnlyContent(message['content']).trim();
+      if (text.isNotEmpty) {
+        parts.add(text);
+      }
+    }
+    if (parts.isEmpty) {
+      return _defaultResponsesInstructions;
+    }
+    return parts.join('\n\n');
   }
 
   List<Map<String, dynamic>> _toResponsesContent(dynamic content) {
@@ -1026,17 +1277,35 @@ class ApiService {
     return null;
   }
 
-  Map<String, dynamic> _withoutRuntimeControlledParams(
-    Map<String, dynamic> source,
-  ) {
-    final cloned = Map<String, dynamic>.from(source);
+  Map<String, dynamic> _runtimeAdditionalParams(ApiConfig apiConfig) {
+    return ApiPresetParameterPolicy.sanitizeAdditionalParams(apiConfig);
+  }
+
+  Map<String, dynamic> _passthroughAdditionalParams(Map<String, dynamic> source) {
+    final sanitized = Map<String, dynamic>.from(source);
     for (final key in _tokenLimitKeys) {
-      cloned.remove(key);
+      sanitized.remove(key);
     }
-    for (final key in _runtimeControlledParamKeys) {
-      cloned.remove(key);
+    sanitized.remove(ApiPresetParameterPolicy.maxTokensKey);
+    sanitized.remove(ApiPresetParameterPolicy.temperatureKey);
+    sanitized.remove(ApiPresetParameterPolicy.topPKey);
+    sanitized.remove(ApiPresetParameterPolicy.frequencyPenaltyKey);
+    sanitized.remove(ApiPresetParameterPolicy.presencePenaltyKey);
+    return sanitized;
+  }
+
+  double? _readDoubleParam(Map<String, dynamic> params, String key) {
+    return ApiPresetParameterPolicy.readDouble(params, key);
+  }
+
+  int? _readMaxTokensParam(Map<String, dynamic> params) {
+    return ApiPresetParameterPolicy.readMaxTokens(params);
+  }
+
+  void _setIfPresent(Map<String, dynamic> target, String key, Object? value) {
+    if (value != null) {
+      target[key] = value;
     }
-    return cloned;
   }
 
   String _preferredTokenLimitKey({
@@ -1241,24 +1510,17 @@ class ApiService {
           return (false, 'HTTP ${response.statusCode}: $errorMsg');
         }
       } else if (apiConfig.format == ApiFormat.openAIResponses) {
-        final headers = {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $resolvedToken',
-          ...apiConfig.customHeaders,
-        };
+        final headers = _buildOpenAIResponsesHeaders(
+          apiConfig: apiConfig,
+          authToken: resolvedToken,
+          oauthAccount: resolvedCredential?.account,
+        );
 
         final requestBody = _buildOpenAIResponsesRequestBody(
           apiConfig: apiConfig,
           messages: [
             {'role': 'user', 'content': 'test'},
           ],
-          settings: AppSettings(
-            maxTokens: 10,
-            temperature: 0.0,
-            topP: 1.0,
-            frequencyPenalty: 0.0,
-            presencePenalty: 0.0,
-          ),
         );
 
         final response = await http.post(
