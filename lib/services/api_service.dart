@@ -10,10 +10,12 @@ import 'package:http/http.dart' as http;
 
 import '../models/api_config.dart';
 import '../models/message.dart';
+import '../models/oauth_account.dart';
 import '../models/settings.dart';
 import '../models/prompt_block.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
+import '../services/oauth_account_service.dart';
 import '../services/prompt_builder.dart';
 import '../services/release_log_service.dart';
 
@@ -86,7 +88,13 @@ class ApiService {
     required AppSettings settings,
     ApiRequestHandle? requestHandle,
   }) async {
+    final resolvedCredential = await OAuthAccountService.instance
+        .resolveCredentialForConfig(apiConfig);
+    final resolvedToken = resolvedCredential?.accessToken ?? apiConfig.apiKey;
     final transformedMessages = await _applyPromptLifecycle(messages, settings);
+    final credentialPreview = resolvedToken.isEmpty
+        ? '(empty)'
+        : '${resolvedToken.substring(0, min(10, resolvedToken.length))}...';
 
     requestHandle?.throwIfCancelled();
 
@@ -96,15 +104,34 @@ class ApiService {
     debugPrint('Config Name: ${apiConfig.name}');
     debugPrint('Base URL: ${apiConfig.baseUrl}');
     debugPrint('Model: ${apiConfig.modelName}');
-    debugPrint(
-      'API Key (first 10): ${apiConfig.apiKey.substring(0, min(10, apiConfig.apiKey.length))}...',
-    );
+    debugPrint('Credential (first 10): $credentialPreview');
     debugPrint('Format: ${apiConfig.format.name}');
     debugPrint('Messages count: ${transformedMessages.length}');
     debugPrint('============================================================');
 
-    if (apiConfig.apiKey.isEmpty) {
-      throw Exception('API key is not set. Please check the API preset.');
+    if (resolvedToken.isEmpty) {
+      throw Exception('API key or OAuth account is not set. Please check the API preset.');
+    }
+
+    if (apiConfig.format == ApiFormat.openAIResponses) {
+      return await _sendToOpenAIResponses(
+        apiConfig: apiConfig,
+        messages: transformedMessages,
+        settings: settings,
+        authToken: resolvedToken,
+        requestHandle: requestHandle,
+      );
+    }
+
+    if (apiConfig.format == ApiFormat.googleCodeAssist) {
+      return await _sendToGoogleCodeAssist(
+        apiConfig: apiConfig,
+        messages: transformedMessages,
+        settings: settings,
+        authToken: resolvedToken,
+        oauthAccount: resolvedCredential?.account,
+        requestHandle: requestHandle,
+      );
     }
 
     final bool isAnthropic =
@@ -117,6 +144,7 @@ class ApiService {
         apiConfig: apiConfig,
         messages: transformedMessages,
         settings: settings,
+        authToken: resolvedToken,
         requestHandle: requestHandle,
       );
     } else {
@@ -124,6 +152,7 @@ class ApiService {
         apiConfig: apiConfig,
         messages: transformedMessages,
         settings: settings,
+        authToken: resolvedToken,
         requestHandle: requestHandle,
       );
     }
@@ -208,6 +237,7 @@ class ApiService {
     required ApiConfig apiConfig,
     required List<Map<String, dynamic>> messages,
     required AppSettings settings,
+    required String authToken,
     ApiRequestHandle? requestHandle,
   }) async {
     requestHandle?.throwIfCancelled();
@@ -220,7 +250,7 @@ class ApiService {
 
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ${apiConfig.apiKey}',
+      'Authorization': 'Bearer $authToken',
     };
 
     headers.addAll(apiConfig.customHeaders);
@@ -344,6 +374,7 @@ class ApiService {
     required ApiConfig apiConfig,
     required List<Map<String, dynamic>> messages,
     required AppSettings settings,
+    required String authToken,
     ApiRequestHandle? requestHandle,
   }) async {
     requestHandle?.throwIfCancelled();
@@ -388,7 +419,7 @@ class ApiService {
 
     final Map<String, String> headers = {
       'Content-Type': 'application/json',
-      'x-api-key': apiConfig.apiKey,
+      'x-api-key': authToken,
       'anthropic-version': _anthropicVersion,
     };
 
@@ -471,6 +502,120 @@ class ApiService {
     }
   }
 
+  Future<String> _sendToOpenAIResponses({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+    required AppSettings settings,
+    required String authToken,
+    ApiRequestHandle? requestHandle,
+  }) async {
+    requestHandle?.throwIfCancelled();
+
+    final requestBody = _buildOpenAIResponsesRequestBody(
+      apiConfig: apiConfig,
+      messages: messages,
+      settings: settings,
+    );
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $authToken',
+      ...apiConfig.customHeaders,
+    };
+
+    final client = requestHandle?.client ?? http.Client();
+    try {
+      final response = await _awaitWithCancellation(
+        request: client.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        ),
+        requestHandle: requestHandle,
+      );
+      final responseBody = _decodeUtf8ResponseBody(response.bodyBytes);
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(responseBody);
+        final content = _extractResponsesTextContent(data);
+        return content.trim();
+      }
+      throw Exception(
+        'Responses API error (${response.statusCode}): ${_extractErrorMessage(responseBody)}',
+      );
+    } on ApiCancelledException {
+      rethrow;
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Responses API request failed: $e');
+    } finally {
+      if (requestHandle == null) {
+        client.close();
+      } else {
+        requestHandle.close();
+      }
+    }
+  }
+
+  Future<String> _sendToGoogleCodeAssist({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+    required AppSettings settings,
+    required String authToken,
+    required OAuthAccount? oauthAccount,
+    ApiRequestHandle? requestHandle,
+  }) async {
+    requestHandle?.throwIfCancelled();
+
+    final requestBody = _buildGoogleCodeAssistRequestBody(
+      apiConfig: apiConfig,
+      messages: messages,
+      settings: settings,
+      oauthAccount: oauthAccount,
+    );
+
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $authToken',
+      ...apiConfig.customHeaders,
+    };
+    final projectId = _googleCloudProjectFor(apiConfig, oauthAccount);
+    if (projectId != null && projectId.isNotEmpty) {
+      headers['x-goog-user-project'] = projectId;
+    }
+
+    final client = requestHandle?.client ?? http.Client();
+    try {
+      final response = await _awaitWithCancellation(
+        request: client.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        ),
+        requestHandle: requestHandle,
+      );
+      final responseBody = _decodeUtf8ResponseBody(response.bodyBytes);
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(responseBody);
+        final content = _extractGoogleCodeAssistTextContent(data);
+        return content.trim();
+      }
+      throw Exception(
+        'Google Code Assist error (${response.statusCode}): ${_extractErrorMessage(responseBody)}',
+      );
+    } on ApiCancelledException {
+      rethrow;
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Google Code Assist request failed: $e');
+    } finally {
+      if (requestHandle == null) {
+        client.close();
+      } else {
+        requestHandle.close();
+      }
+    }
+  }
+
   String _extractTextOnlyContent(dynamic content) {
     if (content is String) {
       return content;
@@ -503,6 +648,64 @@ class ApiService {
       return buffer.join('\n');
     }
     return '';
+  }
+
+  String _extractResponsesTextContent(Map<String, dynamic> payload) {
+    final direct = payload['output_text'];
+    if (direct is String && direct.trim().isNotEmpty) {
+      return direct;
+    }
+
+    final buffer = <String>[];
+    final output = payload['output'];
+    if (output is List) {
+      for (final item in output) {
+        if (item is! Map) continue;
+        final content = item['content'];
+        if (content is List) {
+          for (final part in content) {
+            if (part is! Map) continue;
+            final text = part['text'];
+            if (text is String && text.isNotEmpty) {
+              buffer.add(text);
+            }
+          }
+        }
+      }
+    }
+    return buffer.join('\n');
+  }
+
+  String _extractGoogleCodeAssistTextContent(Map<String, dynamic> payload) {
+    final response = payload['response'];
+    if (response is! Map) {
+      return '';
+    }
+    final candidates = response['candidates'];
+    if (candidates is! List || candidates.isEmpty) {
+      return '';
+    }
+    final first = candidates.first;
+    if (first is! Map) {
+      return '';
+    }
+    final content = first['content'];
+    if (content is! Map) {
+      return '';
+    }
+    final parts = content['parts'];
+    if (parts is! List) {
+      return '';
+    }
+    final buffer = <String>[];
+    for (final part in parts) {
+      if (part is! Map) continue;
+      final text = part['text'];
+      if (text is String && text.isNotEmpty) {
+        buffer.add(text);
+      }
+    }
+    return buffer.join('\n');
   }
 
   Map<String, dynamic> _toAnthropicMessage(Map<String, dynamic> msg) {
@@ -624,6 +827,87 @@ class ApiService {
     return requestBody;
   }
 
+  Map<String, dynamic> _buildOpenAIResponsesRequestBody({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+    required AppSettings settings,
+  }) {
+    final requestBody = <String, dynamic>{
+      ..._withoutRuntimeControlledParams(apiConfig.additionalParams),
+      'model': apiConfig.modelName,
+      'input': _toResponsesInput(messages),
+      'temperature': settings.temperature,
+      'top_p': settings.topP,
+      'max_output_tokens': settings.maxTokens,
+      'presence_penalty': settings.presencePenalty,
+      'frequency_penalty': settings.frequencyPenalty,
+    };
+    return requestBody;
+  }
+
+  Map<String, dynamic> _buildGoogleCodeAssistRequestBody({
+    required ApiConfig apiConfig,
+    required List<Map<String, dynamic>> messages,
+    required AppSettings settings,
+    required OAuthAccount? oauthAccount,
+  }) {
+    final systemTexts = <String>[];
+    final contents = <Map<String, dynamic>>[];
+
+    for (final message in messages) {
+      final role = message['role']?.toString() ?? 'user';
+      if (role == 'system') {
+        final text = _extractTextOnlyContent(message['content']);
+        if (text.trim().isNotEmpty) {
+          systemTexts.add(text.trim());
+        }
+        continue;
+      }
+      contents.add({
+        'role': role == 'assistant' ? 'model' : 'user',
+        'parts': _toGoogleParts(message['content']),
+      });
+    }
+
+    if (contents.isEmpty) {
+      contents.add({
+        'role': 'user',
+        'parts': const [
+          {'text': ''},
+        ],
+      });
+    }
+
+    final generationConfig = <String, dynamic>{
+      'temperature': settings.temperature,
+      'topP': settings.topP,
+      'maxOutputTokens': settings.maxTokens,
+      'presencePenalty': settings.presencePenalty,
+      'frequencyPenalty': settings.frequencyPenalty,
+    };
+    final project = _googleCloudProjectFor(apiConfig, oauthAccount);
+
+    return {
+      'model': apiConfig.modelName.startsWith('models/')
+          ? apiConfig.modelName
+          : 'models/${apiConfig.modelName}',
+      if (project != null && project.isNotEmpty)
+        'project': project,
+      'user_prompt_id': 'pwa-${DateTime.now().millisecondsSinceEpoch}',
+      'request': {
+        'contents': contents,
+        if (systemTexts.isNotEmpty)
+          'systemInstruction': {
+            'role': 'user',
+            'parts': [
+              {'text': systemTexts.join('\n\n')},
+            ],
+          },
+        'generationConfig': generationConfig,
+      },
+    };
+  }
+
   Map<String, dynamic> _buildAnthropicRequestBody({
     required ApiConfig apiConfig,
     required List<Map<String, dynamic>> chatMessages,
@@ -640,6 +924,106 @@ class ApiService {
     requestBody['max_tokens'] = settings.maxTokens;
 
     return requestBody;
+  }
+
+  List<Map<String, dynamic>> _toResponsesInput(
+    List<Map<String, dynamic>> messages,
+  ) {
+    return messages.map((message) {
+      final role = message['role']?.toString() ?? 'user';
+      return {
+        'role': role,
+        'content': _toResponsesContent(message['content']),
+      };
+    }).toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _toResponsesContent(dynamic content) {
+    if (content is String) {
+      return [
+        {'type': 'input_text', 'text': content},
+      ];
+    }
+    if (content is List) {
+      final parts = <Map<String, dynamic>>[];
+      for (final part in content) {
+        if (part is! Map) continue;
+        final type = part['type']?.toString();
+        if (type == 'text' && part['text'] is String) {
+          parts.add({'type': 'input_text', 'text': part['text']});
+          continue;
+        }
+        if (type == 'image_url') {
+          String? url;
+          final imageUrl = part['image_url'];
+          if (imageUrl is Map && imageUrl['url'] is String) {
+            url = imageUrl['url'] as String;
+          }
+          if (url != null && url.isNotEmpty) {
+            parts.add({'type': 'input_image', 'image_url': url});
+          }
+        }
+      }
+      if (parts.isNotEmpty) {
+        return parts;
+      }
+    }
+    return const <Map<String, dynamic>>[
+      {'type': 'input_text', 'text': ''},
+    ];
+  }
+
+  List<Map<String, dynamic>> _toGoogleParts(dynamic content) {
+    if (content is String) {
+      return [
+        {'text': content},
+      ];
+    }
+    if (content is List) {
+      final parts = <Map<String, dynamic>>[];
+      for (final part in content) {
+        if (part is! Map) continue;
+        final type = part['type']?.toString();
+        if (type == 'text' && part['text'] is String) {
+          parts.add({'text': part['text']});
+          continue;
+        }
+        if (type == 'image_url') {
+          final imageUrl = part['image_url'];
+          String? url;
+          if (imageUrl is Map && imageUrl['url'] is String) {
+            url = imageUrl['url'] as String;
+          }
+          final extracted = _extractBase64FromDataUrl(url);
+          if (extracted != null) {
+            parts.add({
+              'inlineData': {
+                'mimeType': extracted.$1,
+                'data': extracted.$2,
+              },
+            });
+          }
+        }
+      }
+      if (parts.isNotEmpty) {
+        return parts;
+      }
+    }
+    return const <Map<String, dynamic>>[
+      {'text': ''},
+    ];
+  }
+
+  String? _googleCloudProjectFor(ApiConfig apiConfig, OAuthAccount? account) {
+    final configProject = apiConfig.additionalParams['googleCloudProject'];
+    if (configProject is String && configProject.trim().isNotEmpty) {
+      return configProject.trim();
+    }
+    final accountProject = account?.cloudProjectId;
+    if (accountProject != null && accountProject.trim().isNotEmpty) {
+      return accountProject.trim();
+    }
+    return null;
   }
 
   Map<String, dynamic> _withoutRuntimeControlledParams(
@@ -805,8 +1189,12 @@ class ApiService {
     debugPrint('Model: ${apiConfig.modelName}');
     debugPrint('============================================================');
 
-    if (apiConfig.apiKey.isEmpty) {
-      return (false, 'API key is not set.');
+    final resolvedCredential = await OAuthAccountService.instance
+        .resolveCredentialForConfig(apiConfig);
+    final resolvedToken = resolvedCredential?.accessToken ?? apiConfig.apiKey;
+
+    if (resolvedToken.isEmpty) {
+      return (false, 'API key or OAuth account is not set.');
     }
 
     if (apiConfig.baseUrl.isEmpty) {
@@ -821,7 +1209,7 @@ class ApiService {
       if (isAnthropic) {
         final headers = {
           'Content-Type': 'application/json',
-          'x-api-key': apiConfig.apiKey,
+          'x-api-key': resolvedToken,
           'anthropic-version': _anthropicVersion,
           ...apiConfig.customHeaders,
         };
@@ -852,10 +1240,88 @@ class ApiService {
           final errorMsg = errorData['error']?['message'] ?? response.body;
           return (false, 'HTTP ${response.statusCode}: $errorMsg');
         }
+      } else if (apiConfig.format == ApiFormat.openAIResponses) {
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $resolvedToken',
+          ...apiConfig.customHeaders,
+        };
+
+        final requestBody = _buildOpenAIResponsesRequestBody(
+          apiConfig: apiConfig,
+          messages: [
+            {'role': 'user', 'content': 'test'},
+          ],
+          settings: AppSettings(
+            maxTokens: 10,
+            temperature: 0.0,
+            topP: 1.0,
+            frequencyPenalty: 0.0,
+            presencePenalty: 0.0,
+          ),
+        );
+
+        final response = await http.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        );
+
+        if (response.statusCode == 200) {
+          return (true, 'Connection successful! (Responses)');
+        }
+
+        return (
+          false,
+          'HTTP ${response.statusCode}: ${_extractErrorMessage(response.body)}',
+        );
+      } else if (apiConfig.format == ApiFormat.googleCodeAssist) {
+        final Map<String, String> headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $resolvedToken',
+          ...apiConfig.customHeaders,
+        };
+        final projectId = _googleCloudProjectFor(
+          apiConfig,
+          resolvedCredential?.account,
+        );
+        if (projectId != null && projectId.isNotEmpty) {
+          headers['x-goog-user-project'] = projectId;
+        }
+
+        final requestBody = _buildGoogleCodeAssistRequestBody(
+          apiConfig: apiConfig,
+          messages: [
+            {'role': 'user', 'content': 'test'},
+          ],
+          settings: AppSettings(
+            maxTokens: 10,
+            temperature: 0.0,
+            topP: 1.0,
+            frequencyPenalty: 0.0,
+            presencePenalty: 0.0,
+          ),
+          oauthAccount: resolvedCredential?.account,
+        );
+
+        final response = await http.post(
+          Uri.parse(apiConfig.baseUrl),
+          headers: headers,
+          body: jsonEncode(requestBody),
+        );
+
+        if (response.statusCode == 200) {
+          return (true, 'Connection successful! (Google Code Assist)');
+        }
+
+        return (
+          false,
+          'HTTP ${response.statusCode}: ${_extractErrorMessage(response.body)}',
+        );
       } else {
         final headers = {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${apiConfig.apiKey}',
+          'Authorization': 'Bearer $resolvedToken',
           ...apiConfig.customHeaders,
         };
 
