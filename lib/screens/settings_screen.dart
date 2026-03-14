@@ -13,6 +13,7 @@ import '../services/api_service.dart';
 import '../services/image_cache_manager.dart';
 import 'live2d_llm_settings_screen.dart';
 import '../widgets/empty_state_view.dart';
+import '../widgets/oauth_management_widgets.dart';
 import '../utils/ui_feedback.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -29,7 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -42,13 +43,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget build(BuildContext context) {
     final runtimeProvider = context.watch<GlobalRuntimeProvider>();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('설정'),
+        appBar: AppBar(
+        title: const Text('API 설정'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
             Tab(icon: Icon(Icons.api), text: 'API 프리셋'),
+            Tab(icon: Icon(Icons.verified_user), text: 'OAuth'),
             Tab(icon: Icon(Icons.tune), text: '파라미터'),
           ],
         ),
@@ -75,7 +77,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: const [_ApiPresetsTab(), _ParameterSettingsTab()],
+              children: const [
+                _ApiPresetsTab(),
+                OAuthAccountsTab(),
+                _ParameterSettingsTab(),
+              ],
             ),
           ),
         ],
@@ -118,7 +124,7 @@ class _ApiPresetsTab extends StatelessWidget {
               Expanded(
                 child: Text(
                   'API 프리셋을 선택하거나 새로 만들어 사용하세요.\n'
-                  '각 프리셋은 Base URL, API Key, 모델, 헤더를 자유롭게 설정할 수 있습니다.',
+                  '각 프리셋은 Base URL, API Key 또는 OAuth 계정, 모델, 헤더를 설정할 수 있습니다.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onPrimaryContainer,
                   ),
@@ -164,12 +170,25 @@ class _ApiPresetsTab extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final config = apiConfigs[index];
                     final isActive = config.id == activeConfigId;
+                    final oauthAccount = settingsProvider.getOAuthAccountById(
+                      config.oauthAccountId,
+                    );
                     return _ApiPresetCard(
                       config: config,
+                      oauthAccountLabel: oauthAccount?.displayLabel,
                       isActive: isActive,
                       onTap: () =>
                           settingsProvider.setActiveApiConfig(config.id),
-                      onEdit: () => _showEditPresetDialog(context, config),
+                      onEdit: () {
+                        if (config.usesOAuth) {
+                          showOAuthPresetTemplateDialog(
+                            context,
+                            existingConfig: config,
+                          );
+                          return;
+                        }
+                        _showEditPresetDialog(context, config);
+                      },
                       onDelete: () => _confirmDeletePreset(context, config),
                     );
                   },
@@ -258,6 +277,15 @@ class _ApiPresetsTab extends StatelessWidget {
                   settingsProvider.addApiConfig(ApiConfig.openRouterDefault());
                 },
               ),
+              _TemplateOption(
+                icon: Icons.verified_user,
+                title: '새 OAuth 추가',
+                subtitle: 'Codex / Gemini CLI 계정 기반 프리셋',
+                onTap: () {
+                  Navigator.pop(context);
+                  showOAuthPresetTemplateDialog(context);
+                },
+              ),
             ],
           ),
         ),
@@ -331,6 +359,7 @@ class _TemplateOption extends StatelessWidget {
 
 class _ApiPresetCard extends StatelessWidget {
   final ApiConfig config;
+  final String? oauthAccountLabel;
   final bool isActive;
   final VoidCallback onTap;
   final VoidCallback onEdit;
@@ -338,6 +367,7 @@ class _ApiPresetCard extends StatelessWidget {
 
   const _ApiPresetCard({
     required this.config,
+    this.oauthAccountLabel,
     required this.isActive,
     required this.onTap,
     required this.onEdit,
@@ -348,8 +378,8 @@ class _ApiPresetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final hasApiKey = config.apiKey.isNotEmpty;
-    final apiKeyStatusColor = hasApiKey
+    final hasCredential = config.usesOAuth || config.apiKey.isNotEmpty;
+    final apiKeyStatusColor = hasCredential
         ? colorScheme.tertiary
         : colorScheme.error;
 
@@ -421,6 +451,15 @@ class _ApiPresetCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 4),
+                    if (config.usesOAuth) ...[
+                      Text(
+                        'OAuth: ${oauthAccountLabel ?? '연결된 계정'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
                     Text(
                       config.modelName,
                       style: theme.textTheme.bodyMedium?.copyWith(
@@ -441,13 +480,17 @@ class _ApiPresetCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          hasApiKey ? Icons.check_circle : Icons.warning_amber,
+                          hasCredential ? Icons.check_circle : Icons.warning_amber,
                           size: 14,
                           color: apiKeyStatusColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          hasApiKey ? 'API 키 설정됨' : 'API 키 필요',
+                          config.usesOAuth
+                              ? 'OAuth 계정 연결됨'
+                              : hasCredential
+                                  ? 'API 키 설정됨'
+                                  : 'API 키 필요',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: apiKeyStatusColor,
                           ),
@@ -674,6 +717,14 @@ class _ApiPresetEditDialogState extends State<_ApiPresetEditDialog> {
                         DropdownMenuItem(
                           value: ApiFormat.google,
                           child: Text('Google Gemini'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.googleCodeAssist,
+                          child: Text('Google Code Assist'),
+                        ),
+                        DropdownMenuItem(
+                          value: ApiFormat.openAIResponses,
+                          child: Text('OpenAI Responses'),
                         ),
                         DropdownMenuItem(
                           value: ApiFormat.custom,
