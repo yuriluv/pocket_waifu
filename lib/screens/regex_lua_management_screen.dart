@@ -234,84 +234,11 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
           child: _regexRules.isEmpty
               ? const Center(child: Text('저장된 Regex 규칙이 없습니다.'))
               : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                   itemCount: _regexRules.length,
                   itemBuilder: (context, index) {
                     final rule = _regexRules[index];
-                    return ListTile(
-                      leading: Icon(
-                        rule.isEnabled ? Icons.rule : Icons.rule_outlined,
-                      ),
-                      title: Text(rule.name),
-                      subtitle: Text(
-                        '${rule.type.name} · p=${rule.priority} · ${rule.scope.name}\n/${rule.pattern}/ -> ${rule.replacement}',
-                      ),
-                      isThreeLine: true,
-                      trailing: Wrap(
-                        spacing: 4,
-                        children: [
-                          IconButton(
-                            onPressed: index > 0
-                                ? () async {
-                                    setState(() {
-                                      final current = _regexRules[index];
-                                      _regexRules[index] =
-                                          _regexRules[index - 1];
-                                      _regexRules[index - 1] = current;
-                                      _reindexRegexPriority();
-                                    });
-                                    await _saveRegex();
-                                  }
-                                : null,
-                            icon: const Icon(Icons.arrow_upward),
-                          ),
-                          IconButton(
-                            onPressed: index < _regexRules.length - 1
-                                ? () async {
-                                    setState(() {
-                                      final current = _regexRules[index];
-                                      _regexRules[index] =
-                                          _regexRules[index + 1];
-                                      _regexRules[index + 1] = current;
-                                      _reindexRegexPriority();
-                                    });
-                                    await _saveRegex();
-                                  }
-                                : null,
-                            icon: const Icon(Icons.arrow_downward),
-                          ),
-                          IconButton(
-                            onPressed: () async {
-                              final edited = await _showRegexEditor(
-                                existing: rule,
-                              );
-                              if (edited == null) return;
-                              setState(() => _regexRules[index] = edited);
-                              await _saveRegex();
-                            },
-                            icon: const Icon(Icons.edit),
-                          ),
-                          IconButton(
-                            onPressed: () async {
-                              setState(() => _regexRules.removeAt(index));
-                              _reindexRegexPriority();
-                              await _saveRegex();
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                          Switch(
-                            value: rule.isEnabled,
-                            onChanged: (value) async {
-                              setState(() {
-                                _regexRules[index] = rule.copyWith(
-                                  isEnabled: value,
-                                );
-                              });
-                              await _saveRegex();
-                            },
-                          ),
-                        ],
-                      ),
-                    );
+                    return _buildRegexRuleBlock(rule: rule, index: index);
                   },
                 ),
         ),
@@ -362,86 +289,11 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
           child: _luaScripts.isEmpty
               ? const Center(child: Text('저장된 Lua 스크립트가 없습니다.'))
               : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                   itemCount: _luaScripts.length,
                   itemBuilder: (context, index) {
                     final script = _luaScripts[index];
-                    return ListTile(
-                      leading: Icon(
-                        script.isEnabled
-                            ? Icons.description
-                            : Icons.description_outlined,
-                      ),
-                      title: Text(script.name),
-                      subtitle: Text(
-                        '${script.scope.name} · order=${script.order}\n${script.content.split('\n').first}',
-                      ),
-                      isThreeLine: true,
-                      trailing: Wrap(
-                        spacing: 4,
-                        children: [
-                          IconButton(
-                            onPressed: index > 0
-                                ? () async {
-                                    setState(() {
-                                      final current = _luaScripts[index];
-                                      _luaScripts[index] =
-                                          _luaScripts[index - 1];
-                                      _luaScripts[index - 1] = current;
-                                      _reindexLuaOrder();
-                                    });
-                                    await _saveLua();
-                                  }
-                                : null,
-                            icon: const Icon(Icons.arrow_upward),
-                          ),
-                          IconButton(
-                            onPressed: index < _luaScripts.length - 1
-                                ? () async {
-                                    setState(() {
-                                      final current = _luaScripts[index];
-                                      _luaScripts[index] =
-                                          _luaScripts[index + 1];
-                                      _luaScripts[index + 1] = current;
-                                      _reindexLuaOrder();
-                                    });
-                                    await _saveLua();
-                                  }
-                                : null,
-                            icon: const Icon(Icons.arrow_downward),
-                          ),
-                          IconButton(
-                            onPressed: () async {
-                              final edited = await _showLuaEditor(
-                                existing: script,
-                              );
-                              if (edited == null) return;
-                              setState(() => _luaScripts[index] = edited);
-                              await _saveLua();
-                            },
-                            icon: const Icon(Icons.edit),
-                          ),
-                          IconButton(
-                            onPressed: () async {
-                              setState(() => _luaScripts.removeAt(index));
-                              _reindexLuaOrder();
-                              await _saveLua();
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                          Switch(
-                            value: script.isEnabled,
-                            onChanged: (value) async {
-                              setState(() {
-                                _luaScripts[index] = script.copyWith(
-                                  isEnabled: value,
-                                );
-                              });
-                              await _saveLua();
-                            },
-                          ),
-                        ],
-                      ),
-                    );
+                    return _buildLuaScriptBlock(script: script, index: index);
                   },
                 ),
         ),
@@ -467,6 +319,253 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildRegexRuleBlock({required RegexRule rule, required int index}) {
+    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                rule.isEnabled ? Icons.rule : Icons.rule_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    rule.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      IconButton(
+                        tooltip: '위로 이동',
+                        onPressed: index > 0
+                            ? () async {
+                                setState(() {
+                                  final current = _regexRules[index];
+                                  _regexRules[index] = _regexRules[index - 1];
+                                  _regexRules[index - 1] = current;
+                                  _reindexRegexPriority();
+                                });
+                                await _saveRegex();
+                              }
+                            : null,
+                        icon: const Icon(Icons.arrow_upward),
+                      ),
+                      IconButton(
+                        tooltip: '아래로 이동',
+                        onPressed: index < _regexRules.length - 1
+                            ? () async {
+                                setState(() {
+                                  final current = _regexRules[index];
+                                  _regexRules[index] = _regexRules[index + 1];
+                                  _regexRules[index + 1] = current;
+                                  _reindexRegexPriority();
+                                });
+                                await _saveRegex();
+                              }
+                            : null,
+                        icon: const Icon(Icons.arrow_downward),
+                      ),
+                      IconButton(
+                        tooltip: '편집',
+                        onPressed: () async {
+                          final edited = await _showRegexEditor(existing: rule);
+                          if (edited == null) return;
+                          setState(() => _regexRules[index] = edited);
+                          await _saveRegex();
+                        },
+                        icon: const Icon(Icons.edit),
+                      ),
+                      IconButton(
+                        tooltip: '삭제',
+                        onPressed: () async {
+                          setState(() => _regexRules.removeAt(index));
+                          _reindexRegexPriority();
+                          await _saveRegex();
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('활성'),
+                          Switch(
+                            value: rule.isEnabled,
+                            onChanged: (value) async {
+                              setState(() {
+                                _regexRules[index] = rule.copyWith(
+                                  isEnabled: value,
+                                );
+                              });
+                              await _saveRegex();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${rule.type.name} · p=${rule.priority} · ${rule.scope.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '/${rule.pattern}/ -> ${rule.replacement}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLuaScriptBlock({required LuaScript script, required int index}) {
+    final titleStyle = Theme.of(context).textTheme.titleMedium;
+    final firstLine = script.content.split('\n').firstWhere(
+      (line) => line.trim().isNotEmpty,
+      orElse: () => '(빈 스크립트)',
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(
+                script.isEnabled
+                    ? Icons.description
+                    : Icons.description_outlined,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    script.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [
+                      IconButton(
+                        tooltip: '위로 이동',
+                        onPressed: index > 0
+                            ? () async {
+                                setState(() {
+                                  final current = _luaScripts[index];
+                                  _luaScripts[index] = _luaScripts[index - 1];
+                                  _luaScripts[index - 1] = current;
+                                  _reindexLuaOrder();
+                                });
+                                await _saveLua();
+                              }
+                            : null,
+                        icon: const Icon(Icons.arrow_upward),
+                      ),
+                      IconButton(
+                        tooltip: '아래로 이동',
+                        onPressed: index < _luaScripts.length - 1
+                            ? () async {
+                                setState(() {
+                                  final current = _luaScripts[index];
+                                  _luaScripts[index] = _luaScripts[index + 1];
+                                  _luaScripts[index + 1] = current;
+                                  _reindexLuaOrder();
+                                });
+                                await _saveLua();
+                              }
+                            : null,
+                        icon: const Icon(Icons.arrow_downward),
+                      ),
+                      IconButton(
+                        tooltip: '편집',
+                        onPressed: () async {
+                          final edited = await _showLuaEditor(existing: script);
+                          if (edited == null) return;
+                          setState(() => _luaScripts[index] = edited);
+                          await _saveLua();
+                        },
+                        icon: const Icon(Icons.edit),
+                      ),
+                      IconButton(
+                        tooltip: '삭제',
+                        onPressed: () async {
+                          setState(() => _luaScripts.removeAt(index));
+                          _reindexLuaOrder();
+                          await _saveLua();
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('활성'),
+                          Switch(
+                            value: script.isEnabled,
+                            onChanged: (value) async {
+                              setState(() {
+                                _luaScripts[index] = script.copyWith(
+                                  isEnabled: value,
+                                );
+                              });
+                              await _saveLua();
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${script.scope.name} · order=${script.order}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    firstLine,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -968,263 +1067,413 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   }
 
   Future<RegexRule?> _showRegexEditor({RegexRule? existing}) async {
-    final nameController = TextEditingController(text: existing?.name ?? '');
-    final patternController = TextEditingController(
-      text: existing?.pattern ?? '',
-    );
-    final replacementController = TextEditingController(
-      text: existing?.replacement ?? '',
-    );
-    final characterController = TextEditingController(
-      text: existing?.associatedCharacterId ?? '',
-    );
-    final sessionController = TextEditingController(
-      text: existing?.associatedSessionId ?? '',
-    );
-
-    var type = existing?.type ?? RegexRuleType.aiOutput;
-    var scope = existing?.scope ?? RegexRuleScope.global;
-    var caseInsensitive = existing?.caseInsensitive ?? false;
-    var multiLine = existing?.multiLine ?? false;
-    var dotAll = existing?.dotAll ?? false;
-
-    return showDialog<RegexRule>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setLocal) {
-            return AlertDialog(
-              title: Text(existing == null ? 'Regex 규칙 추가' : 'Regex 규칙 편집'),
-              content: SizedBox(
-                width: 520,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(labelText: '이름'),
-                      ),
-                      DropdownButtonFormField<RegexRuleType>(
-                        initialValue: type,
-                        decoration: const InputDecoration(labelText: '타입'),
-                        items: RegexRuleType.values
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) setLocal(() => type = value);
-                        },
-                      ),
-                      DropdownButtonFormField<RegexRuleScope>(
-                        initialValue: scope,
-                        decoration: const InputDecoration(labelText: '스코프'),
-                        items: RegexRuleScope.values
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) setLocal(() => scope = value);
-                        },
-                      ),
-                      TextField(
-                        controller: patternController,
-                        decoration: const InputDecoration(labelText: '패턴'),
-                      ),
-                      TextField(
-                        controller: replacementController,
-                        decoration: const InputDecoration(labelText: '치환 문자열'),
-                      ),
-                      if (scope == RegexRuleScope.perCharacter)
-                        TextField(
-                          controller: characterController,
-                          decoration: const InputDecoration(
-                            labelText: '캐릭터 ID',
-                          ),
-                        ),
-                      if (scope == RegexRuleScope.perSession)
-                        TextField(
-                          controller: sessionController,
-                          decoration: const InputDecoration(labelText: '세션 ID'),
-                        ),
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: caseInsensitive,
-                        onChanged: (value) {
-                          setLocal(() => caseInsensitive = value ?? false);
-                        },
-                        title: const Text('CASE_INSENSITIVE'),
-                      ),
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: multiLine,
-                        onChanged: (value) {
-                          setLocal(() => multiLine = value ?? false);
-                        },
-                        title: const Text('MULTILINE'),
-                      ),
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: dotAll,
-                        onChanged: (value) {
-                          setLocal(() => dotAll = value ?? false);
-                        },
-                        title: const Text('DOT_ALL'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('취소'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final pattern = patternController.text;
-                    final replacement = replacementController.text;
-                    if (name.isEmpty || pattern.isEmpty) return;
-                    Navigator.pop(
-                      context,
-                      RegexRule(
-                        id: existing?.id,
-                        name: name,
-                        type: type,
-                        pattern: pattern,
-                        replacement: replacement,
-                        caseInsensitive: caseInsensitive,
-                        multiLine: multiLine,
-                        dotAll: dotAll,
-                        isEnabled: existing?.isEnabled ?? true,
-                        priority: existing?.priority ?? _regexRules.length,
-                        scope: scope,
-                        associatedCharacterId:
-                            characterController.text.trim().isEmpty
-                            ? null
-                            : characterController.text.trim(),
-                        associatedSessionId:
-                            sessionController.text.trim().isEmpty
-                            ? null
-                            : sessionController.text.trim(),
-                      ),
-                    );
-                  },
-                  child: const Text('저장'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    return Navigator.of(context).push<RegexRule>(
+      MaterialPageRoute(
+        builder: (_) => _RegexRuleEditorPage(
+          existing: existing,
+          nextPriority: _regexRules.length,
+        ),
+        fullscreenDialog: true,
+      ),
     );
   }
 
   Future<LuaScript?> _showLuaEditor({LuaScript? existing}) async {
-    final nameController = TextEditingController(text: existing?.name ?? '');
-    final contentController = TextEditingController(
-      text: existing?.content ?? '',
+    return Navigator.of(context).push<LuaScript>(
+      MaterialPageRoute(
+        builder: (_) => _LuaScriptEditorPage(
+          existing: existing,
+          nextOrder: _luaScripts.length,
+        ),
+        fullscreenDialog: true,
+      ),
     );
-    final characterController = TextEditingController(
+  }
+}
+
+class _RegexRuleEditorPage extends StatefulWidget {
+  const _RegexRuleEditorPage({
+    required this.existing,
+    required this.nextPriority,
+  });
+
+  final RegexRule? existing;
+  final int nextPriority;
+
+  @override
+  State<_RegexRuleEditorPage> createState() => _RegexRuleEditorPageState();
+}
+
+class _RegexRuleEditorPageState extends State<_RegexRuleEditorPage> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _patternController;
+  late final TextEditingController _replacementController;
+  late final TextEditingController _characterController;
+  late final TextEditingController _sessionController;
+
+  late RegexRuleType _type;
+  late RegexRuleScope _scope;
+  late bool _caseInsensitive;
+  late bool _multiLine;
+  late bool _dotAll;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    _nameController = TextEditingController(text: existing?.name ?? '');
+    _patternController = TextEditingController(text: existing?.pattern ?? '');
+    _replacementController = TextEditingController(
+      text: existing?.replacement ?? '',
+    );
+    _characterController = TextEditingController(
+      text: existing?.associatedCharacterId ?? '',
+    );
+    _sessionController = TextEditingController(
+      text: existing?.associatedSessionId ?? '',
+    );
+
+    _type = existing?.type ?? RegexRuleType.aiOutput;
+    _scope = existing?.scope ?? RegexRuleScope.global;
+    _caseInsensitive = existing?.caseInsensitive ?? false;
+    _multiLine = existing?.multiLine ?? false;
+    _dotAll = existing?.dotAll ?? false;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _patternController.dispose();
+    _replacementController.dispose();
+    _characterController.dispose();
+    _sessionController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    final pattern = _patternController.text;
+    final replacement = _replacementController.text;
+
+    if (name.isEmpty || pattern.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이름과 패턴은 필수입니다.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(
+      RegexRule(
+        id: widget.existing?.id,
+        name: name,
+        type: _type,
+        pattern: pattern,
+        replacement: replacement,
+        caseInsensitive: _caseInsensitive,
+        multiLine: _multiLine,
+        dotAll: _dotAll,
+        isEnabled: widget.existing?.isEnabled ?? true,
+        priority: widget.existing?.priority ?? widget.nextPriority,
+        scope: _scope,
+        associatedCharacterId: _characterController.text.trim().isEmpty
+            ? null
+            : _characterController.text.trim(),
+        associatedSessionId: _sessionController.text.trim().isEmpty
+            ? null
+            : _sessionController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.existing == null
+        ? 'Regex 규칙 추가'
+        : 'Regex 규칙 편집';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          TextButton(
+            onPressed: _save,
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(
+              labelText: '이름',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<RegexRuleType>(
+            initialValue: _type,
+            decoration: const InputDecoration(
+              labelText: '타입',
+              border: OutlineInputBorder(),
+            ),
+            items: RegexRuleType.values
+                .map(
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(value.name),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _type = value);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<RegexRuleScope>(
+            initialValue: _scope,
+            decoration: const InputDecoration(
+              labelText: '스코프',
+              border: OutlineInputBorder(),
+            ),
+            items: RegexRuleScope.values
+                .map(
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(value.name),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _scope = value);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _patternController,
+            decoration: const InputDecoration(
+              labelText: '패턴',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _replacementController,
+            decoration: const InputDecoration(
+              labelText: '치환 문자열',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_scope == RegexRuleScope.perCharacter) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _characterController,
+              decoration: const InputDecoration(
+                labelText: '캐릭터 ID',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+          if (_scope == RegexRuleScope.perSession) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _sessionController,
+              decoration: const InputDecoration(
+                labelText: '세션 ID',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _caseInsensitive,
+            onChanged: (value) {
+              setState(() => _caseInsensitive = value ?? false);
+            },
+            title: const Text('CASE_INSENSITIVE'),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _multiLine,
+            onChanged: (value) {
+              setState(() => _multiLine = value ?? false);
+            },
+            title: const Text('MULTILINE'),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _dotAll,
+            onChanged: (value) {
+              setState(() => _dotAll = value ?? false);
+            },
+            title: const Text('DOT_ALL'),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _save,
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LuaScriptEditorPage extends StatefulWidget {
+  const _LuaScriptEditorPage({
+    required this.existing,
+    required this.nextOrder,
+  });
+
+  final LuaScript? existing;
+  final int nextOrder;
+
+  @override
+  State<_LuaScriptEditorPage> createState() => _LuaScriptEditorPageState();
+}
+
+class _LuaScriptEditorPageState extends State<_LuaScriptEditorPage> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _contentController;
+  late final TextEditingController _characterController;
+  late LuaScriptScope _scope;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    _nameController = TextEditingController(text: existing?.name ?? '');
+    _contentController = TextEditingController(text: existing?.content ?? '');
+    _characterController = TextEditingController(
       text: existing?.characterId ?? '',
     );
+    _scope = existing?.scope ?? LuaScriptScope.global;
+  }
 
-    var scope = existing?.scope ?? LuaScriptScope.global;
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _contentController.dispose();
+    _characterController.dispose();
+    super.dispose();
+  }
 
-    return showDialog<LuaScript>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setLocal) {
-            return AlertDialog(
-              title: Text(existing == null ? 'Lua 스크립트 추가' : 'Lua 스크립트 편집'),
-              content: SizedBox(
-                width: 560,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(labelText: '이름'),
-                      ),
-                      DropdownButtonFormField<LuaScriptScope>(
-                        initialValue: scope,
-                        decoration: const InputDecoration(labelText: '스코프'),
-                        items: LuaScriptScope.values
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) setLocal(() => scope = value);
-                        },
-                      ),
-                      if (scope == LuaScriptScope.perCharacter)
-                        TextField(
-                          controller: characterController,
-                          decoration: const InputDecoration(
-                            labelText: '캐릭터 ID',
-                          ),
-                        ),
-                      TextField(
-                        controller: contentController,
-                        minLines: 8,
-                        maxLines: 20,
-                        decoration: const InputDecoration(
-                          labelText: '스크립트 내용',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ],
-                  ),
+  void _save() {
+    final name = _nameController.text.trim();
+    final content = _contentController.text;
+
+    if (name.isEmpty || content.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이름과 스크립트 내용은 필수입니다.')),
+      );
+      return;
+    }
+
+    Navigator.of(context).pop(
+      LuaScript(
+        id: widget.existing?.id,
+        name: name,
+        content: content,
+        isEnabled: widget.existing?.isEnabled ?? true,
+        order: widget.existing?.order ?? widget.nextOrder,
+        scope: _scope,
+        characterId: _characterController.text.trim().isEmpty
+            ? null
+            : _characterController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.existing == null
+        ? 'Lua 스크립트 추가'
+        : 'Lua 스크립트 편집';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          TextButton(
+            onPressed: _save,
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: '이름',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<LuaScriptScope>(
+              initialValue: _scope,
+              decoration: const InputDecoration(
+                labelText: '스코프',
+                border: OutlineInputBorder(),
+              ),
+              items: LuaScriptScope.values
+                  .map(
+                    (value) => DropdownMenuItem(
+                      value: value,
+                      child: Text(value.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _scope = value);
+                }
+              },
+            ),
+            if (_scope == LuaScriptScope.perCharacter) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _characterController,
+                decoration: const InputDecoration(
+                  labelText: '캐릭터 ID',
+                  border: OutlineInputBorder(),
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('취소'),
+            ],
+            const SizedBox(height: 12),
+            Expanded(
+              child: TextField(
+                controller: _contentController,
+                expands: true,
+                maxLines: null,
+                minLines: null,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: const InputDecoration(
+                  labelText: '스크립트 내용',
+                  alignLabelWithHint: true,
+                  border: OutlineInputBorder(),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final content = contentController.text;
-                    if (name.isEmpty || content.trim().isEmpty) return;
-
-                    Navigator.pop(
-                      context,
-                      LuaScript(
-                        id: existing?.id,
-                        name: name,
-                        content: content,
-                        isEnabled: existing?.isEnabled ?? true,
-                        order: existing?.order ?? _luaScripts.length,
-                        scope: scope,
-                        characterId: characterController.text.trim().isEmpty
-                            ? null
-                            : characterController.text.trim(),
-                      ),
-                    );
-                  },
-                  child: const Text('저장'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _save,
+                child: const Text('저장'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
