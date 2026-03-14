@@ -264,6 +264,10 @@ class Live2DOverlayService : Service() {
         override fun onActivityDestroyed(activity: Activity) {}
     }
 
+    private fun syncAppForegroundState() {
+        isAppForeground = MainActivity.isMainActivityForeground
+    }
+
     private val stateCheckHandler = Handler(Looper.getMainLooper())
     
     private val stateCheckRunnable = object : Runnable {
@@ -348,6 +352,7 @@ class Live2DOverlayService : Service() {
             android.util.Log.d("Live2D", ">>> startForeground called successfully")
             
             application.registerActivityLifecycleCallbacks(lifecycleCallbacks)
+            syncAppForegroundState()
         } catch (e: Exception) {
             android.util.Log.e("Live2D", ">>> SERVICE onCreate ERROR: ${e.message}", e)
             Live2DLogger.Overlay.e("서비스 생성 실패", e.message, e)
@@ -491,6 +496,8 @@ class Live2DOverlayService : Service() {
         if (currentOverlayMode == "live2d") {
             applyDynamicSizing(currentScale)
         }
+
+        syncAppForegroundState()
         
         Live2DLogger.Overlay.d("터치스루 초기화", "enabled=$touchThroughEnabled, foreground=$isAppForeground")
         
@@ -783,8 +790,15 @@ class Live2DOverlayService : Service() {
 
     private fun forwardTouchToRenderer(event: MotionEvent) {
         val gl = glSurfaceView ?: return
+        if (gl.width <= 0 || gl.height <= 0) {
+            return
+        }
+        val location = IntArray(2)
+        gl.getLocationOnScreen(location)
+        val localX = (event.rawX - location[0].toFloat()).coerceIn(0f, gl.width.toFloat())
+        val localY = (event.rawY - location[1].toFloat()).coerceIn(0f, gl.height.toFloat())
         val translated = MotionEvent.obtain(event)
-        translated.setLocation(event.x - gl.left, event.y - gl.top)
+        translated.setLocation(localX, localY)
         try {
             gl.deliverTouchToRenderer(translated)
         } finally {
@@ -815,7 +829,7 @@ class Live2DOverlayService : Service() {
         var hasMoved = false
         
         overlayView?.setOnTouchListener { _, event ->
-            when (event.action) {
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     forwardTouchToRenderer(event)
                     gestureDetector?.onTouchEvent(event)
@@ -877,6 +891,16 @@ class Live2DOverlayService : Service() {
                     }
                     true
                 }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    forwardTouchToRenderer(event)
+                    gestureDetector?.onTouchEvent(event)
+                    true
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    forwardTouchToRenderer(event)
+                    gestureDetector?.onTouchEvent(event)
+                    true
+                }
                 MotionEvent.ACTION_UP -> {
                     forwardTouchToRenderer(event)
                     gestureDetector?.onTouchEvent(event)
@@ -897,6 +921,7 @@ class Live2DOverlayService : Service() {
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     forwardTouchToRenderer(event)
+                    gestureDetector?.onTouchEvent(event)
                     touchState = TouchState.IDLE
                     true
                 }
@@ -1252,6 +1277,8 @@ class Live2DOverlayService : Service() {
      */
     private fun updateTouchMode() {
         if (overlayView == null) return
+
+        syncAppForegroundState()
 
         if (currentOverlayMode == "image" && imageBasicModeEnabled) {
             applyTouchPassthrough()

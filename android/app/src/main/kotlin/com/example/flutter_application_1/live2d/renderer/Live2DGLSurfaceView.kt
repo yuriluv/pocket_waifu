@@ -63,17 +63,30 @@ class Live2DGLSurfaceView : GLSurfaceView {
      */
     fun deliverTouchToRenderer(event: MotionEvent) {
         touchListener?.onTouch(event)
-        
+
+        val surfaceWidth = width
+        val surfaceHeight = height
+        if (surfaceWidth <= 0 || surfaceHeight <= 0) {
+            return
+        }
+
         renderer?.let { r ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    val normalizedX = (event.x / width) * 2f - 1f
-                    val normalizedY = 1f - (event.y / height) * 2f
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN,
+                MotionEvent.ACTION_POINTER_DOWN,
+                MotionEvent.ACTION_MOVE -> {
+                    val clampedX = event.x.coerceIn(0f, surfaceWidth.toFloat())
+                    val clampedY = event.y.coerceIn(0f, surfaceHeight.toFloat())
+                    val normalizedX = (clampedX / surfaceWidth.toFloat()) * 2f - 1f
+                    val normalizedY = 1f - (clampedY / surfaceHeight.toFloat()) * 2f
                     r.onTouch(normalizedX, normalizedY)
                 }
-                MotionEvent.ACTION_UP -> {
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL,
+                MotionEvent.ACTION_OUTSIDE -> {
                     r.onTouchEnd()
                 }
+                MotionEvent.ACTION_POINTER_UP -> {}
             }
         }
     }

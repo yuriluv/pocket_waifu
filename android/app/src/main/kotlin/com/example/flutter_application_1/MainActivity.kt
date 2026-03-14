@@ -59,6 +59,10 @@ class MainActivity : FlutterActivity() {
         
         const val MODELS_PATH = "/models/"
         const val ASSETS_PATH = "/assets/"
+
+        @Volatile
+        var isMainActivityForeground: Boolean = false
+            private set
     }
     
     private var modelRootPath: String? = null
@@ -86,6 +90,16 @@ class MainActivity : FlutterActivity() {
         }
         
         requestBatteryOptimizationExemption()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isMainActivityForeground = true
+    }
+
+    override fun onPause() {
+        isMainActivityForeground = false
+        super.onPause()
     }
     
     override fun onRequestPermissionsResult(
