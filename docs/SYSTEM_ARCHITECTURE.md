@@ -114,7 +114,8 @@ The primary navigation surface is `lib/screens/menu_drawer.dart`.
 ### Support surfaces
 
 - `lib/screens/settings_screen.dart`
-  - API preset CRUD, OAuth account management, and model parameter-related settings tabs.
+  - API preset list, OAuth account management, and API-adjacent utility surfaces.
+  - API preset creation/editing now routes into a dedicated fullscreen editor instead of popup dialogs.
   - Gemini CLI / GCA OAuth requires user-supplied Google OAuth desktop client credentials; Codex keeps a built-in public client flow.
 - `lib/screens/theme_editor_screen.dart`
   - Theme preset customization.
@@ -278,6 +279,7 @@ Used for:
 Why it exists:
 - OAuth credentials are more sensitive than normal preset metadata.
 - The app requires secure storage for OAuth tokens instead of silently downgrading them to plain persisted settings.
+- `OAuthAccountService` also owns the provider-specific OAuth contract details, such as Codex authorize query parameters and token exchange state/PKCE handling.
 
 ### App documents directory
 
@@ -429,7 +431,7 @@ Do not treat the master switch as a UI-only flag. It is a cross-cutting runtime 
 - `lib/services/api_service.dart`
   - Provider-specific request formatting, OAuth credential resolution, and prompt lifecycle transforms.
 - `lib/services/oauth_account_service.dart`
-  - OAuth loopback login, callback parsing, token exchange, secure persistence, and refresh behavior.
+  - OAuth loopback login, callback parsing, token exchange, secure persistence, refresh behavior, and Codex authorize contract parameters.
 
 ## Cross-Links
 

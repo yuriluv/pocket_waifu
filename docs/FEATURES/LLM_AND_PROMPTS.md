@@ -187,6 +187,7 @@ Why it is separate:
 Current provider constraint:
 - Codex OAuth uses a built-in public client flow.
 - Gemini CLI / GCA OAuth uses user-supplied Google OAuth desktop client credentials rather than shipping Google client credentials inside the app.
+- Codex OAuth login mirrors the official Codex CLI authorize contract, including `originator=codex_cli_rs` and the connector scopes used by the first-party client.
 
 `ApiConfig` stores:
 - display name
@@ -195,7 +196,7 @@ Current provider constraint:
 - optional linked OAuth account id
 - model name
 - custom headers
-- extra params
+- preset-owned generation params and extra params
 - provider-specific behavior flags such as:
   - `hasFirstSystemPrompt`
   - `requiresAlternateRole`
@@ -211,6 +212,12 @@ Current provider constraint:
 - If a stored preset id becomes invalid, `NotificationSettingsProvider` rebinding methods fall back to the first valid preset.
 - If a preset references an OAuth account, `ApiService` asks `OAuthAccountService` for a valid bearer token before sending the request.
 
+### Preset editor flow
+
+- API presets are now created and edited in a dedicated fullscreen editor rather than a popup dialog.
+- The old global parameter-tab workflow is intentionally collapsed into the preset editor, so each preset owns its own generation params.
+- The API settings screen keeps OAuth account management separate from preset editing, but preset editing can launch OAuth account login when needed.
+
 ### Sending model requests
 
 `ApiService` owns provider-specific request formatting.
@@ -223,7 +230,9 @@ It currently supports:
 - legacy compatibility for older provider settings
 
 Important behavior:
-- runtime sliders in `AppSettings` override matching values inside preset `additionalParams`
+- Codex OAuth request bodies move all `system` messages into top-level `instructions`, send non-system turns through `input`, force `store=false`, and force `stream=true`; Codex requests also send Codex-specific headers such as `originator`, `OpenAI-Beta`, and `ChatGPT-Account-Id` when available.
+- common generation params are stored per preset in `ApiConfig.additionalParams`; legacy global values are migrated one time into presets for older installs
+- Codex presets hide unsupported generation controls and surface a guidance card instead of exposing values like `temperature`, `top_p`, or `max_output_tokens`
 - token parameter naming is provider-sensitive and can fall back on retry
 - multimodal images are converted to content parts when supported
 

@@ -18,6 +18,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 - `ChatScreen` is the main interactive surface, but chat is only one entrypoint.
 - All model calls eventually funnel through `ApiService`.
 - Prompt assembly is owned by `PromptBlockProvider` + `PromptBuilder`.
+- API preset generation params are now owned by each `ApiConfig`, not by a separate global settings tab.
 - Text transforms are owned by the regex and Lua pipelines.
 - Live2D directives and image overlay directives are post-processing layers on assistant output.
 - Live2D and image overlay share the same native method channel and the same Android overlay service.
@@ -50,6 +51,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 
 - Chat request path -> `docs/FEATURES/LLM_AND_PROMPTS.md`
 - Prompt block or preset change -> `docs/FEATURES/LLM_AND_PROMPTS.md`
+- API preset editor or OAuth preset flow -> `docs/FEATURES/LLM_AND_PROMPTS.md` and `docs/SYSTEM_ARCHITECTURE.md`
 - New provider or lifecycle question -> `docs/SYSTEM_ARCHITECTURE.md`
 - New Live2D runtime command -> `docs/FEATURES/LIVE2D_RUNTIME.md` and `docs/FEATURES/OVERLAYS.md`
 - New image overlay behavior -> `docs/FEATURES/OVERLAYS.md`
