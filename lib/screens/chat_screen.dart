@@ -23,7 +23,6 @@ import '../services/proactive_response_service.dart';
 import '../services/image_attachment_service.dart';
 import '../features/live2d/data/models/live2d_settings.dart';
 import 'menu_drawer.dart';
-import 'settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -480,20 +479,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         appBar: AppBar(
           title: Text(character.name),
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: '설정',
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                );
-              },
-            ),
-          ],
         ),
 
         body: Column(

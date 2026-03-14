@@ -89,7 +89,7 @@ class MenuDrawer extends StatelessWidget {
                 _DrawerMenuItem(
                   icon: Icons.key,
                   title: 'API 설정',
-                  subtitle: 'API 키 및 모델 설정',
+                  subtitle: 'API 키, OAuth, 모델 설정',
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -119,7 +119,7 @@ class MenuDrawer extends StatelessWidget {
 
                 _DrawerMenuItem(
                   icon: Icons.smart_toy_outlined,
-                  title: 'Agent Mode',
+                  title: '에이전트 모드',
                   subtitle: '자율 관찰/판단/행동 루프 설정',
                   onTap: () {
                     Navigator.pop(context);
