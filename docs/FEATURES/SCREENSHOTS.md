@@ -102,13 +102,17 @@ ADB capture has a special rule.
 
 Before capture:
 - hide the native mini menu if open
-- hide the overlay if visible
+- temporarily suspend the overlay surface if visible without destroying the shared overlay service
 
 After capture:
 - restore the overlay if it was previously visible
 - restore the mini menu if it was previously open
 
 This behavior is implemented in `UnifiedCaptureService._captureWithHiddenOverlays(...)`.
+
+Important detail:
+- the ADB path must not use the normal destructive overlay hide path for this temporary step
+- Live2D/image overlay runtime state should stay in memory during capture so `showOverlay()` can rebuild from the existing service state
 
 ### Why only ADB capture hides overlays
 
@@ -164,6 +168,7 @@ Do it at the shared attachment conversion layer, not separately for chat and min
 ## Common Failure Modes
 
 - forgetting to restore overlay state after ADB capture
+- using the normal destructive overlay hide path during ADB capture and losing the active overlay runtime state
 - assuming MediaProjection and ADB have the same permission model
 - bypassing `UnifiedCaptureService` and losing shared behavior
 - treating screenshot results as a special message type instead of normal image attachments

@@ -75,6 +75,8 @@ Flutter does not talk to separate native services for Live2D and image overlay. 
 
 This service is the real runtime home of the mini menu and overlay interaction state.
 
+For ADB screenshot capture, the service should temporarily suspend overlay surfaces without destroying the service instance. Full hide/stop semantics are a separate path from capture-time suspension.
+
 ## Live2D Overlay Behavior
 
 ### Live2D-side controls
