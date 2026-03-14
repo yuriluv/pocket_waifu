@@ -112,7 +112,7 @@ class AgentPromptPreset {
     final rawRules = map['regexRules'] as List<dynamic>? ?? const [];
     return AgentPromptPreset(
       id: map['id']?.toString() ?? 'agent_default',
-      name: map['name']?.toString() ?? 'Agent Default',
+      name: map['name']?.toString() ?? '에이전트 기본',
       systemPrompt: map['systemPrompt']?.toString() ?? '',
       replyPrompt: map['replyPrompt']?.toString() ?? '',
       regexRules: rawRules

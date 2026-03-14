@@ -84,7 +84,7 @@ class AgentPromptPresetProvider extends ChangeNotifier {
     return const [
       AgentPromptPreset(
         id: 'agent_default',
-        name: 'Agent Default',
+        name: '에이전트 기본',
         systemPrompt:
             'You are PocketWaifu Agent Mode. Observe conversation context and decide whether to notify the user. '
             'Use Lua calls only for final actions: notify("text") or end(). '
