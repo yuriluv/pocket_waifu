@@ -20,7 +20,6 @@ import 'providers/prompt_preset_provider.dart';
 import 'providers/agent_prompt_preset_provider.dart';
 import 'providers/screen_share_provider.dart';
 import 'providers/screen_capture_provider.dart';
-import 'models/screen_share_settings.dart';
 import 'services/release_log_service.dart';
 import 'services/unified_capture_service.dart';
 import 'services/notification_bridge.dart';
@@ -298,24 +297,18 @@ class PocketWaifuApp extends StatelessWidget {
                       );
                       final settings = context.read<ScreenShareProvider>().settings;
                       final captureService = UnifiedCaptureService();
-                      final hasPermission = await captureService.hasPermission(
-                        settings.captureMethod,
-                      );
+                      final hasPermission = await captureService.hasPermission();
                       debugPrint('MiniMenu: hasPermission=$hasPermission');
                       if (!hasPermission) {
                         try {
                           debugPrint('MiniMenu: requesting capture permission from overlay');
-                          final granted = await captureService.requestPermission(
-                            settings.captureMethod,
-                          );
+                          final granted = await captureService.requestPermission();
                           debugPrint('MiniMenu: permission granted=$granted');
                           if (!granted) {
                             return {
                               'ok': false,
                               'error': 'capture_permission_denied',
-                              'message': settings.captureMethod == CaptureMethod.adb
-                                  ? 'Shizuku 권한이 없습니다. 설정에서 Shizuku 연결을 확인하세요.'
-                                  : '화면 캡처 권한이 없습니다. 앱에서 Screen Share 설정을 확인하세요.',
+                              'message': 'Shizuku 권한이 없습니다. 설정에서 Shizuku 연결을 확인하세요.',
                             };
                           }
                         } catch (permError) {
@@ -323,7 +316,7 @@ class PocketWaifuApp extends StatelessWidget {
                           return {
                             'ok': false,
                             'error': 'capture_permission_unavailable',
-                            'message': '앱에서 먼저 화면 캡처 권한을 허용해 주세요.',
+                            'message': '앱에서 먼저 Shizuku 권한을 허용해 주세요.',
                           };
                         }
                       }
@@ -331,11 +324,11 @@ class PocketWaifuApp extends StatelessWidget {
                       final image = await captureService.capture(settings);
                       debugPrint('MiniMenu: capture result available=${image != null}');
                       if (image == null) {
-                        debugPrint('MiniMenu: capture returned null - MediaProjection may have expired');
+                        debugPrint('MiniMenu: capture returned null');
                         return {
                           'ok': false,
                           'error': 'capture_failed',
-                          'message': '화면 캡처에 실패했습니다. 앱에서 Screen Share를 재설정하세요.',
+                          'message': '화면 캡처에 실패했습니다. 앱에서 Shizuku 연결을 확인하세요.',
                         };
                       }
                       debugPrint('MiniMenu: sending screenshot to coordinator '

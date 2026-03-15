@@ -23,7 +23,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 - Live2D directives and image overlay directives are post-processing layers on assistant output.
 - Live2D and image overlay share the same native method channel and the same Android overlay service.
 - Notifications, proactive responses, and agent mode do not have a separate LLM stack; they reuse the same prompt/API pipeline through `NotificationCoordinator`.
-- Screenshots are produced by either MediaProjection or ADB/Shizuku and become normal `ImageAttachment` objects.
+- Screenshots are produced through ADB/Shizuku and become normal `ImageAttachment` objects.
 - The mini menu is not a Flutter widget tree. It is an Android overlay window hosted by the native overlay service and synced with Flutter over the `mini_menu` channel.
 
 ## Read Order
@@ -43,7 +43,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 6. `docs/FEATURES/NOTIFICATIONS.md`
    - Notification replies, proactive responses, agent mode, mini-menu entrypoints.
 7. `docs/FEATURES/SCREENSHOTS.md`
-   - MediaProjection, ADB/Shizuku, overlay hiding/restoration.
+   - ADB/Shizuku capture, screenshot mode selection, overlay hiding/restoration.
 8. `docs/EXTENSION_PLAYBOOK.md`
    - Where to edit for new features and how to avoid cross-feature regressions.
 

@@ -5,6 +5,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../models/settings.dart';
+import '../../image_overlay/services/image_overlay_directive_service.dart';
+import '../../live2d_llm/services/live2d_directive_service.dart';
 import '../models/lua_script.dart';
 import 'lua_native_bridge.dart';
 
@@ -13,12 +16,22 @@ class LuaHookContext {
     this.characterId,
     this.userName,
     this.characterName,
+    this.directiveSyntaxOwnershipEnabled = false,
+    this.live2dLlmIntegrationEnabled,
+    this.live2dDirectiveParsingEnabled,
+    this.live2dShowRawDirectivesInChat,
+    this.llmDirectiveTarget,
     this.timeout = const Duration(seconds: 5),
   });
 
   final String? characterId;
   final String? userName;
   final String? characterName;
+  final bool directiveSyntaxOwnershipEnabled;
+  final bool? live2dLlmIntegrationEnabled;
+  final bool? live2dDirectiveParsingEnabled;
+  final bool? live2dShowRawDirectivesInChat;
+  final LlmDirectiveTarget? llmDirectiveTarget;
   final Duration timeout;
 }
 
@@ -33,6 +46,10 @@ class LuaScriptingService {
   final List<String> _logs = [];
   String _injectedCss = '';
   final LuaNativeBridge _nativeBridge = LuaNativeBridge();
+  final Live2DDirectiveService _live2dDirectiveService =
+      Live2DDirectiveService.instance;
+  final ImageOverlayDirectiveService _imageDirectiveService =
+      ImageOverlayDirectiveService.instance;
 
   List<String> get logs => List.unmodifiable(_logs);
   String get injectedCss => _injectedCss;
@@ -183,7 +200,45 @@ class LuaScriptingService {
       }
     }
 
+    if (hook == 'onAssistantMessage' &&
+        _ownsAssistantDirectiveSyntax(runnable) &&
+        context.directiveSyntaxOwnershipEnabled) {
+      output = await _applyAssistantDirectiveOwnership(output, context);
+    }
+
     return output;
+  }
+
+  bool _ownsAssistantDirectiveSyntax(List<LuaScript> scripts) {
+    for (final script in scripts) {
+      if (script.content.contains('-- hook:onAssistantMessage directives:owned')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<String> _applyAssistantDirectiveOwnership(
+    String text,
+    LuaHookContext context,
+  ) async {
+    final integrationEnabled = context.live2dLlmIntegrationEnabled ?? true;
+    final parsingEnabled = context.live2dDirectiveParsingEnabled ?? true;
+    if (!integrationEnabled || !parsingEnabled) {
+      return text;
+    }
+
+    if (context.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay) {
+      final result = await _imageDirectiveService.processAssistantOutput(text);
+      return result.cleanedText;
+    }
+
+    final result = await _live2dDirectiveService.processAssistantOutput(
+      text,
+      parsingEnabled: true,
+      exposeRawDirectives: context.live2dShowRawDirectivesInChat ?? false,
+    );
+    return result.cleanedText;
   }
 
   Future<void> _runHookVoid(String hook, LuaHookContext context) async {
@@ -288,11 +343,28 @@ class LuaScriptingService {
   List<LuaScript> _defaultScripts() {
     return <LuaScript>[
       LuaScript(
-        name: 'live2d_hooks_template.lua',
+        name: 'assistant_directive_ownership.lua',
         order: 0,
         scope: LuaScriptScope.global,
-        content: '''-- Editable Live2D hook template.
--- Keep or customize these hooks from the Regex/Lua management screen.
+        content: '''-- Editable assistant directive ownership.
+-- Remove or edit the marker below to disable built-in directive parsing ownership.
+-- hook:onAssistantMessage directives:owned
+--
+-- Supported Live2D syntax (owned here):
+--   <live2d> ... </live2d>
+--   [param:id=...,value=...,op=set|del|mul]
+--   [motion:name=Idle/0] / [motion:group=Idle,index=0]
+--   [expression:id=smile] / [expression:name=smile]
+--   [emotion:name=happy]
+--   [wait:ms=300]
+--   [preset:name=idle]
+--   [reset]
+--
+-- Supported image overlay syntax (owned here):
+--   <overlay> ... </overlay>
+--   [img_move:x=100,y=200,op=set|del|mul]
+--   [img_emotion:name=happy]
+--   Inside <overlay>: <move .../>, <emotion .../>, <wait .../>
 
 function onLoad()
 end

@@ -49,7 +49,7 @@ The app is intentionally not split into many isolated micro-features. Several hi
 - `NotificationSettingsProvider`
   - Owns notification, proactive, and agent mode settings.
 - `ScreenShareProvider`
-  - Owns screenshot method and capture settings.
+  - Owns screenshot mode and capture settings.
 - `ScreenCaptureProvider`
   - Mirrors `ScreenShareProvider` into an imperative capture state object.
 - `PromptPresetProvider`
@@ -100,7 +100,7 @@ The primary navigation surface is `lib/screens/menu_drawer.dart`.
 - `lib/screens/regex_lua_management_screen.dart`
   - Regex rules, Lua scripts, and directive target selection.
 - `lib/screens/screen_share_settings_screen.dart`
-  - Screenshot method, permission status, quality, and test capture.
+  - Screenshot mode, Shizuku connection status, quality, and test capture.
 
 ### Automation and notification surfaces
 
@@ -205,7 +205,7 @@ Why it matters:
 ### `ScreenShareProvider` and `ScreenCaptureProvider`
 
 Owned state:
-- capture method and permissions (`ScreenShareProvider`)
+- screenshot mode and Shizuku permission state (`ScreenShareProvider`)
 - capture status and last capture (`ScreenCaptureProvider`)
 
 Why it matters:
@@ -342,14 +342,11 @@ Owns:
 ### Screenshot channels
 
 - Flutter side:
-  - `lib/services/screen_capture_service.dart`
   - `lib/services/adb_screen_capture_service.dart`
 - Android side:
-  - `ScreenCapturePlugin.kt`
   - `AdbScreenCapturePlugin.kt`
   - `MainActivity.kt`
 - Channel names:
-  - `com.pocketwaifu/screen_capture`
   - `com.pocketwaifu/adb_screen_capture`
 
 ### Lua channel
@@ -382,15 +379,6 @@ Needed for:
 Behavior when denied:
 - `NotificationHelper` silently skips posting notifications
 - enabling notifications in Flutter can fail and revert to false
-
-### MediaProjection permission
-
-Needed for:
-- `ScreenCapturePlugin` capture path
-
-Behavior when denied:
-- capture request fails
-- mini-menu screenshot action returns an error to Flutter
 
 ### Shizuku permission
 

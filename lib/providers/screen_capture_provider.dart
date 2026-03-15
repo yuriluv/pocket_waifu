@@ -26,7 +26,7 @@ class ScreenCaptureProvider extends ChangeNotifier {
   }
 
   Future<void> refreshPermission() async {
-    final granted = await _service.hasPermission(_settings.captureMethod);
+    final granted = await _service.hasPermission();
     _permissionStatus = granted
         ? ScreenCapturePermissionStatus.granted
         : ScreenCapturePermissionStatus.denied;
@@ -34,7 +34,7 @@ class ScreenCaptureProvider extends ChangeNotifier {
   }
 
   Future<void> requestPermission() async {
-    final granted = await _service.requestPermission(_settings.captureMethod);
+    final granted = await _service.requestPermission();
     _permissionStatus = granted
         ? ScreenCapturePermissionStatus.granted
         : ScreenCapturePermissionStatus.denied;

@@ -154,7 +154,9 @@ They are used by directives such as `<preset name="..."/>` and by editor/test to
 
 ### Execution model
 
-- directives are parsed from XML-like `<live2d>...</live2d>` blocks or inline bracket syntax
+- public assistant syntax such as `<live2d>...</live2d>`, `[param:...]`, `[emotion:...]`, `<overlay>...</overlay>`, and `[img_emotion:...]` is first owned by the default Regex/Lua layer
+- the regex defaults rewrite that public syntax into internal runtime tokens before execution
+- `Live2DDirectiveService` parses only the internal Live2D tokens (`<pwf-live2d>...</pwf-live2d>` and `[pwf-live2d:...]`)
 - commands are serialized through `Live2DCommandQueue`
 - parameter writes are clamped to known bounds when possible
 - alias names are resolved before runtime writes

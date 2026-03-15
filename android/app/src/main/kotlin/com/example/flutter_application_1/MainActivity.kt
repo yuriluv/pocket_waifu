@@ -1,23 +1,14 @@
 package com.example.flutter_application_1
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
-import android.hardware.display.VirtualDisplay
-import android.media.ImageReader
-import android.media.projection.MediaProjection
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.util.Base64
 import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -28,9 +19,9 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import com.example.flutter_application_1.live2d.Live2DPlugin
 import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
@@ -48,11 +39,9 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL_NAME = "com.example.flutter_application_1/live2d_loader"
         private const val NOTIFICATION_CHANNEL = "com.example.flutter_application_1/notifications"
         private const val MINI_MENU_CHANNEL = "com.example.flutter_application_1/mini_menu"
-        private const val SCREEN_CAPTURE_CHANNEL = "com.pocketwaifu/screen_capture"
         private const val ADB_CAPTURE_CHANNEL = "com.pocketwaifu/adb_screen_capture"
         private const val ENGINE_ID = "main_engine"
         private const val REQUEST_NOTIFICATION_PERMISSION = 1001
-        private const val REQUEST_SCREEN_CAPTURE_PERMISSION = 1002
         
         private const val SERVER_PORT = 8080
         private const val SERVER_HOST = "localhost"
@@ -67,7 +56,6 @@ class MainActivity : FlutterActivity() {
     
     private var modelRootPath: String? = null
     private val localServer = Live2DLocalServer.getInstance()
-    private lateinit var screenCapturePlugin: ScreenCapturePlugin
     private lateinit var adbScreenCapturePlugin: AdbScreenCapturePlugin
     
     val serverUrl: String get() = "http://$SERVER_HOST:$SERVER_PORT"
@@ -75,7 +63,6 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        screenCapturePlugin = ScreenCapturePlugin(this, ::runOnUiThread)
         adbScreenCapturePlugin = AdbScreenCapturePlugin(this)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -264,29 +251,6 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SCREEN_CAPTURE_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "requestPermission" -> {
-                        screenCapturePlugin.requestPermission(result, ::startActivityForResult)
-                    }
-                    "hasPermission" -> {
-                        result.success(screenCapturePlugin.hasPermission())
-                    }
-                    "isAvailable" -> {
-                        result.success(screenCapturePlugin.isAvailable())
-                    }
-                    "captureScreen" -> {
-                        screenCapturePlugin.captureScreen(result, ::startActivityForResult)
-                    }
-                    "release" -> {
-                        screenCapturePlugin.release()
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ADB_CAPTURE_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -341,11 +305,6 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        screenCapturePlugin.onActivityResult(requestCode, resultCode, data)
-    }
-    
     /**
      */
     private fun setModelRootPath(path: String): Boolean {
@@ -437,7 +396,6 @@ class MainActivity : FlutterActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        screenCapturePlugin.release()
         stopServer()
     }
 }

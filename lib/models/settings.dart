@@ -61,9 +61,9 @@ class AppSettings {
     this.live2dShowRawDirectivesInChat = false,
     this.runRegexBeforeLua = true,
     this.live2dSystemPromptTemplate =
-        '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+        '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." op="set|del|mul" dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/> (or name="Group/Index"), <expression id="..." delay="..."/> (or name="..."), <emotion name="..." delay="..."/>, <wait ms="..."/>, <preset name="..." delay="..."/>, <reset delay="..."/>.\nInline variants: [param:id=ParamMouthOpenY,value=0.7], [motion:name=Idle/0], [expression:id=smile], [emotion:name=happy], [wait:ms=300], [preset:name=idle], [reset].\nKeep directives outside visible dialogue text.',
     this.imageOverlaySystemPromptTemplate =
-        '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nDo not mention directive tags in visible dialogue.',
+        '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." op="set|del|mul" delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nInside <overlay>, use move/emotion/wait commands only.\nKeep directives outside visible dialogue text.',
     this.live2dSystemPromptTokenBudget = 500,
     this.llmDirectiveTarget = LlmDirectiveTarget.live2d,
   });
@@ -166,10 +166,10 @@ class AppSettings {
       runRegexBeforeLua: map['runRegexBeforeLua'] ?? true,
       live2dSystemPromptTemplate:
           map['live2dSystemPromptTemplate'] ??
-          '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/>, <expression id="..." delay="..."/>, <emotion name="..." delay="..."/>.\nDo not mention directive tags in visible dialogue.',
+          '[Live2D Integration]\nUse <live2d>...</live2d> blocks for animation directives.\nSupported tags: <param id="..." value="..." op="set|del|mul" dur="..." delay="..."/>, <motion group="..." index="..." priority="..." delay="..."/> (or name="Group/Index"), <expression id="..." delay="..."/> (or name="..."), <emotion name="..." delay="..."/>, <wait ms="..."/>, <preset name="..." delay="..."/>, <reset delay="..."/>.\nInline variants: [param:id=ParamMouthOpenY,value=0.7], [motion:name=Idle/0], [expression:id=smile], [emotion:name=happy], [wait:ms=300], [preset:name=idle], [reset].\nKeep directives outside visible dialogue text.',
       imageOverlaySystemPromptTemplate:
           map['imageOverlaySystemPromptTemplate'] ??
-          '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nDo not mention directive tags in visible dialogue.',
+          '[Image Overlay Integration]\nUse <overlay>...</overlay> blocks for image directives.\nSupported tags: <move x="..." y="..." op="set|del|mul" delay="..."/>, <emotion name="..." delay="..."/>, <wait ms="..."/>.\nInline variants: [img_move:x=100,y=200], [img_emotion:name=happy].\nInside <overlay>, use move/emotion/wait commands only.\nKeep directives outside visible dialogue text.',
       live2dSystemPromptTokenBudget:
           (map['live2dSystemPromptTokenBudget'] ?? 500) as int,
       llmDirectiveTarget: switch (map['llmDirectiveTarget']) {

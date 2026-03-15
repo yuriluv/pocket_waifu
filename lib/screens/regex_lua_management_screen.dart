@@ -9,8 +9,6 @@ import '../features/lua/models/lua_script.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/models/regex_rule.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
-import '../features/live2d_llm/services/live2d_directive_service.dart';
-import '../features/image_overlay/services/image_overlay_directive_service.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
 import '../services/prompt_builder.dart';
@@ -29,8 +27,6 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   late final TabController _tabController;
   final _regexService = RegexPipelineService.instance;
   final _luaService = LuaScriptingService.instance;
-  final _live2dDirectiveService = Live2DDirectiveService.instance;
-  final _imageDirectiveService = ImageOverlayDirectiveService.instance;
   final _promptBuilder = PromptBuilder();
   final TextEditingController _testInputController = TextEditingController();
 
@@ -589,7 +585,8 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
               maxLines: 5,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
-                hintText: '@user 안녕 / @char <overlay><emotion name="happy"/></overlay> 반가워!',
+                hintText:
+                    '@user 안녕 / @char <live2d><emotion name="happy"/></live2d> 반가워! / [img_emotion:name=happy]',
               ),
             ),
             const SizedBox(height: 8),
@@ -823,6 +820,13 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -834,6 +838,13 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -842,24 +853,6 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
         characterId: characterId,
         sessionId: sessionId,
       );
-    }
-
-    final commandErrors = <String>[];
-    if (settings.live2dLlmIntegrationEnabled &&
-        settings.live2dDirectiveParsingEnabled) {
-      if (settings.llmDirectiveTarget == LlmDirectiveTarget.live2d) {
-        final result = await _live2dDirectiveService.processAssistantOutput(
-          output,
-          parsingEnabled: true,
-          exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
-        );
-        output = result.cleanedText;
-        commandErrors.addAll(result.errors);
-      } else {
-        final result = await _imageDirectiveService.processAssistantOutput(output);
-        output = result.cleanedText;
-        commandErrors.addAll(result.errors);
-      }
     }
 
     if (settings.runRegexBeforeLua) {
@@ -897,11 +890,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
     }
 
     _appendTestLog('CHAR pipeline 처리 완료 (${settings.llmDirectiveTarget.name})');
-    if (commandErrors.isNotEmpty) {
-      _appendTestLog('명령 오류: ${commandErrors.join(' | ')}');
-    } else {
-      _appendTestLog('명령 실행 로그: 오류 없음');
-    }
+    _appendTestLog('명령 실행 로그: Lua/Regex 소유 파이프라인 적용');
 
     return output;
   }

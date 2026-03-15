@@ -245,6 +245,13 @@ class CommandParser {
 • /export - 현재 대화 JSON 내보내기
 • /help - 이 도움말 표시
 
+🧩 **지원 지시어 문법**
+
+• Live2D 블록: <live2d>...</live2d>
+• Live2D 인라인: [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset]
+• Overlay 블록: <overlay>...</overlay> 내부에서 <move .../>, <emotion .../>, <wait .../>
+• Overlay 인라인: [img_move:...], [img_emotion:...]
+
 💡 메시지 번호는 1부터 시작합니다.
 ''';
 

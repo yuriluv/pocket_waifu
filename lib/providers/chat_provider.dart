@@ -5,8 +5,6 @@ import '../models/api_config.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
-import '../features/image_overlay/services/image_overlay_directive_service.dart';
-import '../features/live2d_llm/services/live2d_directive_service.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/api_service.dart';
@@ -24,10 +22,6 @@ class ChatProvider extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
   final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
-  final Live2DDirectiveService _directiveService =
-      Live2DDirectiveService.instance;
-  final ImageOverlayDirectiveService _imageDirectiveService =
-      ImageOverlayDirectiveService.instance;
 
   ChatSessionProvider? _sessionProvider;
   PromptBlockProvider? _promptBlockProvider;
@@ -130,7 +124,6 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
 
       _setLoading(true);
-      _directiveService.resetStreamBuffer();
 
       final requestHandle = _apiService.createRequestHandle();
       final cancelListener = GlobalRuntimeRegistry.instance.registerCancelable(
@@ -245,6 +238,13 @@ class ChatProvider extends ChangeNotifier {
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -256,6 +256,13 @@ class ChatProvider extends ChangeNotifier {
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -264,22 +271,6 @@ class ChatProvider extends ChangeNotifier {
         characterId: characterId,
         sessionId: sessionId,
       );
-    }
-
-    if (settings.live2dLlmIntegrationEnabled &&
-        settings.live2dDirectiveParsingEnabled) {
-      if (settings.llmDirectiveTarget == LlmDirectiveTarget.live2d) {
-        final directiveResult = await _directiveService.processAssistantOutput(
-          output,
-          parsingEnabled: true,
-          exposeRawDirectives: settings.live2dShowRawDirectivesInChat,
-        );
-        output = directiveResult.cleanedText;
-      } else {
-        final directiveResult = await _imageDirectiveService
-            .processAssistantOutput(output);
-        output = directiveResult.cleanedText;
-      }
     }
 
     if (settings.runRegexBeforeLua) {

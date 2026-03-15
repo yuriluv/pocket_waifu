@@ -109,9 +109,9 @@ In `ChatProvider` and `NotificationCoordinator`:
 
 - if true:
   - regex `aiOutput`
-  - Lua `onAssistantMessage`
+  - Lua `onAssistantMessage` (includes directive ownership when the editable default script marker is enabled)
 - if false:
-  - Lua `onAssistantMessage`
+  - Lua `onAssistantMessage` (includes directive ownership when the editable default script marker is enabled)
   - regex `aiOutput`
 
 ### Prompt build path
@@ -127,7 +127,7 @@ Inside `ApiService`:
 
 ### Display-only path
 
-After directives are cleaned from assistant output:
+After assistant output cleanup/directive ownership:
 
 - if true:
   - regex `displayOnly`
@@ -159,12 +159,16 @@ This means agent mode is not a simple reuse of the normal prompt block transform
 
 ## Default Regex Behavior
 
-The default regex rule strips `<live2d>...</live2d>` blocks from display-only output so user-visible chat text stays clean.
+The shipped default regex set now owns the public assistant directive syntax.
 
-This is a good example of where regex is the right layer:
-- it is deterministic
-- it is text cleanup
-- it should happen after directive parsing, not before
+- `aiOutput` rules convert public syntax into internal runtime tokens:
+  - `<live2d>...</live2d>` -> `<pwf-live2d>...</pwf-live2d>`
+  - `<overlay>...</overlay>` -> `<pwf-overlay>...</pwf-overlay>`
+  - `[param:...]`, `[motion:...]`, `[expression:...]`, `[emotion:...]`, `[wait:...]`, `[preset:...]`, `[reset]` -> `[pwf-live2d:...]`
+  - `[img_move:...]`, `[img_emotion:...]` -> `[pwf-overlay:...]`
+- `displayOnly` rules remove both the public syntax and the internal runtime tokens so chat and notifications stay clean.
+
+This keeps the user-facing syntax editable in Regex/Lua instead of silently owned by hardcoded assistant post-processing.
 
 ## Choosing The Right Layer
 

@@ -151,7 +151,6 @@ Checklist:
 
 - notifications
 - overlay windows
-- MediaProjection
 - Shizuku/ADB capture
 - renderer/runtime code that cannot live in Flutter
 

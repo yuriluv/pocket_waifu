@@ -102,11 +102,6 @@
             android:name=".notifications.NotificationActionReceiver"
             android:exported="false" />
 
-        <service
-            android:name=".ScreenCaptureForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection" />
-
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

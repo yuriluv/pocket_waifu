@@ -21,7 +21,7 @@ Read this first if you have very little context window.
 - Regex/Lua transforms -> `lib/features/regex/services/regex_pipeline_service.dart`, `lib/features/lua/services/lua_scripting_service.dart`
 - Live2D runtime -> `lib/features/live2d/`, `lib/features/live2d_llm/`
 - Image overlay -> `lib/features/image_overlay/`
-- Screenshots -> `lib/services/unified_capture_service.dart`, `lib/services/screen_capture_service.dart`, `lib/services/adb_screen_capture_service.dart`
+- Screenshots -> `lib/services/unified_capture_service.dart`, `lib/services/adb_screen_capture_service.dart`
 - Native overlay and mini menu -> `android/app/src/main/kotlin/com/example/flutter_application_1/live2d/overlay/Live2DOverlayService.kt`
 
 ## Four Shared Pipelines

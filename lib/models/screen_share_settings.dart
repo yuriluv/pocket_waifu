@@ -1,6 +1,6 @@
 enum ImageQuality { low, medium, high }
 
-enum CaptureMethod { mediaProjection, adb }
+enum ScreenshotMode { includeOverlays, excludeOverlays }
 
 class ScreenShareSettings {
   final bool enabled;
@@ -10,7 +10,7 @@ class ScreenShareSettings {
   final bool autoAttachToMessage;
   final ImageQuality imageQuality;
   final int maxResolution;
-  final CaptureMethod captureMethod;
+  final ScreenshotMode screenshotMode;
   final bool isAdbConnected;
 
   const ScreenShareSettings({
@@ -21,7 +21,7 @@ class ScreenShareSettings {
     this.autoAttachToMessage = false,
     this.imageQuality = ImageQuality.medium,
     this.maxResolution = 1080,
-    this.captureMethod = CaptureMethod.mediaProjection,
+    this.screenshotMode = ScreenshotMode.includeOverlays,
     this.isAdbConnected = false,
   });
 
@@ -33,7 +33,7 @@ class ScreenShareSettings {
     bool? autoAttachToMessage,
     ImageQuality? imageQuality,
     int? maxResolution,
-    CaptureMethod? captureMethod,
+    ScreenshotMode? screenshotMode,
     bool? isAdbConnected,
   }) {
     return ScreenShareSettings(
@@ -44,7 +44,7 @@ class ScreenShareSettings {
       autoAttachToMessage: autoAttachToMessage ?? this.autoAttachToMessage,
       imageQuality: imageQuality ?? this.imageQuality,
       maxResolution: maxResolution ?? this.maxResolution,
-      captureMethod: captureMethod ?? this.captureMethod,
+      screenshotMode: screenshotMode ?? this.screenshotMode,
       isAdbConnected: isAdbConnected ?? this.isAdbConnected,
     );
   }
@@ -58,13 +58,17 @@ class ScreenShareSettings {
       'autoAttachToMessage': autoAttachToMessage,
       'imageQuality': imageQuality.name,
       'maxResolution': maxResolution,
-      'captureMethod': captureMethod.name,
+      'screenshotMode': screenshotMode.name,
       'isAdbConnected': isAdbConnected,
     };
   }
 
   factory ScreenShareSettings.fromMap(Map<String, dynamic> map) {
     final autoCapture = map['autoCapture'] == true;
+    final screenshotMode = _parseScreenshotMode(
+      map['screenshotMode']?.toString(),
+      legacyCaptureMethod: map['captureMethod']?.toString(),
+    );
     return ScreenShareSettings(
       enabled: map['enabled'] == true,
       captureInterval: map['captureInterval'] is int
@@ -77,7 +81,7 @@ class ScreenShareSettings {
       maxResolution: map['maxResolution'] is int
           ? map['maxResolution'] as int
           : 1080,
-      captureMethod: _parseCaptureMethod(map['captureMethod']?.toString()),
+      screenshotMode: screenshotMode,
       isAdbConnected: map['isAdbConnected'] == true,
     );
   }
@@ -89,10 +93,24 @@ class ScreenShareSettings {
     );
   }
 
-  static CaptureMethod _parseCaptureMethod(String? raw) {
-    return CaptureMethod.values.firstWhere(
-      (method) => method.name == raw,
-      orElse: () => CaptureMethod.mediaProjection,
-    );
+  static ScreenshotMode _parseScreenshotMode(
+    String? raw, {
+    String? legacyCaptureMethod,
+  }) {
+    if (raw != null) {
+      return ScreenshotMode.values.firstWhere(
+        (mode) => mode.name == raw,
+        orElse: () => ScreenshotMode.includeOverlays,
+      );
+    }
+
+    switch (legacyCaptureMethod) {
+      case 'adb':
+        return ScreenshotMode.excludeOverlays;
+      case 'mediaProjection':
+        return ScreenshotMode.includeOverlays;
+      default:
+        return ScreenshotMode.includeOverlays;
+    }
   }
 }

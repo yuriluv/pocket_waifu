@@ -91,7 +91,10 @@ class Live2DDirectiveService {
     final luaExtracted = _extractLuaLive2DBlocks(text);
     final sourceText = luaExtracted.cleanedText;
 
-    final regex = RegExp(r'<live2d>([\s\S]*?)</live2d>', caseSensitive: false);
+    final regex = RegExp(
+      r'<pwf-live2d>([\s\S]*?)</pwf-live2d>',
+      caseSensitive: false,
+    );
     final matches = regex.allMatches(sourceText).toList();
     final inlineMatches = _inlineDirectiveRegex.allMatches(sourceText).toList();
 
@@ -125,7 +128,10 @@ class Live2DDirectiveService {
   }
 
   String _renderDirectivesAsChips(String text) {
-    final xmlRegex = RegExp(r'<live2d>([\s\S]*?)</live2d>', caseSensitive: false);
+    final xmlRegex = RegExp(
+      r'<pwf-live2d>([\s\S]*?)</pwf-live2d>',
+      caseSensitive: false,
+    );
     final withXml = text.replaceAllMapped(xmlRegex, (match) {
       final block = match.group(1) ?? '';
       final commandRegex = RegExp(
@@ -189,8 +195,8 @@ class Live2DDirectiveService {
       );
     }
 
-    final start = raw.lastIndexOf('<live2d>');
-    final end = raw.lastIndexOf('</live2d>');
+    final start = raw.lastIndexOf('<pwf-live2d>');
+    final end = raw.lastIndexOf('</pwf-live2d>');
     if (start != -1 && (end == -1 || end < start)) {
       return Live2DDirectiveResult(cleanedText: raw, errors: const []);
     }
@@ -237,7 +243,7 @@ class Live2DDirectiveService {
   }
 
   static final RegExp _inlineDirectiveRegex = RegExp(
-    r'\[(param|motion|expression|emotion|wait|preset|reset):([^\]]+)\]',
+    r'\[pwf-live2d:(param|motion|expression|emotion|wait|preset|reset):([^\]]*)\]',
     caseSensitive: false,
   );
 
@@ -324,7 +330,10 @@ class Live2DDirectiveService {
 
   String _stripDirectivesOnly(String text) {
     final luaExtracted = _extractLuaLive2DBlocks(text);
-    final regex = RegExp(r'<live2d>([\s\S]*?)</live2d>', caseSensitive: false);
+    final regex = RegExp(
+      r'<pwf-live2d>([\s\S]*?)</pwf-live2d>',
+      caseSensitive: false,
+    );
     return luaExtracted.cleanedText
         .replaceAll(regex, '')
         .replaceAll(_inlineDirectiveRegex, '')

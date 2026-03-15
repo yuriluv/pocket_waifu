@@ -29,7 +29,7 @@ class ScreenShareSettingsScreen extends StatelessWidget {
         : 1080;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Screen Share Settings')),
+      appBar: AppBar(title: const Text('Screenshot Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -48,79 +48,38 @@ class ScreenShareSettingsScreen extends StatelessWidget {
           Column(
             children: [
                   _SectionCard(
-                    title: 'Capture Method',
-                    child: RadioGroup<CaptureMethod>(
-                      groupValue: settings.captureMethod,
+                    title: 'Screenshot Mode',
+                    child: RadioGroup<ScreenshotMode>(
+                      groupValue: settings.screenshotMode,
                       onChanged: (value) {
                         if (value != null) {
-                          provider.setCaptureMethod(value);
+                          provider.setScreenshotMode(value);
                         }
                       },
                       child: Column(
                         children: [
-                          RadioListTile<CaptureMethod>(
+                          RadioListTile<ScreenshotMode>(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('자체 화면 공유 (MediaProjection)'),
-                            subtitle: const Text('Android 기본 화면 캡처 API 사용'),
-                            value: CaptureMethod.mediaProjection,
+                            title: const Text('Type 1 - 오버레이 포함'),
+                            subtitle: const Text(
+                              '현재 보이는 오버레이 객체를 함께 캡처합니다.',
+                            ),
+                            value: ScreenshotMode.includeOverlays,
                           ),
-                          RadioListTile<CaptureMethod>(
+                          RadioListTile<ScreenshotMode>(
                             contentPadding: EdgeInsets.zero,
-                            title: const Text('ADB (Shizuku)'),
-                            subtitle: const Text('Shizuku를 통한 ADB 스크린샷 (root 불필요)'),
-                            value: CaptureMethod.adb,
+                            title: const Text('Type 2 - 오버레이 제외'),
+                            subtitle: const Text(
+                              '캡처 전에 오버레이를 잠시 숨기고 화면만 캡처합니다.',
+                            ),
+                            value: ScreenshotMode.excludeOverlays,
                           ),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (settings.captureMethod == CaptureMethod.mediaProjection)
-                    _SectionCard(
-                      title: 'Permission Status',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          settings.isPermissionGranted
-                              ? Icons.verified_outlined
-                              : Icons.warning_amber_outlined,
-                          color: settings.isPermissionGranted
-                              ? Colors.green
-                              : Colors.orange,
-                        ),
-                        title: Text(
-                          settings.isPermissionGranted ? 'Granted' : 'Not Granted',
-                        ),
-                        subtitle: const Text(
-                          'MediaProjection screen capture permission',
-                        ),
-                        trailing: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            FilledButton(
-                              onPressed: provider.isLoading
-                                  ? null
-                                  : settings.isPermissionGranted
-                                  ? provider.refreshPermission
-                                  : provider.requestPermission,
-                              child: Text(
-                                settings.isPermissionGranted ? 'Refresh' : 'Grant',
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            OutlinedButton(
-                              onPressed: provider.isLoading ||
-                                      !settings.isPermissionGranted
-                                  ? null
-                                  : provider.revokePermission,
-                              child: const Text('Revoke'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    const _ShizukuConnectionSection(),
+                  const _ShizukuConnectionSection(),
                   const SizedBox(height: 12),
                   _SectionCard(
                     title: 'Capture Settings',
@@ -128,7 +87,7 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                       children: [
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Enable screen share'),
+                          title: const Text('Enable screenshot capture'),
                           value: settings.enabled,
                           onChanged: provider.setEnabled,
                         ),
@@ -196,7 +155,7 @@ class ScreenShareSettingsScreen extends StatelessWidget {
                   _SectionCard(
                     title: 'Privacy Notice',
                     child: const Text(
-                      'Screen sharing allows the AI to analyze screenshots. '
+                      'Screenshots use ADB via Shizuku. '
                       'Nothing is captured unless you trigger capture.',
                     ),
                   ),
@@ -251,7 +210,9 @@ class _ShizukuConnectionSectionState extends State<_ShizukuConnectionSection> {
               if (!installed)
                 FilledButton(
                   onPressed: () async {
+                    final provider = context.read<ScreenShareProvider>();
                     await _adbService.openShizukuPlayStore();
+                    await provider.refreshConnectionStatus();
                     await _refresh();
                   },
                   child: const Text('Shizuku 설치'),
@@ -259,7 +220,9 @@ class _ShizukuConnectionSectionState extends State<_ShizukuConnectionSection> {
               if (installed && !running)
                 OutlinedButton(
                   onPressed: () async {
+                    final provider = context.read<ScreenShareProvider>();
                     await _adbService.openShizukuApp();
+                    await provider.refreshConnectionStatus();
                     await _refresh();
                   },
                   child: const Text('Shizuku를 실행해 주세요'),
@@ -267,7 +230,7 @@ class _ShizukuConnectionSectionState extends State<_ShizukuConnectionSection> {
               if (running && !permission)
                 FilledButton(
                   onPressed: () async {
-                    await context.read<ScreenShareProvider>().requestAdbPermission();
+                    await context.read<ScreenShareProvider>().requestPermission();
                     await _refresh();
                   },
                   child: const Text('권한 요청'),
@@ -317,11 +280,6 @@ class _ScreenshotTestWidgetState extends State<_ScreenshotTestWidget> {
   DateTime? _captureTime;
   int? _captureDurationMs;
 
-  ImageAttachment? _mediaCapture;
-  ImageAttachment? _adbCapture;
-  int? _mediaMs;
-  int? _adbMs;
-
   Future<void> _doTestCapture() async {
     setState(() {
       _isCapturing = true;
@@ -331,16 +289,12 @@ class _ScreenshotTestWidgetState extends State<_ScreenshotTestWidget> {
     try {
       final provider = context.read<ScreenShareProvider>();
       final settings = provider.settings;
-      final hasPerm = await _unifiedService.hasPermission(settings.captureMethod);
+      final hasPerm = await _unifiedService.hasPermission();
       if (!hasPerm) {
-        final granted = await _unifiedService.requestPermission(
-          settings.captureMethod,
-        );
+        final granted = await _unifiedService.requestPermission();
         if (!granted) {
           setState(() {
-            _errorMessage = settings.captureMethod == CaptureMethod.adb
-                ? 'Shizuku 권한이 필요합니다.'
-                : 'MediaProjection 권한이 필요합니다.';
+            _errorMessage = 'Shizuku 권한이 필요합니다.';
           });
           return;
         }
@@ -361,59 +315,6 @@ class _ScreenshotTestWidgetState extends State<_ScreenshotTestWidget> {
       setState(() {
         _errorMessage = '캡처 실패: $e';
         _captureDurationMs = stopwatch.elapsedMilliseconds;
-      });
-    } finally {
-      setState(() {
-        _isCapturing = false;
-      });
-    }
-  }
-
-  Future<void> _doBothCaptureTest() async {
-    setState(() {
-      _isCapturing = true;
-      _errorMessage = null;
-      _mediaCapture = null;
-      _adbCapture = null;
-      _mediaMs = null;
-      _adbMs = null;
-    });
-
-    try {
-      final provider = context.read<ScreenShareProvider>();
-      final settings = provider.settings;
-
-      final mediaPerm = await _unifiedService.hasPermission(
-        CaptureMethod.mediaProjection,
-      );
-      if (!mediaPerm) {
-        await _unifiedService.requestPermission(CaptureMethod.mediaProjection);
-      }
-      final mediaWatch = Stopwatch()..start();
-      final mediaImage = await _unifiedService.capture(
-        settings.copyWith(captureMethod: CaptureMethod.mediaProjection),
-      );
-      mediaWatch.stop();
-
-      final adbPerm = await _unifiedService.hasPermission(CaptureMethod.adb);
-      if (!adbPerm) {
-        await _unifiedService.requestPermission(CaptureMethod.adb);
-      }
-      final adbWatch = Stopwatch()..start();
-      final adbImage = await _unifiedService.capture(
-        settings.copyWith(captureMethod: CaptureMethod.adb),
-      );
-      adbWatch.stop();
-
-      setState(() {
-        _mediaCapture = mediaImage;
-        _adbCapture = adbImage;
-        _mediaMs = mediaWatch.elapsedMilliseconds;
-        _adbMs = adbWatch.elapsedMilliseconds;
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = '비교 테스트 실패: $e';
       });
     } finally {
       setState(() {
@@ -468,12 +369,6 @@ class _ScreenshotTestWidgetState extends State<_ScreenshotTestWidget> {
           onPressed: _isCapturing ? null : _doTestCapture,
         ),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.compare),
-          label: const Text('양쪽 비교 테스트'),
-          onPressed: _isCapturing ? null : _doBothCaptureTest,
-        ),
-        const SizedBox(height: 8),
         if (_lastCapture != null || _errorMessage != null)
           Container(
             padding: const EdgeInsets.all(8),
@@ -515,24 +410,6 @@ class _ScreenshotTestWidgetState extends State<_ScreenshotTestWidget> {
                   fit: BoxFit.contain,
                 ),
               ),
-            ),
-          ),
-        if (_mediaCapture != null || _adbCapture != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'MediaProjection: ${_mediaCapture?.width ?? 0}x${_mediaCapture?.height ?? 0}, ${_mediaMs ?? 0}ms',
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    'ADB: ${_adbCapture?.width ?? 0}x${_adbCapture?.height ?? 0}, ${_adbMs ?? 0}ms',
-                  ),
-                ),
-              ],
             ),
           ),
       ],

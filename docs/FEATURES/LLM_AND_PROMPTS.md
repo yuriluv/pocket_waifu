@@ -45,9 +45,9 @@ They reuse the same building blocks but have different entrypoints.
    - Lua `onPromptBuild`
 8. `ApiService` formats and sends the request using the active `ApiConfig`.
 9. Assistant output comes back to `ChatProvider` and enters the assistant post-processing pipeline:
-   - regex/Lua on assistant text
-   - Live2D or image overlay directive parsing
-   - display-only regex/Lua cleanup
+    - regex/Lua on assistant text
+    - directive parsing through the editable default Lua ownership script
+    - display-only regex/Lua cleanup
 10. Final assistant text is stored in `ChatSessionProvider`.
 
 ### Notification-originated path

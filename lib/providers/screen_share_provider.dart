@@ -5,12 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/screen_share_settings.dart';
 import '../services/adb_screen_capture_service.dart';
-import '../services/screen_capture_service.dart';
 
 class ScreenShareProvider extends ChangeNotifier {
   static const String _prefsKey = 'screen_share_settings_v1';
 
-  final ScreenCaptureService _captureService = ScreenCaptureService();
   final AdbScreenCaptureService _adbCaptureService = AdbScreenCaptureService();
 
   ScreenShareSettings _settings = const ScreenShareSettings();
@@ -35,12 +33,7 @@ class ScreenShareProvider extends ChangeNotifier {
           Map<String, dynamic>.from(jsonDecode(raw) as Map),
         );
       }
-      final hasPermission = await _captureService.hasPermission();
-      _settings = _settings.copyWith(isPermissionGranted: hasPermission);
-      if (_settings.captureMethod == CaptureMethod.adb) {
-        final shizukuConnected = await _adbCaptureService.isShizukuRunning();
-        _settings = _settings.copyWith(isAdbConnected: shizukuConnected);
-      }
+      await _syncConnectionStatus();
     } catch (e) {
       debugPrint('ScreenShareProvider load failed: $e');
     } finally {
@@ -50,23 +43,20 @@ class ScreenShareProvider extends ChangeNotifier {
   }
 
   Future<void> requestPermission() async {
-    final granted = await _captureService.requestPermission();
-    _settings = _settings.copyWith(isPermissionGranted: granted);
+    final granted = await _adbCaptureService.requestPermission();
+    await _syncConnectionStatus(permissionFallback: granted);
     await _persist();
     notifyListeners();
   }
 
-  Future<void> refreshPermission() async {
-    final granted = await _captureService.hasPermission();
-    _settings = _settings.copyWith(isPermissionGranted: granted);
+  Future<void> refreshConnectionStatus() async {
+    await _syncConnectionStatus();
     await _persist();
     notifyListeners();
   }
 
-  Future<void> revokePermission() async {
-    await _captureService.release();
-    final granted = await _captureService.hasPermission();
-    _settings = _settings.copyWith(isPermissionGranted: granted);
+  Future<void> setScreenshotMode(ScreenshotMode mode) async {
+    _settings = _settings.copyWith(screenshotMode: mode);
     await _persist();
     notifyListeners();
   }
@@ -108,31 +98,14 @@ class ScreenShareProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setCaptureMethod(CaptureMethod method) async {
-    var isAdbConnected = _settings.isAdbConnected;
-    if (method == CaptureMethod.adb) {
-      isAdbConnected = await _adbCaptureService.isShizukuRunning();
-    }
+  Future<void> _syncConnectionStatus({bool permissionFallback = false}) async {
+    final status = await _adbCaptureService.getConnectionStatus();
+    final running = status['running'] == true;
+    final permission = permissionFallback || status['permission'] == true;
     _settings = _settings.copyWith(
-      captureMethod: method,
-      isAdbConnected: isAdbConnected,
+      isAdbConnected: running,
+      isPermissionGranted: permission,
     );
-    await _persist();
-    notifyListeners();
-  }
-
-  Future<void> requestAdbPermission() async {
-    final granted = await _adbCaptureService.requestPermission();
-    final connected = await _adbCaptureService.isShizukuRunning();
-    _settings = _settings.copyWith(
-      isAdbConnected: connected && granted,
-      isPermissionGranted:
-          _settings.captureMethod == CaptureMethod.mediaProjection
-          ? _settings.isPermissionGranted
-          : granted,
-    );
-    await _persist();
-    notifyListeners();
   }
 
   Future<void> _persist() async {

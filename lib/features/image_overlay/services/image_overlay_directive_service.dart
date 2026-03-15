@@ -26,12 +26,12 @@ class ImageOverlayDirectiveService {
   final ImageOverlayStorageService _storage = ImageOverlayStorageService.instance;
 
   static final RegExp _blockRegex = RegExp(
-    r'<overlay>([\s\S]*?)</overlay>',
+    r'<pwf-overlay>([\s\S]*?)</pwf-overlay>',
     caseSensitive: false,
   );
 
   static final RegExp _inlineRegex = RegExp(
-    r'\[(img_move|img_emotion):([^\]]+)\]',
+    r'\[pwf-overlay:(img_move|img_emotion):([^\]]+)\]',
     caseSensitive: false,
   );
 
