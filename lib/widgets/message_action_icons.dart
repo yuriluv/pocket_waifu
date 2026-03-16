@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/ui_feedback.dart';
+
 class MessageActionIcons extends StatelessWidget {
   final String messageContent;
   final int messageIndex;
@@ -23,15 +25,9 @@ class MessageActionIcons extends StatelessWidget {
 
   Future<void> _copyToClipboard(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: messageContent));
-    
+
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$messageIndex번 메시지를 클립보드에 복사했습니다.'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      context.showInfoSnackBar('$messageIndex번 메시지를 클립보드에 복사했습니다.');
     }
   }
 

@@ -491,12 +491,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ),
                 backgroundColor: Colors.red,
                 actions: [
-                  TextButton(
-                    onPressed: () => chatProvider.clearError(),
-                    child: const Text(
-                      '닫기',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                  IconButton(
+                    onPressed: chatProvider.clearError,
+                    icon: const Icon(Icons.close),
+                    color: Colors.white,
+                    tooltip: '닫기',
+                    visualDensity: VisualDensity.compact,
                   ),
                 ],
               ),
@@ -836,9 +836,7 @@ class _MessageBubble extends StatelessWidget {
     final hasBase64 = image.base64Data.isNotEmpty;
 
     if (!hasFile && !hasBase64) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('이미지 데이터를 찾을 수 없습니다.')));
+      context.showErrorSnackBar('이미지 데이터를 찾을 수 없습니다.');
       return;
     }
 
