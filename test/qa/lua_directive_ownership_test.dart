@@ -75,8 +75,8 @@ void main() {
           name: 'default_runtime_template.lua',
           content: '''
 function onAssistantMessage(text)
-  text = pwf.dispatch(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "$1")
-  text = pwf.dispatch(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "$1")
+  text = pwf.dispatch(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "\$1")
+  text = pwf.dispatch(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "\$1")
   return text
 end
 ''',
@@ -100,7 +100,7 @@ end
           name: 'default_runtime_template.lua',
           content: '''
 function onUserMessage(text)
-  text = pwf.dispatchKeep(text, [[function\(move,\s*([^)]+)\)]], "overlay.move", "$1")
+  text = pwf.dispatchKeep(text, [[function\(move,\s*([^)]+)\)]], "overlay.move", "\$1")
   return text
 end
 ''',
