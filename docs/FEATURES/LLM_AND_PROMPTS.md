@@ -47,6 +47,8 @@ They reuse the same building blocks but have different entrypoints.
 9. Assistant output comes back to `ChatProvider` and enters the assistant post-processing pipeline:
     - regex/Lua on assistant text
     - directive parsing through the editable default Lua ownership script
+      - the selected `llmDirectiveTarget` still drives prompt capability injection and selected-target priority
+      - if one response contains both internal Live2D and image-overlay tokens, both runtime directive families can execute in the same pass
     - display-only regex/Lua cleanup
 10. Final assistant text is stored in `ChatSessionProvider`.
 

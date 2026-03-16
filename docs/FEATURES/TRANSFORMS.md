@@ -90,6 +90,23 @@ If native execution fails or returns no value:
 
 Fallback support is intentionally small. It only preserves lifecycle compatibility and a few deterministic transforms.
 
+### Shipped default Lua ownership block
+
+The shipped default script seeds assistant directive ownership.
+
+- seed source: `LuaScriptingService._defaultScripts()`
+- default script name: `assistant_directive_ownership.lua`
+- activation marker: `-- hook:onAssistantMessage directives:owned`
+
+When that marker is present and Lua execution is enabled:
+- Regex still owns the public assistant syntax rewrite into internal runtime tokens.
+- Lua owns a dedicated post-regex assistant directive execution step.
+- `LuaScriptingService` dispatches internal Live2D tokens to `Live2DDirectiveService` and internal image-overlay tokens to `ImageOverlayDirectiveService`.
+- if both token families exist in the same assistant response, both are executed in one pass.
+- `llmDirectiveTarget` still matters, but only for selected-target-first priority and prompt capability injection. It is not an exclusive parser switch once both token families already exist.
+
+If the marker is removed, or Lua execution is disabled, this default ownership behavior is disabled too.
+
 ## Ordering Rules
 
 Ordering is controlled by `AppSettings.runRegexBeforeLua`.
@@ -109,10 +126,12 @@ In `ChatProvider` and `NotificationCoordinator`:
 
 - if true:
   - regex `aiOutput`
-  - Lua `onAssistantMessage` (includes directive ownership when the editable default script marker is enabled)
+  - Lua `onAssistantMessage`
+  - Lua owned directive execution step (if the editable default script marker is enabled)
 - if false:
-  - Lua `onAssistantMessage` (includes directive ownership when the editable default script marker is enabled)
+  - Lua `onAssistantMessage`
   - regex `aiOutput`
+  - Lua owned directive execution step (if the editable default script marker is enabled)
 
 ### Prompt build path
 
@@ -169,6 +188,8 @@ The shipped default regex set now owns the public assistant directive syntax.
 - `displayOnly` rules remove both the public syntax and the internal runtime tokens so chat and notifications stay clean.
 
 This keeps the user-facing syntax editable in Regex/Lua instead of silently owned by hardcoded assistant post-processing.
+
+In the default shipped setup, Regex owns the public-to-internal rewrite and Lua owns the assistant-side execution handoff to the runtime directive services.
 
 ## Choosing The Right Layer
 
