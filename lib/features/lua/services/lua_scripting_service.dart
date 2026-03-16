@@ -200,13 +200,34 @@ class LuaScriptingService {
       }
     }
 
-    if (hook == 'onAssistantMessage' &&
-        _ownsAssistantDirectiveSyntax(runnable) &&
-        context.directiveSyntaxOwnershipEnabled) {
-      output = await _applyAssistantDirectiveOwnership(output, context);
+    return output;
+  }
+
+  Future<String> applyAssistantDirectiveOwnership(
+    String text,
+    LuaHookContext context,
+  ) async {
+    if (!context.directiveSyntaxOwnershipEnabled) {
+      return text;
     }
 
-    return output;
+    final scripts = await getScripts();
+    final runnable = scripts.where((script) {
+      if (!script.isEnabled) {
+        return false;
+      }
+      if (script.scope == LuaScriptScope.perCharacter &&
+          script.characterId != context.characterId) {
+        return false;
+      }
+      return true;
+    }).toList()..sort((a, b) => a.order.compareTo(b.order));
+
+    if (!_ownsAssistantDirectiveSyntax(runnable)) {
+      return text;
+    }
+
+    return _applyAssistantDirectiveOwnership(text, context);
   }
 
   bool _ownsAssistantDirectiveSyntax(List<LuaScript> scripts) {
@@ -228,7 +249,31 @@ class LuaScriptingService {
       return text;
     }
 
-    if (context.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay) {
+    var output = text;
+    final orderedTargets =
+        context.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay
+        ? const <LlmDirectiveTarget>[
+            LlmDirectiveTarget.imageOverlay,
+            LlmDirectiveTarget.live2d,
+          ]
+        : const <LlmDirectiveTarget>[
+            LlmDirectiveTarget.live2d,
+            LlmDirectiveTarget.imageOverlay,
+          ];
+
+    for (final target in orderedTargets) {
+      output = await _applyAssistantDirectiveTarget(output, target, context);
+    }
+
+    return output;
+  }
+
+  Future<String> _applyAssistantDirectiveTarget(
+    String text,
+    LlmDirectiveTarget target,
+    LuaHookContext context,
+  ) async {
+    if (target == LlmDirectiveTarget.imageOverlay) {
       final result = await _imageDirectiveService.processAssistantOutput(text);
       return result.cleanedText;
     }
@@ -236,7 +281,9 @@ class LuaScriptingService {
     final result = await _live2dDirectiveService.processAssistantOutput(
       text,
       parsingEnabled: true,
-      exposeRawDirectives: context.live2dShowRawDirectivesInChat ?? false,
+      exposeRawDirectives:
+          (context.live2dShowRawDirectivesInChat ?? false) &&
+          context.llmDirectiveTarget != LlmDirectiveTarget.imageOverlay,
     );
     return result.cleanedText;
   }

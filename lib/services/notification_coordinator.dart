@@ -891,6 +891,13 @@ class NotificationCoordinator implements GlobalRuntimeListener {
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -902,6 +909,13 @@ class NotificationCoordinator implements GlobalRuntimeListener {
             characterId: characterId,
             characterName: characterName,
             userName: userName,
+            directiveSyntaxOwnershipEnabled: true,
+            live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+            live2dDirectiveParsingEnabled:
+                settings.live2dDirectiveParsingEnabled,
+            live2dShowRawDirectivesInChat:
+                settings.live2dShowRawDirectivesInChat,
+            llmDirectiveTarget: settings.llmDirectiveTarget,
           ),
         );
       }
@@ -912,12 +926,21 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       );
     }
 
-    final directiveResult = await _directiveService.processAssistantOutput(
-      output,
-      parsingEnabled: settings.live2dLlmIntegrationEnabled &&
-          settings.live2dDirectiveParsingEnabled,
-    );
-    output = directiveResult.cleanedText;
+    if (luaEnabled) {
+      output = await _luaScriptingService.applyAssistantDirectiveOwnership(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+          directiveSyntaxOwnershipEnabled: true,
+          live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+          live2dDirectiveParsingEnabled: settings.live2dDirectiveParsingEnabled,
+          live2dShowRawDirectivesInChat: settings.live2dShowRawDirectivesInChat,
+          llmDirectiveTarget: settings.llmDirectiveTarget,
+        ),
+      );
+    }
 
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyDisplayOnly(
