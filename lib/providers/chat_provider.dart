@@ -273,22 +273,6 @@ class ChatProvider extends ChangeNotifier {
       );
     }
 
-    if (luaEnabled) {
-      output = await _luaScriptingService.executeRuntimeFunctions(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-          directiveSyntaxOwnershipEnabled: true,
-          live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
-          live2dDirectiveParsingEnabled: settings.live2dDirectiveParsingEnabled,
-          live2dShowRawDirectivesInChat: settings.live2dShowRawDirectivesInChat,
-          llmDirectiveTarget: settings.llmDirectiveTarget,
-        ),
-      );
-    }
-
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyDisplayOnly(
         output,

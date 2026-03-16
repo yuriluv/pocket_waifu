@@ -513,17 +513,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         if (luaResult.notifyText != null && luaResult.notifyText!.isNotEmpty) {
           final emotion = luaResult.notifyOptions['emotion'];
           if (emotion != null && emotion.isNotEmpty) {
-            await _luaScriptingService.executeRuntimeFunctions(
-              '[pwf-fn:live2d.emotion:name=$emotion]',
-              LuaHookContext(
-                live2dLlmIntegrationEnabled:
-                    settingsProvider.settings.live2dLlmIntegrationEnabled,
-                live2dDirectiveParsingEnabled:
-                    settingsProvider.settings.live2dDirectiveParsingEnabled,
-                live2dShowRawDirectivesInChat:
-                    settingsProvider.settings.live2dShowRawDirectivesInChat,
-              ),
-            );
+            await _directiveService.executeCommand('emotion', {'name': emotion});
           }
 
           await _bridge.showPreResponseNotification(
@@ -931,22 +921,6 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       );
     }
 
-    if (luaEnabled) {
-      output = await _luaScriptingService.executeRuntimeFunctions(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-          directiveSyntaxOwnershipEnabled: true,
-          live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
-          live2dDirectiveParsingEnabled: settings.live2dDirectiveParsingEnabled,
-          live2dShowRawDirectivesInChat: settings.live2dShowRawDirectivesInChat,
-          llmDirectiveTarget: settings.llmDirectiveTarget,
-        ),
-      );
-    }
-
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyDisplayOnly(
         output,
@@ -1005,7 +979,15 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required ApiRequestHandle requestHandle,
     bool skipInputBlock = false,
   }) async {
-    final messages = sessionProvider.getMessagesForSession(sessionId);
+    final messages = List<Message>.from(
+      sessionProvider.getMessagesForSession(sessionId),
+    );
+    if (currentInput.trim().isNotEmpty &&
+        messages.isNotEmpty &&
+        messages.last.role == MessageRole.user &&
+        messages.last.content == currentInput) {
+      messages.removeLast();
+    }
     final resolvedConfig = apiConfig ?? _settingsProvider?.activeApiConfig;
     if (resolvedConfig == null) {
       throw Exception('API 프리셋을 설정해주세요.');
