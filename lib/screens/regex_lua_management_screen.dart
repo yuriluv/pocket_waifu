@@ -855,6 +855,22 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
       );
     }
 
+    if (luaEnabled) {
+      output = await _luaService.applyAssistantDirectiveOwnership(
+        output,
+        LuaHookContext(
+          characterId: characterId,
+          characterName: characterName,
+          userName: userName,
+          directiveSyntaxOwnershipEnabled: true,
+          live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
+          live2dDirectiveParsingEnabled: settings.live2dDirectiveParsingEnabled,
+          live2dShowRawDirectivesInChat: settings.live2dShowRawDirectivesInChat,
+          llmDirectiveTarget: settings.llmDirectiveTarget,
+        ),
+      );
+    }
+
     if (settings.runRegexBeforeLua) {
       output = await _regexService.applyDisplayOnly(
         output,
