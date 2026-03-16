@@ -90,22 +90,26 @@ If native execution fails or returns no value:
 
 Fallback support is intentionally small. It only preserves lifecycle compatibility and a few deterministic transforms.
 
-### Shipped default Lua ownership block
+### Shipped default Lua template
 
-The shipped default script seeds assistant directive ownership.
+The shipped default script is an editable template, not a hardcoded semantic owner.
 
 - seed source: `LuaScriptingService._defaultScripts()`
-- default script name: `assistant_directive_ownership.lua`
-- activation marker: `-- hook:onAssistantMessage directives:owned`
+- default script name: `default_runtime_template.lua`
+- responsibility: recognize text and emit runtime function tokens such as `[pwf-fn:live2d.motion:name=Idle/0]`
 
-When that marker is present and Lua execution is enabled:
-- Regex still owns the public assistant syntax rewrite into internal runtime tokens.
-- Lua owns a dedicated post-regex assistant directive execution step.
-- `LuaScriptingService` dispatches internal Live2D tokens to `Live2DDirectiveService` and internal image-overlay tokens to `ImageOverlayDirectiveService`.
-- if both token families exist in the same assistant response, both are executed in one pass.
-- `llmDirectiveTarget` still matters, but only for selected-target-first priority and prompt capability injection. It is not an exclusive parser switch once both token families already exist.
+The system contract is now:
+- Lua decides what input text means.
+- the app only executes exposed runtime functions.
+- Regex is for text repair and display cleanup, not for assigning runtime semantics.
 
-If the marker is removed, or Lua execution is disabled, this default ownership behavior is disabled too.
+The fallback pseudo-Lua runtime exposes helper functions like:
+- `pwf.gsub(text, pattern, replacement)`
+- `pwf.replace(text, from, to)`
+- `pwf.call(functionName, payload)`
+- `pwf.emit(text, functionName, payload)`
+
+Those helpers let the default template support legacy XML-like strings while remaining fully user-editable.
 
 ## Ordering Rules
 
@@ -127,11 +131,11 @@ In `ChatProvider` and `NotificationCoordinator`:
 - if true:
   - regex `aiOutput`
   - Lua `onAssistantMessage`
-  - Lua owned directive execution step (if the editable default script marker is enabled)
+  - runtime function execution step
 - if false:
   - Lua `onAssistantMessage`
   - regex `aiOutput`
-  - Lua owned directive execution step (if the editable default script marker is enabled)
+  - runtime function execution step
 
 ### Prompt build path
 
@@ -146,7 +150,7 @@ Inside `ApiService`:
 
 ### Display-only path
 
-After assistant output cleanup/directive ownership:
+After assistant output cleanup/runtime function execution:
 
 - if true:
   - regex `displayOnly`
@@ -178,18 +182,13 @@ This means agent mode is not a simple reuse of the normal prompt block transform
 
 ## Default Regex Behavior
 
-The shipped default regex set now owns the public assistant directive syntax.
+The shipped default regex set is intentionally small.
 
-- `aiOutput` rules convert public syntax into internal runtime tokens:
-  - `<live2d>...</live2d>` -> `<pwf-live2d>...</pwf-live2d>`
-  - `<overlay>...</overlay>` -> `<pwf-overlay>...</pwf-overlay>`
-  - `[param:...]`, `[motion:...]`, `[expression:...]`, `[emotion:...]`, `[wait:...]`, `[preset:...]`, `[reset]` -> `[pwf-live2d:...]`
-  - `[img_move:...]`, `[img_emotion:...]` -> `[pwf-overlay:...]`
-- `displayOnly` rules remove both the public syntax and the internal runtime tokens so chat and notifications stay clean.
+- it hides Lua-emitted runtime function tokens from final display
+- it trims blank lines left after token removal
+- it may be extended by the user to repair malformed model output before Lua parses it
 
-This keeps the user-facing syntax editable in Regex/Lua instead of silently owned by hardcoded assistant post-processing.
-
-In the default shipped setup, Regex owns the public-to-internal rewrite and Lua owns the assistant-side execution handoff to the runtime directive services.
+Default regex no longer assigns meaning to `<live2d>`, `<overlay>`, or inline command syntax.
 
 ## Choosing The Right Layer
 
@@ -198,16 +197,14 @@ In the default shipped setup, Regex owns the public-to-internal rewrite and Lua 
 - you need stable machine-token cleanup
 - you are normalizing formatting
 - you are extracting or removing deterministic markers
+- you are repairing malformed control text before Lua parses it
 
 ### Use Lua when
 
 - you want hook-based custom logic
 - you need a user-editable programmable stage
+- you want to map arbitrary text formats to runtime functions
 - you want the possibility of native Lua runtime expansion later
-
-### Use directives instead when
-
-- the output should directly trigger runtime behavior such as Live2D motion, parameter change, image overlay move, or screenshot-side action coupling
 
 ### Use prompt blocks instead when
 

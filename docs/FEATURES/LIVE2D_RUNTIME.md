@@ -154,9 +154,10 @@ They are used by directives such as `<preset name="..."/>` and by editor/test to
 
 ### Execution model
 
-- public assistant syntax such as `<live2d>...</live2d>`, `[param:...]`, `[emotion:...]`, `<overlay>...</overlay>`, and `[img_emotion:...]` is first owned by the default Regex/Lua layer
-- the regex defaults rewrite that public syntax into internal runtime tokens before execution
-- `Live2DDirectiveService` parses only the internal Live2D tokens (`<pwf-live2d>...</pwf-live2d>` and `[pwf-live2d:...]`)
+- `Live2DDirectiveService` is the runtime executor for Live2D commands such as `param`, `motion`, `expression`, `emotion`, `wait`, `preset`, and `reset`
+- the editable Lua template decides which assistant text should map to those commands
+- `LuaScriptingService.executeRuntimeFunctions(...)` dispatches Lua-emitted runtime function tokens to `Live2DDirectiveService`
+- the legacy internal token parsers still exist for compatibility, but they are no longer the intended ownership boundary
 - commands are serialized through `Live2DCommandQueue`
 - parameter writes are clamped to known bounds when possible
 - alias names are resolved before runtime writes
