@@ -6,6 +6,7 @@ import '../../data/models/image_overlay_preset.dart';
 import '../../data/models/image_overlay_settings.dart';
 import '../../presentation/controllers/image_overlay_controller.dart';
 import '../../../../providers/settings_provider.dart';
+import '../../../../utils/ui_feedback.dart';
 
 class ImageOverlaySettingsScreen extends StatelessWidget {
   const ImageOverlaySettingsScreen({super.key});
@@ -847,11 +848,11 @@ class _AdvancedSection extends StatelessWidget {
                 );
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(ok ? '이름을 변경했습니다.' : '이름 변경에 실패했습니다.'),
-                    ),
-                  );
+                  if (ok) {
+                    context.showInfoSnackBar('이름을 변경했습니다.');
+                  } else {
+                    context.showErrorSnackBar('이름 변경에 실패했습니다.');
+                  }
                 }
               },
               child: const Text('저장'),
