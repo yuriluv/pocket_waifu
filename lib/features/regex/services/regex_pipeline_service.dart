@@ -182,9 +182,9 @@ class RegexPipelineService {
   List<RegexRule> _defaultRules() {
     return <RegexRule>[
       RegexRule(
-        name: 'Hide Lua runtime function tokens',
+        name: 'Hide legacy Lua runtime tokens',
         description:
-            'Display-only cleanup: removes internal runtime function tokens emitted by Lua after execution.',
+            'Display-only cleanup: removes legacy internal runtime tokens when old scripts still emit them.',
         type: RegexRuleType.displayOnly,
         pattern: r'\[pwf-fn:[^\]]+\]',
         replacement: '',

@@ -106,10 +106,9 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                   children: [
                     SwitchListTile(
                       title: const Text('Lua 런타임 함수 실행 사용'),
-                      subtitle: const Text('Lua가 만든 runtime function token을 실제 오버레이/파라미터 동작으로 실행'),
-                      value: settings.live2dDirectiveParsingEnabled,
-                      onChanged:
-                          settingsProvider.setLive2DDirectiveParsingEnabled,
+                      subtitle: const Text('Lua 훅 안에서 직접 오버레이/파라미터 동작을 실행'),
+                      value: settings.live2dLuaExecutionEnabled,
+                      onChanged: settingsProvider.setLive2DLuaExecutionEnabled,
                     ),
                     SwitchListTile(
                       title: const Text('모델 기능 프롬프트 주입 사용'),
@@ -826,22 +825,6 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
       );
     }
 
-    if (luaEnabled) {
-      output = await _luaService.executeRuntimeFunctions(
-        output,
-        LuaHookContext(
-          characterId: characterId,
-          characterName: characterName,
-          userName: userName,
-          directiveSyntaxOwnershipEnabled: true,
-          live2dLlmIntegrationEnabled: settings.live2dLlmIntegrationEnabled,
-          live2dDirectiveParsingEnabled: settings.live2dDirectiveParsingEnabled,
-          live2dShowRawDirectivesInChat: settings.live2dShowRawDirectivesInChat,
-          llmDirectiveTarget: settings.llmDirectiveTarget,
-        ),
-      );
-    }
-
     if (settings.runRegexBeforeLua) {
       output = await _regexService.applyDisplayOnly(
         output,
@@ -877,7 +860,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
     }
 
     _appendTestLog('CHAR pipeline 처리 완료');
-    _appendTestLog('명령 실행 로그: Lua/Regex 소유 파이프라인 적용');
+    _appendTestLog('명령 실행 로그: Lua direct-dispatch 파이프라인 적용');
 
     return output;
   }

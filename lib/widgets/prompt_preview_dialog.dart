@@ -66,7 +66,7 @@ onDisplayRender(text) -> string
 
 [핵심 계약]
 - 시스템은 텍스트 의미를 직접 정하지 않습니다.
-- Lua가 문자열을 읽고 runtime function token을 만들면 시스템은 그 함수만 실행합니다.
+- Lua가 문자열을 읽고 훅 안에서 직접 오버레이/Live2D 함수를 호출합니다.
 - 기본 Lua 블록은 수정 가능한 템플릿일 뿐이며, 원하는 형식으로 바꿀 수 있습니다.
 
 [기본 fallback helper]
@@ -75,11 +75,10 @@ pwf.replace(text, from, to)
 pwf.append(text, suffix)
 pwf.prepend(text, prefix)
 pwf.trim(text)
-pwf.call(functionName, payload)
-pwf.emit(text, functionName, payload)
-
-[runtime function token 형식]
-[pwf-fn:function.name:key=value,...]
+pwf.call(functionName, payload)        -- 즉시 실행
+pwf.emit(text, functionName, payload)  -- 즉시 실행 + text 유지
+pwf.dispatch(text, pattern, functionName, payloadTemplate)
+pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)
 
 [시스템이 제공하는 runtime function]
 live2d.param
@@ -119,11 +118,11 @@ overlay.wait
 [Regex/Lua 실행 순서]
 설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
 - userInput: Regex -> Lua
-- aiOutput: Regex -> Lua -> runtime function 실행
+- aiOutput: Regex -> Lua(직접 실행)
 - promptInjection: Regex -> Lua
 - displayOnly: Regex -> Lua
 끄면:
-- aiOutput: Lua -> Regex -> runtime function 실행
+- aiOutput: Lua(직접 실행) -> Regex
 - 나머지 단계는 Lua -> Regex 순서로 실행됩니다.
 
 [네이티브 브리지]
@@ -166,12 +165,12 @@ dotAll           -> RegExp(dotAll: true)
 
 [기본 제공 규칙 요약]
 - 기본 Regex는 의미를 정하지 않습니다.
-- displayOnly에서 Lua가 만든 runtime function token을 화면에서 숨깁니다.
+- displayOnly에서 legacy 내부 토큰이나 잔여 제어 문자열을 화면에서 숨길 수 있습니다.
 - 필요하면 aiOutput 규칙으로 LLM의 잘못된 XML/문자열을 보정할 수 있습니다.
 
-[기본 숨김 예시]
-[pwf-fn:live2d.motion:name=Idle/0]
-[pwf-fn:overlay.emotion:name=happy]
+[보정 예시]
+닫히지 않은 XML 보정
+잘못된 속성 이름 교정
   ''';
 
   @override
