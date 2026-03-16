@@ -513,11 +513,16 @@ class NotificationCoordinator implements GlobalRuntimeListener {
         if (luaResult.notifyText != null && luaResult.notifyText!.isNotEmpty) {
           final emotion = luaResult.notifyOptions['emotion'];
           if (emotion != null && emotion.isNotEmpty) {
-            await _directiveService.processAssistantOutput(
-              '<live2d><emotion name="$emotion"/></live2d>',
-              parsingEnabled:
-                  settingsProvider.settings.live2dLlmIntegrationEnabled &&
-                  settingsProvider.settings.live2dDirectiveParsingEnabled,
+            await _luaScriptingService.executeRuntimeFunctions(
+              '[pwf-fn:live2d.emotion:name=$emotion]',
+              LuaHookContext(
+                live2dLlmIntegrationEnabled:
+                    settingsProvider.settings.live2dLlmIntegrationEnabled,
+                live2dDirectiveParsingEnabled:
+                    settingsProvider.settings.live2dDirectiveParsingEnabled,
+                live2dShowRawDirectivesInChat:
+                    settingsProvider.settings.live2dShowRawDirectivesInChat,
+              ),
             );
           }
 
@@ -927,7 +932,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     }
 
     if (luaEnabled) {
-      output = await _luaScriptingService.applyAssistantDirectiveOwnership(
+      output = await _luaScriptingService.executeRuntimeFunctions(
         output,
         LuaHookContext(
           characterId: characterId,

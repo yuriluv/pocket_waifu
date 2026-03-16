@@ -274,7 +274,7 @@ class ChatProvider extends ChangeNotifier {
     }
 
     if (luaEnabled) {
-      output = await _luaScriptingService.applyAssistantDirectiveOwnership(
+      output = await _luaScriptingService.executeRuntimeFunctions(
         output,
         LuaHookContext(
           characterId: characterId,
