@@ -2,9 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/api_config.dart';
+import '../models/chat_variable_scope.dart';
 import '../models/character.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
+import '../features/cbs/services/cbs_service.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
 import '../services/api_service.dart';
@@ -22,6 +24,7 @@ class ChatProvider extends ChangeNotifier {
   final Uuid _uuid = const Uuid();
   final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
+  final CbsService _cbsService = CbsService.instance;
 
   ChatSessionProvider? _sessionProvider;
   PromptBlockProvider? _promptBlockProvider;
@@ -48,18 +51,33 @@ class ChatProvider extends ChangeNotifier {
     return _sessionProvider?.getMessagesForSession(sessionId) ?? [];
   }
 
-  void initializeChat({
+  Future<void> initializeChat({
     required Character character,
     required String userName,
     String? targetSessionId,
-  }) {
+    ApiConfig? apiConfig,
+    AppSettings? settings,
+  }) async {
     final sessionId = _resolveSessionId(targetSessionId: targetSessionId);
     if (sessionId == null) return;
 
-    final firstMessage = _promptBuilder.getFirstMessage(
+    var firstMessage = _promptBuilder.getFirstMessage(
       character: character,
       userName: userName,
     );
+    if (settings != null) {
+      firstMessage = _renderCbs(
+        firstMessage,
+        sessionId: sessionId,
+        scope: ChatVariableScope.newChat,
+        phase: CbsPhase.system,
+        characterName: character.name,
+        userName: userName,
+        messages: const <Message>[],
+        apiConfig: apiConfig,
+        maxPromptTokens: settings.maxTokens,
+      );
+    }
 
     _sessionProvider!.clearSession(sessionId);
     _sessionProvider!.addMessageToSession(
@@ -99,19 +117,19 @@ class ChatProvider extends ChangeNotifier {
     }
 
     final trimmedInput = userMessage.trim();
-    final preparedInput = trimmedInput.isEmpty
-        ? ''
-        : await _prepareUserInput(
-            trimmedInput,
-            settings: settings,
-            sessionId: sessionId,
-            characterId: character.id,
-            characterName: character.name,
-            userName: userName,
-          );
 
     await sessionProvider.runSerialized(() async {
       _errorMessage = null;
+      final preparedInput = trimmedInput.isEmpty
+          ? ''
+          : await _prepareUserInput(
+              trimmedInput,
+              settings: settings,
+              sessionId: sessionId,
+              characterId: character.id,
+              characterName: character.name,
+              userName: userName,
+            );
       sessionProvider.addMessageToSession(
         sessionId,
         _createMessage(
@@ -135,6 +153,8 @@ class ChatProvider extends ChangeNotifier {
           sessionId: sessionId,
           settings: settings,
           apiConfig: apiConfig,
+          characterName: character.name,
+          userName: userName,
           requestHandle: requestHandle,
         );
 
@@ -178,6 +198,17 @@ class ChatProvider extends ChangeNotifier {
     required String userName,
   }) async {
     var output = text;
+    output = _renderCbs(
+      output,
+      sessionId: sessionId,
+      scope: ChatVariableScope.mainChat,
+      phase: CbsPhase.userInput,
+      characterName: characterName,
+      userName: userName,
+      messages: _sessionProvider?.getMessagesForSession(sessionId) ?? const <Message>[],
+      currentInput: text,
+      maxPromptTokens: settings.maxTokens,
+    );
     final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyUserInput(
@@ -224,6 +255,16 @@ class ChatProvider extends ChangeNotifier {
     required String userName,
   }) async {
     var output = text;
+    output = _renderCbs(
+      output,
+      sessionId: sessionId,
+      scope: ChatVariableScope.mainChat,
+      phase: CbsPhase.assistantOutput,
+      characterName: characterName,
+      userName: userName,
+      messages: _sessionProvider?.getMessagesForSession(sessionId) ?? const <Message>[],
+      maxPromptTokens: settings.maxTokens,
+    );
     final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyAiOutput(
@@ -314,6 +355,8 @@ class ChatProvider extends ChangeNotifier {
     required String sessionId,
     required AppSettings settings,
     required ApiConfig? apiConfig,
+    required String characterName,
+    required String userName,
     ApiRequestHandle? requestHandle,
   }) async {
     final sessionProvider = _sessionProvider!;
@@ -340,13 +383,43 @@ class ChatProvider extends ChangeNotifier {
       if (blocks.isEmpty) {
         throw Exception('프롬프트 블록 프리셋이 비어 있습니다.');
       }
+      final renderedBlocks = blocks
+          .map(
+            (block) => block.copyWith(
+              content: block.content.isEmpty
+                  ? block.content
+                  : _renderCbs(
+                      block.content,
+                      sessionId: sessionId,
+                      scope: ChatVariableScope.mainChat,
+                      phase: CbsPhase.promptBuild,
+                      characterName: characterName,
+                      userName: userName,
+                      messages: promptHistory,
+                      apiConfig: apiConfig,
+                      maxPromptTokens: settings.maxTokens,
+                      currentInput: currentInput,
+                    ),
+            ),
+          )
+          .toList(growable: false);
 
       if (latestUserMessage == null || latestUserMessage.images.isEmpty) {
         return _apiService.sendMessageWithBlocks(
           apiConfig: null,
-          blocks: blocks,
+          blocks: renderedBlocks,
           pastMessages: promptHistory,
-          currentInput: currentInput,
+          currentInput: _renderCbs(
+            currentInput,
+            sessionId: sessionId,
+            scope: ChatVariableScope.mainChat,
+            phase: CbsPhase.promptBuild,
+            characterName: characterName,
+            userName: userName,
+            messages: promptHistory,
+            apiConfig: apiConfig,
+            maxPromptTokens: settings.maxTokens,
+          ),
           settings: settings,
           requestHandle: requestHandle,
         );
@@ -366,7 +439,20 @@ class ChatProvider extends ChangeNotifier {
       final legacyMessages = <Message>[];
       for (final payload in promptMessages) {
         final role = _parseRole(payload['role']?.toString());
-        final content = payload['content'];
+        final content = payload['content'] is String
+            ? _renderCbs(
+                payload['content'] as String,
+                sessionId: sessionId,
+                scope: ChatVariableScope.mainChat,
+                phase: CbsPhase.promptBuild,
+                characterName: characterName,
+                userName: userName,
+                messages: promptHistory,
+                apiConfig: apiConfig,
+                maxPromptTokens: settings.maxTokens,
+                currentInput: currentInput,
+              )
+            : payload['content'];
         if (role == null || content is! String || content.trim().isEmpty) {
           continue;
         }
@@ -395,6 +481,23 @@ class ChatProvider extends ChangeNotifier {
     );
     if (formattedMessages.isEmpty) {
       throw Exception('프롬프트 블록 프리셋이 비어 있습니다.');
+    }
+
+    for (final payload in formattedMessages) {
+      if (payload['content'] is String) {
+        payload['content'] = _renderCbs(
+          payload['content'] as String,
+          sessionId: sessionId,
+          scope: ChatVariableScope.mainChat,
+          phase: CbsPhase.promptBuild,
+          characterName: characterName,
+          userName: userName,
+          messages: promptHistory,
+          apiConfig: apiConfig,
+          maxPromptTokens: settings.maxTokens,
+          currentInput: currentInput,
+        );
+      }
     }
 
     if (latestUserMessage != null && latestUserMessage.images.isNotEmpty) {
@@ -608,6 +711,39 @@ class ChatProvider extends ChangeNotifier {
   void _setError(String message) {
     _errorMessage = message;
     notifyListeners();
+  }
+
+  String _renderCbs(
+    String input, {
+    required String sessionId,
+    required ChatVariableScope scope,
+    required CbsPhase phase,
+    required String characterName,
+    required String userName,
+    required List<Message> messages,
+    ApiConfig? apiConfig,
+    int? maxPromptTokens,
+    String currentInput = '',
+  }) {
+    final sessionProvider = _sessionProvider;
+    if (sessionProvider == null) {
+      return input;
+    }
+    return _cbsService.render(
+      input,
+      CbsRenderContext(
+        sessionProvider: sessionProvider,
+        sessionId: sessionId,
+        scope: scope,
+        phase: phase,
+        characterName: characterName,
+        userName: userName,
+        messages: messages,
+        currentInput: currentInput,
+        apiConfig: apiConfig,
+        maxPromptTokens: maxPromptTokens,
+      ),
+    ).output;
   }
 
   @override

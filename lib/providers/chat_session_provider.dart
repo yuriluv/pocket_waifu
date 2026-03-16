@@ -9,7 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/chat_session.dart';
+import '../models/chat_variable_scope.dart';
 import '../models/message.dart';
+import '../models/session_interaction_state.dart';
+import '../models/session_variable_store.dart';
 import '../services/image_cache_manager.dart';
 
 class ChatSessionProvider extends ChangeNotifier {
@@ -21,6 +24,7 @@ class ChatSessionProvider extends ChangeNotifier {
   bool _isLoading = false;
   final Uuid _uuid = const Uuid();
   Future<void> _sessionQueue = Future.value();
+  Future<void> _saveQueue = Future.value();
 
   // === Getter ===
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -115,11 +119,16 @@ class ChatSessionProvider extends ChangeNotifier {
   }
 
   Future<void> saveAllSessions() async {
+    _saveQueue = _saveQueue.then((_) => _persistAllSessions());
+    return _saveQueue;
+  }
+
+  Future<void> _persistAllSessions() async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
       final String sessionsJson = jsonEncode(
-        _sessions.map((session) => session.toMap()).toList(),
+        _sessions.map((session) => session.toMetadataMap()).toList(),
       );
       await prefs.setString(_sessionsKey, sessionsJson);
 
@@ -231,11 +240,18 @@ class ChatSessionProvider extends ChangeNotifier {
       debugPrint('>>> 경고: 세션 $sessionId 없음, 메시지 추가 실패');
       return;
     }
-    session.addMessage(message);
+    session.addMessage(_normalizeMessageForSession(sessionId, message));
     session.lastModifiedAt = DateTime.now();
     notifyListeners();
     saveAllSessions();
     debugPrint('>>> v2.0.5: 세션 $sessionId에 메시지 추가됨');
+  }
+
+  Message _normalizeMessageForSession(String sessionId, Message message) {
+    return message.copyWith(
+      id: message.id.isEmpty ? _uuid.v4() : message.id,
+      chatId: message.chatId?.isNotEmpty == true ? message.chatId : sessionId,
+    );
   }
 
   List<Message> getMessagesForSession(String sessionId) {
@@ -364,6 +380,153 @@ class ChatSessionProvider extends ChangeNotifier {
     session.lastModifiedAt = DateTime.now();
     notifyListeners();
     saveAllSessions();
+  }
+
+  Map<String, String> getVariables(
+    String sessionId,
+    ChatVariableScope scope,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      return const <String, String>{};
+    }
+    return Map<String, String>.from(session.variablesForScope(scope));
+  }
+
+  Map<String, String> getVariableAliases(
+    String sessionId,
+    ChatVariableScope scope,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      return const <String, String>{};
+    }
+    return Map<String, String>.from(session.aliasesForScope(scope));
+  }
+
+  String? getVariableValue(
+    String sessionId,
+    ChatVariableScope scope,
+    String variableName,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      return null;
+    }
+    return session.variablesForScope(scope)[variableName];
+  }
+
+  void setVariable(
+    String sessionId,
+    ChatVariableScope scope,
+    String variableName,
+    String value,
+  ) {
+    final session = getSessionById(sessionId);
+    final normalizedName = variableName.trim();
+    if (session == null || normalizedName.isEmpty) {
+      return;
+    }
+    final nextValues = SessionVariableStore.cloneScopeMap(session.variableStore.values);
+    nextValues[scope]![normalizedName] = value;
+    session.variableStore = session.variableStore.copyWith(values: nextValues);
+    session.lastModifiedAt = DateTime.now();
+    notifyListeners();
+    saveAllSessions();
+  }
+
+  void removeVariable(
+    String sessionId,
+    ChatVariableScope scope,
+    String variableName,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      return;
+    }
+    final nextValues = SessionVariableStore.cloneScopeMap(session.variableStore.values);
+    final nextAliases = SessionVariableStore.cloneScopeMap(session.variableStore.aliases);
+    nextValues[scope]!.remove(variableName);
+    nextAliases[scope]!.remove(variableName);
+    session.variableStore = session.variableStore.copyWith(
+      values: nextValues,
+      aliases: nextAliases,
+    );
+    session.lastModifiedAt = DateTime.now();
+    notifyListeners();
+    saveAllSessions();
+  }
+
+  void incrementVariable(
+    String sessionId,
+    ChatVariableScope scope,
+    String variableName,
+    num delta,
+  ) {
+    final existing = num.tryParse(
+      getVariableValue(sessionId, scope, variableName) ?? '0',
+    );
+    final next = (existing ?? 0) + delta;
+    setVariable(sessionId, scope, variableName, _formatNumericValue(next));
+  }
+
+  void setVariableAlias(
+    String sessionId,
+    ChatVariableScope scope,
+    String variableName,
+    String alias,
+  ) {
+    final session = getSessionById(sessionId);
+    if (session == null || variableName.trim().isEmpty) {
+      return;
+    }
+    final nextAliases = SessionVariableStore.cloneScopeMap(session.variableStore.aliases);
+    if (alias.trim().isEmpty) {
+      nextAliases[scope]!.remove(variableName);
+    } else {
+      nextAliases[scope]![variableName] = alias.trim();
+    }
+    session.variableStore = session.variableStore.copyWith(aliases: nextAliases);
+    session.lastModifiedAt = DateTime.now();
+    notifyListeners();
+    saveAllSessions();
+  }
+
+  SessionInteractionState getInteractionState(String sessionId) {
+    final session = getSessionById(sessionId);
+    return session?.interactionState ?? const SessionInteractionState();
+  }
+
+  void updateInteractionState(
+    String sessionId, {
+    String? html,
+    String? css,
+    String? activePresetId,
+    bool clearPreset = false,
+  }) {
+    final session = getSessionById(sessionId);
+    if (session == null) {
+      return;
+    }
+    session.interactionState = session.interactionState.copyWith(
+      html: html,
+      css: css,
+      activePresetId: activePresetId,
+      clearPreset: clearPreset,
+    );
+    session.lastModifiedAt = DateTime.now();
+    notifyListeners();
+    saveAllSessions();
+  }
+
+  String _formatNumericValue(num value) {
+    if (value is int) {
+      return value.toString();
+    }
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toString();
   }
 
   void deleteLastMessageFromSession(String sessionId) {

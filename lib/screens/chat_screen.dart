@@ -10,14 +10,17 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../models/message.dart';
+import '../models/chat_variable_scope.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_session_provider.dart';
+import '../providers/interaction_preset_provider.dart';
 import '../providers/prompt_block_provider.dart';
 import '../providers/global_runtime_provider.dart';
 import '../services/command_parser.dart';
 import '../widgets/prompt_preview_dialog.dart';
 import '../widgets/empty_state_view.dart';
+import '../widgets/interaction_drawer.dart';
 import '../utils/ui_feedback.dart';
 import '../services/proactive_response_service.dart';
 import '../services/image_attachment_service.dart';
@@ -41,6 +44,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final FocusNode _inputFocusNode = FocusNode();
 
   bool _shouldRestoreFocusAfterDrawerClose = false;
+  bool _shouldRestoreFocusAfterEndDrawerClose = false;
 
   bool _isProviderLinked = false;
 
@@ -334,6 +338,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         chatProvider.initializeChat(
           character: settingsProvider.character,
           userName: settingsProvider.userName,
+          settings: settingsProvider.settings,
+          apiConfig: settingsProvider.activeApiConfig,
           targetSessionId: sessionId,
         );
         context.showInfoSnackBar('대화가 초기화되었습니다.');
@@ -425,6 +431,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final settingsProvider = context.watch<SettingsProvider>();
     final runtimeProvider = context.watch<GlobalRuntimeProvider>();
     final chatSessionProvider = context.watch<ChatSessionProvider>();
+    final interactionPresetProvider = context.watch<InteractionPresetProvider>();
     final character = settingsProvider.character;
 
     final activeSessionId = chatSessionProvider.activeSessionId;
@@ -450,6 +457,78 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       },
       child: Scaffold(
         drawer: const MenuDrawer(),
+        endDrawer: activeSessionId == null
+            ? null
+            : InteractionDrawer(
+                sessionId: activeSessionId,
+                characterName: character.name,
+                interactionState: chatSessionProvider.getInteractionState(activeSessionId),
+                variablesByScope: {
+                  for (final scope in ChatVariableScope.values)
+                    scope: chatSessionProvider.getVariables(activeSessionId, scope),
+                },
+                aliasesByScope: {
+                  for (final scope in ChatVariableScope.values)
+                    scope: chatSessionProvider.getVariableAliases(activeSessionId, scope),
+                },
+                presets: interactionPresetProvider.presets,
+                onHtmlChanged: (html) {
+                  chatSessionProvider.updateInteractionState(activeSessionId, html: html);
+                },
+                onCssChanged: (css) {
+                  chatSessionProvider.updateInteractionState(activeSessionId, css: css);
+                },
+                onVariableChanged: (scope, variableName, value) {
+                  chatSessionProvider.setVariable(activeSessionId, scope, variableName, value);
+                },
+                onVariableRemoved: (scope, variableName) {
+                  chatSessionProvider.removeVariable(activeSessionId, scope, variableName);
+                },
+                onVariableAliasChanged: (scope, variableName, alias) {
+                  chatSessionProvider.setVariableAlias(activeSessionId, scope, variableName, alias);
+                },
+                onPresetApplied: (preset) {
+                  chatSessionProvider.updateInteractionState(
+                    activeSessionId,
+                    html: preset.html,
+                    css: preset.css,
+                    activePresetId: preset.id,
+                  );
+                },
+                onPresetSaved: (name, html, css) async {
+                  interactionPresetProvider.addPreset(name, html: html, css: css);
+                },
+                onPresetRenamed: (presetId, newName) async {
+                  interactionPresetProvider.renamePreset(presetId, newName);
+                },
+                onPresetDeleted: (presetId) async {
+                  interactionPresetProvider.deletePreset(presetId);
+                  final interactionState = chatSessionProvider.getInteractionState(activeSessionId);
+                  if (interactionState.activePresetId == presetId) {
+                    chatSessionProvider.updateInteractionState(activeSessionId, clearPreset: true);
+                  }
+                },
+                onPresetImported: () async {
+                  final (ok, message) = await interactionPresetProvider.importPresetFromFile();
+                  if (!mounted) return;
+                  if (ok) {
+                    if (message != null && message.isNotEmpty) {
+                      context.showInfoSnackBar(message);
+                    }
+                  } else if (message != null && message.isNotEmpty) {
+                    context.showErrorSnackBar(message);
+                  }
+                },
+                onPresetExported: (preset) async {
+                  final (ok, message) = await interactionPresetProvider.exportPresetToFile(preset);
+                  if (!mounted || message == null || message.isEmpty) return;
+                  if (ok) {
+                    context.showInfoSnackBar(message);
+                  } else {
+                    context.showErrorSnackBar(message);
+                  }
+                },
+              ),
         onDrawerChanged: (isOpened) {
           if (isOpened) {
             _shouldRestoreFocusAfterDrawerClose = _inputFocusNode.hasFocus;
@@ -475,10 +554,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             }
           }
         },
+        onEndDrawerChanged: (isOpened) {
+          if (isOpened) {
+            _shouldRestoreFocusAfterEndDrawerClose = _inputFocusNode.hasFocus;
+            if (_inputFocusNode.hasFocus) {
+              _inputFocusNode.unfocus();
+            }
+          } else if (_shouldRestoreFocusAfterEndDrawerClose) {
+            _shouldRestoreFocusAfterEndDrawerClose = false;
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted && !_inputFocusNode.hasFocus) {
+                _inputFocusNode.requestFocus();
+              }
+            });
+          }
+        },
 
         appBar: AppBar(
           title: Text(character.name),
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          actions: [
+            Builder(
+              builder: (appBarContext) => IconButton(
+                tooltip: '상호작용 탭',
+                onPressed: activeSessionId == null
+                    ? null
+                    : () => Scaffold.of(appBarContext).openEndDrawer(),
+                icon: const Icon(Icons.space_dashboard_outlined),
+              ),
+            ),
+          ],
         ),
 
         body: Column(
@@ -528,6 +633,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           chatProvider.initializeChat(
                             character: character,
                             userName: settingsProvider.userName,
+                            settings: settingsProvider.settings,
+                            apiConfig: settingsProvider.activeApiConfig,
                           );
                         },
                         child: const Text('대화 시작'),

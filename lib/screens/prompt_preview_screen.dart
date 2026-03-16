@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../features/cbs/services/cbs_service.dart';
+import '../models/chat_variable_scope.dart';
 import '../providers/chat_provider.dart';
+import '../providers/chat_session_provider.dart';
 import '../providers/prompt_block_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/prompt_builder.dart';
 import '../utils/ui_feedback.dart';
 
@@ -15,6 +19,7 @@ class PromptPreviewScreen extends StatefulWidget {
 
 class _PromptPreviewScreenState extends State<PromptPreviewScreen> {
   final PromptBuilder _promptBuilder = PromptBuilder();
+  final CbsService _cbsService = CbsService.instance;
   final TextEditingController _inputController = TextEditingController();
   String? _selectedPresetId;
 
@@ -35,6 +40,8 @@ class _PromptPreviewScreenState extends State<PromptPreviewScreen> {
   Widget build(BuildContext context) {
     final blockProvider = context.watch<PromptBlockProvider>();
     final chatProvider = context.watch<ChatProvider>();
+    final sessionProvider = context.watch<ChatSessionProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
 
     if (blockProvider.isLoading || blockProvider.presets.isEmpty) {
       return Scaffold(
@@ -51,11 +58,30 @@ class _PromptPreviewScreenState extends State<PromptPreviewScreen> {
         ? blockProvider.blocks
         : preset.blocks;
 
-    final promptText = _promptBuilder.buildFinalPrompt(
+    final rawPromptText = _promptBuilder.buildFinalPrompt(
       blocks: blocks,
       pastMessages: chatProvider.messages,
       currentInput: _inputController.text.trim(),
     );
+    final activeSessionId = sessionProvider.activeSessionId;
+    final promptText = activeSessionId == null
+        ? rawPromptText
+        : _cbsService.render(
+            rawPromptText,
+            CbsRenderContext(
+              sessionProvider: sessionProvider,
+              sessionId: activeSessionId,
+              scope: ChatVariableScope.mainChat,
+              phase: CbsPhase.promptBuild,
+              characterName: settingsProvider.character.name,
+              userName: settingsProvider.userName,
+              messages: chatProvider.messages,
+              currentInput: _inputController.text.trim(),
+              apiConfig: settingsProvider.activeApiConfig,
+              maxPromptTokens: settingsProvider.settings.maxTokens,
+              allowWrites: false,
+            ),
+          ).output;
 
     final int charCount = promptText.length;
     final int estimatedTokens = (charCount / 2.5).round();

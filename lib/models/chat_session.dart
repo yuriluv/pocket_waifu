@@ -3,7 +3,10 @@
 // ============================================================================
 
 import 'package:uuid/uuid.dart';
+import 'chat_variable_scope.dart';
 import 'message.dart';
+import 'session_interaction_state.dart';
+import 'session_variable_store.dart';
 
 class ChatSession {
   final String id;
@@ -12,6 +15,8 @@ class ChatSession {
   DateTime createdAt;
   DateTime lastModifiedAt;
   String? characterId;
+  SessionVariableStore variableStore;
+  SessionInteractionState interactionState;
 
   ChatSession({
     String? id,
@@ -20,11 +25,15 @@ class ChatSession {
     DateTime? createdAt,
     DateTime? lastModifiedAt,
     this.characterId,
+    SessionVariableStore? variableStore,
+    SessionInteractionState? interactionState,
   })  : id = id ?? const Uuid().v4(),
         name = name ?? '새 채팅',
         messages = messages ?? [],
         createdAt = createdAt ?? DateTime.now(),
-        lastModifiedAt = lastModifiedAt ?? DateTime.now();
+        lastModifiedAt = lastModifiedAt ?? DateTime.now(),
+        variableStore = variableStore ?? SessionVariableStore.empty(),
+        interactionState = interactionState ?? const SessionInteractionState();
 
   void addMessage(Message message) {
     messages.add(message);
@@ -62,6 +71,14 @@ class ChatSession {
     lastModifiedAt = DateTime.now();
   }
 
+  Map<String, String> variablesForScope(ChatVariableScope scope) {
+    return variableStore.values[scope] ?? const <String, String>{};
+  }
+
+  Map<String, String> aliasesForScope(ChatVariableScope scope) {
+    return variableStore.aliases[scope] ?? const <String, String>{};
+  }
+
   int get messageCount => messages.length;
 
   DateTime get updatedAt => lastModifiedAt;
@@ -83,6 +100,21 @@ class ChatSession {
       'createdAt': createdAt.toIso8601String(),
       'lastModifiedAt': lastModifiedAt.toIso8601String(),
       'characterId': characterId,
+      'variableStore': variableStore.toMap(),
+      'interactionState': interactionState.toMap(),
+    };
+  }
+
+  Map<String, dynamic> toMetadataMap() {
+    return {
+      'id': id,
+      'name': name,
+      'messages': const <Map<String, dynamic>>[],
+      'createdAt': createdAt.toIso8601String(),
+      'lastModifiedAt': lastModifiedAt.toIso8601String(),
+      'characterId': characterId,
+      'variableStore': variableStore.toMap(),
+      'interactionState': interactionState.toMap(),
     };
   }
 
@@ -100,6 +132,20 @@ class ChatSession {
           ? DateTime.parse(map['lastModifiedAt']) 
           : DateTime.now(),
       characterId: map['characterId'],
+      variableStore: SessionVariableStore.fromMap(
+        map['variableStore'] is Map<String, dynamic>
+            ? map['variableStore'] as Map<String, dynamic>
+            : map['variableStore'] is Map
+            ? Map<String, dynamic>.from(map['variableStore'] as Map)
+            : null,
+      ),
+      interactionState: SessionInteractionState.fromMap(
+        map['interactionState'] is Map<String, dynamic>
+            ? map['interactionState'] as Map<String, dynamic>
+            : map['interactionState'] is Map
+            ? Map<String, dynamic>.from(map['interactionState'] as Map)
+            : null,
+      ),
     );
   }
 
@@ -110,6 +156,8 @@ class ChatSession {
     DateTime? createdAt,
     DateTime? lastModifiedAt,
     String? characterId,
+    SessionVariableStore? variableStore,
+    SessionInteractionState? interactionState,
   }) {
     return ChatSession(
       id: id ?? this.id,
@@ -118,6 +166,8 @@ class ChatSession {
       createdAt: createdAt ?? this.createdAt,
       lastModifiedAt: lastModifiedAt ?? this.lastModifiedAt,
       characterId: characterId ?? this.characterId,
+      variableStore: variableStore ?? this.variableStore.copyWith(),
+      interactionState: interactionState ?? this.interactionState,
     );
   }
 

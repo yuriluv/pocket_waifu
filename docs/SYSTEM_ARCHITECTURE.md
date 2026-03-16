@@ -42,6 +42,8 @@ The app is intentionally not split into many isolated micro-features. Several hi
   - Owns editable prompt block presets.
 - `ChatSessionProvider`
   - Owns session list, active session, and message persistence.
+- `InteractionPresetProvider`
+  - Owns reusable HTML/CSS board presets for the interaction tab.
 - `ThemeProvider`
   - Owns theme presets and theme mode.
 - `GlobalRuntimeProvider`
@@ -77,6 +79,7 @@ The primary navigation surface is `lib/screens/menu_drawer.dart`.
 - `lib/screens/chat_screen.dart`
   - Main conversation screen.
   - User text input, image attachment, command parsing, and session-aware send flow.
+  - Owns the right-side interaction `endDrawer` for session-scoped variables and board rendering.
 - `lib/screens/chat_list_screen.dart`
   - Session switching, naming, and deletion surface.
 
@@ -146,6 +149,8 @@ Owned state:
 - active session id
 - all messages for all sessions
 - serialized write queue via `runSerialized`
+- per-session chat variables (`mainChat`, `menu`, `newChat`)
+- per-session interaction HTML/CSS state and applied preset id
 
 Persistence:
 - `SharedPreferences`
@@ -424,6 +429,7 @@ Do not treat the master switch as a UI-only flag. It is a cross-cutting runtime 
 ## Cross-Links
 
 - Base LLM request flow -> `docs/FEATURES/LLM_AND_PROMPTS.md`
+- Interaction tab and CBS -> `docs/FEATURES/INTERACTIONS_AND_CBS.md`
 - Overlay mode and mini-menu hosting -> `docs/FEATURES/OVERLAYS.md`
 - Live2D model metadata and auto motion -> `docs/FEATURES/LIVE2D_RUNTIME.md`
 - Regex/Lua transforms -> `docs/FEATURES/TRANSFORMS.md`

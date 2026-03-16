@@ -12,6 +12,7 @@ This document covers the base model call pipeline, prompt blocks, prompt preview
 - `lib/providers/agent_prompt_preset_provider.dart`
 - `lib/services/prompt_builder.dart`
 - `lib/services/api_service.dart`
+- `lib/features/cbs/services/cbs_service.dart`
 - `lib/models/api_config.dart`
 - `lib/models/oauth_account.dart`
 - `lib/providers/settings_provider.dart`
@@ -40,11 +41,13 @@ They reuse the same building blocks but have different entrypoints.
 4. The prepared user message is appended to `ChatSessionProvider`.
 5. `ChatProvider._requestAssistantResponse` resolves prompt blocks from `PromptBlockProvider`.
 6. `PromptBuilder` converts blocks + history + current input into API-ready message payloads.
-7. `ApiService` transforms prompt text again through the prompt lifecycle hooks:
+7. CBS expands session-scoped variables and block syntax against the current session context.
+8. `ApiService` transforms prompt text again through the prompt lifecycle hooks:
    - regex `promptInjection`
    - Lua `onPromptBuild`
-8. `ApiService` formats and sends the request using the active `ApiConfig`.
-9. Assistant output comes back to `ChatProvider` and enters the assistant post-processing pipeline:
+9. `ApiService` formats and sends the request using the active `ApiConfig`.
+10. Assistant output comes back to `ChatProvider` and enters the assistant post-processing pipeline:
+    - CBS render pass for assistant text
     - regex/Lua on assistant text
     - Lua directly invokes overlay/Live2D runtime actions while it parses assistant text
     - display-only regex/Lua cleanup
@@ -110,6 +113,8 @@ It does not own persistence or UI state. It only knows how to:
 - render blocks into one final prompt string
 - convert prompt strings into API message payloads
 - render multimodal content parts for images
+
+CBS-aware prompt rendering is applied by callers after block assembly so the same prompt structure can be reused across different session scopes.
 
 ### Practical implication
 
@@ -289,6 +294,7 @@ Do not create a parallel prompt stack unless the behavior is intentionally diffe
 ## Cross-Links
 
 - System ownership and channels -> `docs/SYSTEM_ARCHITECTURE.md`
+- Interaction tab and CBS scope/timing -> `docs/FEATURES/INTERACTIONS_AND_CBS.md`
 - Regex and Lua ordering -> `docs/FEATURES/TRANSFORMS.md`
 - Live2D runtime metadata and directives -> `docs/FEATURES/LIVE2D_RUNTIME.md`
 - Notification/proactive/agent callers -> `docs/FEATURES/NOTIFICATIONS.md`

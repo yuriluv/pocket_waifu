@@ -3,8 +3,10 @@ import 'package:flutter/foundation.dart';
 
 import '../models/api_config.dart';
 import '../models/agent_prompt_preset.dart';
+import '../models/chat_variable_scope.dart';
 import '../models/message.dart';
 import '../models/settings.dart';
+import '../features/cbs/services/cbs_service.dart';
 import '../features/live2d_llm/services/live2d_directive_service.dart';
 import '../features/lua/services/lua_scripting_service.dart';
 import '../features/regex/services/regex_pipeline_service.dart';
@@ -61,6 +63,7 @@ class NotificationCoordinator implements GlobalRuntimeListener {
   final PromptBuilder _promptBuilder = PromptBuilder();
   final RegexPipelineService _regexPipeline = RegexPipelineService.instance;
   final LuaScriptingService _luaScriptingService = LuaScriptingService.instance;
+  final CbsService _cbsService = CbsService.instance;
   final Live2DDirectiveService _directiveService =
       Live2DDirectiveService.instance;
 
@@ -294,6 +297,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           apiConfig: apiConfig,
           promptPresetId: notificationSettings.promptPresetId,
           requestHandle: requestHandle,
+          characterName: settingsProvider.character.name,
+          userName: settingsProvider.userName,
         );
 
         final processedResponse = await _prepareAssistantOutput(
@@ -382,6 +387,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
           promptPresetId: proactiveSettings?.promptPresetId,
           requestHandle: requestHandle,
           skipInputBlock: skipInputBlock,
+          characterName: settingsProvider.character.name,
+          userName: settingsProvider.userName,
         );
 
         final processedResponse = await _prepareAssistantOutput(
@@ -576,11 +583,34 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       {
         'role': 'user',
         'content': _buildAgentTriggerPrompt(
-          replyPrompt: promptPreset.replyPrompt,
+          replyPrompt: _renderCbs(
+            promptPreset.replyPrompt,
+            sessionId: sessionId,
+            scope: ChatVariableScope.menu,
+            phase: CbsPhase.promptBuild,
+            characterName: _settingsProvider?.character.name ?? '',
+            userName: _settingsProvider?.userName ?? '',
+            messages: contextWindow,
+            apiConfig: apiConfig,
+            maxPromptTokens: settings.maxTokens,
+          ),
           stepHistory: stepHistory,
         ),
       },
     ];
+
+    final systemContent = _renderCbs(
+      promptPreset.systemPrompt,
+      sessionId: sessionId,
+      scope: ChatVariableScope.menu,
+      phase: CbsPhase.promptBuild,
+      characterName: _settingsProvider?.character.name ?? '',
+      userName: _settingsProvider?.userName ?? '',
+      messages: contextWindow,
+      apiConfig: apiConfig,
+      maxPromptTokens: settings.maxTokens,
+    );
+    messages[0]['content'] = systemContent;
 
     return _apiService.sendMessageWithConfig(
       apiConfig: apiConfig,
@@ -826,6 +856,17 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required String userName,
   }) async {
     var output = text;
+    output = _renderCbs(
+      output,
+      sessionId: sessionId,
+      scope: ChatVariableScope.menu,
+      phase: CbsPhase.userInput,
+      characterName: characterName,
+      userName: userName,
+      messages: _sessionProvider?.getMessagesForSession(sessionId) ?? const <Message>[],
+      maxPromptTokens: settings.maxTokens,
+      currentInput: text,
+    );
     final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyUserInput(
@@ -872,6 +913,16 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required String userName,
   }) async {
     var output = text;
+    output = _renderCbs(
+      output,
+      sessionId: sessionId,
+      scope: ChatVariableScope.menu,
+      phase: CbsPhase.assistantOutput,
+      characterName: characterName,
+      userName: userName,
+      messages: _sessionProvider?.getMessagesForSession(sessionId) ?? const <Message>[],
+      maxPromptTokens: settings.maxTokens,
+    );
     final luaEnabled = settings.live2dLuaExecutionEnabled;
     if (settings.runRegexBeforeLua) {
       output = await _regexPipeline.applyAiOutput(
@@ -977,6 +1028,8 @@ class NotificationCoordinator implements GlobalRuntimeListener {
     required ApiConfig? apiConfig,
     required String? promptPresetId,
     required ApiRequestHandle requestHandle,
+    required String characterName,
+    required String userName,
     bool skipInputBlock = false,
   }) async {
     final messages = List<Message>.from(
@@ -1000,6 +1053,23 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       skipInputBlock: skipInputBlock,
       presetId: promptPresetId,
     );
+
+    for (final payload in formattedMessages) {
+      if (payload['content'] is String) {
+        payload['content'] = _renderCbs(
+          payload['content'] as String,
+          sessionId: sessionId,
+          scope: ChatVariableScope.menu,
+          phase: CbsPhase.promptBuild,
+          characterName: characterName,
+          userName: userName,
+          messages: messages,
+          apiConfig: resolvedConfig,
+          maxPromptTokens: _settingsProvider?.settings.maxTokens,
+          currentInput: currentInput,
+        );
+      }
+    }
 
     if (currentInput.trim().isNotEmpty || currentImages.isNotEmpty) {
       final hydratedImages = <ImageAttachment>[];
@@ -1077,6 +1147,39 @@ class NotificationCoordinator implements GlobalRuntimeListener {
       _activeRequest = null;
       _activeOrigin = null;
     }
+  }
+
+  String _renderCbs(
+    String input, {
+    required String sessionId,
+    required ChatVariableScope scope,
+    required CbsPhase phase,
+    required String characterName,
+    required String userName,
+    required List<Message> messages,
+    ApiConfig? apiConfig,
+    int? maxPromptTokens,
+    String currentInput = '',
+  }) {
+    final sessionProvider = _sessionProvider;
+    if (sessionProvider == null) {
+      return input;
+    }
+    return _cbsService.render(
+      input,
+      CbsRenderContext(
+        sessionProvider: sessionProvider,
+        sessionId: sessionId,
+        scope: scope,
+        phase: phase,
+        characterName: characterName,
+        userName: userName,
+        messages: messages,
+        currentInput: currentInput,
+        apiConfig: apiConfig,
+        maxPromptTokens: maxPromptTokens,
+      ),
+    ).output;
   }
 
   String? get activeSessionId => _sessionProvider?.activeSessionId;

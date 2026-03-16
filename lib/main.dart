@@ -13,6 +13,7 @@ import 'providers/chat_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/prompt_block_provider.dart';
 import 'providers/chat_session_provider.dart';
+import 'providers/interaction_preset_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/global_runtime_provider.dart';
 import 'providers/notification_settings_provider.dart';
@@ -92,6 +93,8 @@ class PocketWaifuApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PromptBlockProvider()),
 
         ChangeNotifierProvider(create: (_) => ChatSessionProvider()),
+
+        ChangeNotifierProvider(create: (_) => InteractionPresetProvider()),
 
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
 

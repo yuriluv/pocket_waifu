@@ -2,6 +2,8 @@
 
 This document explains how text transforms work before and after LLM calls, where regex and Lua are applied, and how to decide which layer should own a new behavior.
 
+CBS now sits beside these transforms as a session-aware syntax renderer. It is not stored inside regex or Lua, but it must respect the same caller boundaries.
+
 ## Owned Code Paths
 
 - `lib/features/regex/models/regex_rule.dart`
@@ -165,9 +167,13 @@ After assistant output cleanup/direct Lua dispatch:
 
 Owned by `ChatProvider` plus `ApiService`.
 
+CBS is applied in `ChatProvider` on user input, prompt-build text, and assistant output before the existing regex/Lua cleanup stages continue.
+
 ### Notification reply flow
 
 Owned by `NotificationCoordinator` plus `ApiService`.
+
+CBS runs here too, but against the `menu` variable scope so notification-side state stays isolated from the main chat scope.
 
 ### Agent mode flow
 
@@ -243,5 +249,6 @@ If parity matters, do not implement it in only one caller.
 ## Cross-Links
 
 - Base request flow -> `docs/FEATURES/LLM_AND_PROMPTS.md`
+- Interaction tab and CBS execution details -> `docs/FEATURES/INTERACTIONS_AND_CBS.md`
 - Live2D directives after transform stages -> `docs/FEATURES/LIVE2D_RUNTIME.md`
 - Notification and agent-specific flows -> `docs/FEATURES/NOTIFICATIONS.md`

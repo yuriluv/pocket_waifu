@@ -224,9 +224,11 @@ Update both:
 - Changing preset ids without using provider rebinding.
 - Breaking cancellation behavior by bypassing `NotificationCoordinator`.
 - Treating the notification menu as a Flutter widget instead of a native overlay.
+- Mixing notification-side variable state with the main chat scope instead of using the menu-scoped CBS/session variable path.
 
 ## Cross-Links
 
 - Shared prompt/API stack -> `docs/FEATURES/LLM_AND_PROMPTS.md`
+- Menu-scoped CBS and interaction variables -> `docs/FEATURES/INTERACTIONS_AND_CBS.md`
 - Native mini-menu host -> `docs/FEATURES/OVERLAYS.md`
 - Screenshot send action inside the mini menu -> `docs/FEATURES/SCREENSHOTS.md`

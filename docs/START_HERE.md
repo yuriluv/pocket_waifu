@@ -34,22 +34,25 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
    - Bootstrap order, provider graph, platform contracts, permissions, lifecycle ownership.
 2. `docs/FEATURES/LLM_AND_PROMPTS.md`
    - Base LLM call flow, prompt blocks, prompt preview, presets, API preset resolution.
-3. `docs/FEATURES/OVERLAYS.md`
+3. `docs/FEATURES/INTERACTIONS_AND_CBS.md`
+   - Right-side interaction tab, per-session variable scopes, board runtime, CBS timing.
+4. `docs/FEATURES/OVERLAYS.md`
    - Live2D mode, image overlay mode, shared native overlay behavior.
-4. `docs/FEATURES/LIVE2D_RUNTIME.md`
+5. `docs/FEATURES/LIVE2D_RUNTIME.md`
    - Model parsing, parameter loading, aliases, presets, auto motion.
-5. `docs/FEATURES/TRANSFORMS.md`
+6. `docs/FEATURES/TRANSFORMS.md`
    - Regex and Lua ordering and extension rules.
-6. `docs/FEATURES/NOTIFICATIONS.md`
+7. `docs/FEATURES/NOTIFICATIONS.md`
    - Notification replies, proactive responses, agent mode, mini-menu entrypoints.
-7. `docs/FEATURES/SCREENSHOTS.md`
+8. `docs/FEATURES/SCREENSHOTS.md`
    - ADB/Shizuku capture, screenshot mode selection, overlay hiding/restoration.
-8. `docs/EXTENSION_PLAYBOOK.md`
+9. `docs/EXTENSION_PLAYBOOK.md`
    - Where to edit for new features and how to avoid cross-feature regressions.
 
 ## If You Need X, Start Here
 
 - Chat request path -> `docs/FEATURES/LLM_AND_PROMPTS.md`
+- Interaction tab, session vars, or CBS -> `docs/FEATURES/INTERACTIONS_AND_CBS.md`
 - Prompt block or preset change -> `docs/FEATURES/LLM_AND_PROMPTS.md`
 - API preset editor or OAuth preset flow -> `docs/FEATURES/LLM_AND_PROMPTS.md` and `docs/SYSTEM_ARCHITECTURE.md`
 - New provider or lifecycle question -> `docs/SYSTEM_ARCHITECTURE.md`
