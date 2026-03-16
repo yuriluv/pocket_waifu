@@ -119,7 +119,7 @@ overlay.wait
 
 [커스텀 예시]
 기본 템플릿 주석처럼 사용자가 직접 원하는 형식을 매핑할 수 있습니다.
-예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=$1")
+예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=\$1")
 
 [Regex/Lua 실행 순서]
 설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
