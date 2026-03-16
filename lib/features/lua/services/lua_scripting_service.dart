@@ -50,10 +50,6 @@ class LuaScriptingService {
       Live2DDirectiveService.instance;
   final ImageOverlayDirectiveService _imageDirectiveService =
       ImageOverlayDirectiveService.instance;
-  static final RegExp _runtimeFunctionRegex = RegExp(
-    r'\[pwf-fn:([a-zA-Z0-9_.-]+):([^\]]*)\]',
-    caseSensitive: false,
-  );
 
   List<String> get logs => List.unmodifiable(_logs);
   String get injectedCss => _injectedCss;
@@ -205,40 +201,6 @@ class LuaScriptingService {
     }
 
     return output;
-  }
-
-  Future<String> executeRuntimeFunctions(
-    String text,
-    LuaHookContext context,
-  ) async {
-    final integrationEnabled = context.live2dLlmIntegrationEnabled ?? true;
-    final parsingEnabled = context.live2dDirectiveParsingEnabled ?? true;
-    if (!integrationEnabled || !parsingEnabled) {
-      return text;
-    }
-
-    final errors = <String>[];
-    for (final match in _runtimeFunctionRegex.allMatches(text)) {
-      final functionName = (match.group(1) ?? '').trim();
-      final rawPayload = match.group(2) ?? '';
-      try {
-        await _executeRuntimeFunction(functionName, rawPayload);
-      } catch (e) {
-        final message = 'Lua runtime function failed ($functionName): $e';
-        errors.add(message);
-        _log(message);
-        debugPrint(message);
-      }
-    }
-
-    final cleaned = (context.live2dShowRawDirectivesInChat ?? false)
-        ? text.replaceAllMapped(_runtimeFunctionRegex, (match) {
-            final name = match.group(1) ?? '';
-            final payload = (match.group(2) ?? '').trim();
-            return payload.isEmpty ? '⟦$name⟧' : '⟦$name:$payload⟧';
-          })
-        : text.replaceAll(_runtimeFunctionRegex, '');
-    return cleaned.trim();
   }
 
   Future<void> _executeRuntimeFunction(String name, String rawPayload) async {
@@ -399,7 +361,8 @@ class LuaScriptingService {
 
       if (line.startsWith('return ')) {
         final expr = line.substring('return '.length).trim();
-        return _evaluatePseudoLuaExpression(expr, env) ?? (env['text'] ?? output);
+        return await _evaluatePseudoLuaExpression(expr, env) ??
+            (env['text'] ?? output);
       }
 
       final assignment = RegExp(
@@ -408,7 +371,7 @@ class LuaScriptingService {
       if (assignment != null) {
         final variable = assignment.group(1)!;
         final expr = assignment.group(2)!.trim();
-        final value = _evaluatePseudoLuaExpression(expr, env);
+        final value = await _evaluatePseudoLuaExpression(expr, env);
         if (value != null) {
           env[variable] = value;
         }
@@ -464,10 +427,10 @@ class LuaScriptingService {
     return match?.group(1);
   }
 
-  String? _evaluatePseudoLuaExpression(
+  Future<String?> _evaluatePseudoLuaExpression(
     String expression,
     Map<String, String> env,
-  ) {
+  ) async {
     final trimmed = expression.trim();
     if (trimmed.isEmpty) {
       return '';
@@ -494,9 +457,10 @@ class LuaScriptingService {
 
     final functionName = callMatch.group(1)!;
     final rawArgs = callMatch.group(2) ?? '';
-    final parsedArgs = _splitPseudoLuaArgs(rawArgs)
-        .map((arg) => _evaluatePseudoLuaExpression(arg, env) ?? '')
-        .toList(growable: false);
+    final parsedArgs = <String>[];
+    for (final arg in _splitPseudoLuaArgs(rawArgs)) {
+      parsedArgs.add(await _evaluatePseudoLuaExpression(arg, env) ?? '');
+    }
 
     switch (functionName) {
       case 'pwf.replace':
@@ -514,11 +478,30 @@ class LuaScriptingService {
       case 'pwf.call':
         if (parsedArgs.isEmpty) return null;
         final payload = parsedArgs.length > 1 ? parsedArgs[1] : '';
-        return _buildRuntimeFunctionToken(parsedArgs[0], payload);
+        await _executeRuntimeFunction(parsedArgs[0], payload);
+        return '';
       case 'pwf.emit':
         if (parsedArgs.length < 2) return null;
         final payload = parsedArgs.length > 2 ? parsedArgs[2] : '';
-        return parsedArgs[0] + _buildRuntimeFunctionToken(parsedArgs[1], payload);
+        await _executeRuntimeFunction(parsedArgs[1], payload);
+        return parsedArgs[0];
+      case 'pwf.dispatch':
+        if (parsedArgs.length < 4) return null;
+        return _pseudoLuaDispatch(
+          parsedArgs[0],
+          parsedArgs[1],
+          parsedArgs[2],
+          parsedArgs[3],
+        );
+      case 'pwf.dispatchKeep':
+        if (parsedArgs.length < 4) return null;
+        return _pseudoLuaDispatch(
+          parsedArgs[0],
+          parsedArgs[1],
+          parsedArgs[2],
+          parsedArgs[3],
+          keepMatches: true,
+        );
       case 'pwf.gsub':
         if (parsedArgs.length < 3) return null;
         return _pseudoLuaGsub(parsedArgs[0], parsedArgs[1], parsedArgs[2]);
@@ -592,12 +575,36 @@ class LuaScriptingService {
     });
   }
 
-  String _buildRuntimeFunctionToken(String functionName, String payload) {
-    final normalizedName = functionName.trim();
-    final normalizedPayload = payload.trim();
-    return normalizedPayload.isEmpty
-        ? '[pwf-fn:$normalizedName:]'
-        : '[pwf-fn:$normalizedName:$normalizedPayload]';
+  Future<String> _pseudoLuaDispatch(
+    String input,
+    String pattern,
+    String functionName,
+    String payloadTemplate, {
+    bool keepMatches = false,
+  }) async {
+    final regex = RegExp(pattern, multiLine: true, dotAll: true);
+    final matches = regex.allMatches(input).toList(growable: false);
+    for (final match in matches) {
+      await _executeRuntimeFunction(
+        functionName,
+        _expandPseudoLuaTemplate(payloadTemplate, match),
+      );
+    }
+
+    if (keepMatches) {
+      return input;
+    }
+
+    return input.replaceAllMapped(regex, (_) => '');
+  }
+
+  String _expandPseudoLuaTemplate(String template, RegExpMatch match) {
+    var output = template;
+    output = output.replaceAll(r'$0', match.group(0) ?? '');
+    for (var i = match.groupCount; i >= 1; i--) {
+      output = output.replaceAll('\$' + i.toString(), match.group(i) ?? '');
+    }
+    return output;
   }
 
   List<LuaScript> _defaultScripts() {
@@ -608,16 +615,16 @@ class LuaScriptingService {
         scope: LuaScriptScope.global,
         content: '''-- Editable default Lua template.
 -- The app only provides runtime functions. This script decides what text means.
--- Runtime function token format emitted by Lua: [pwf-fn:function.name:key=value,...]
---
 -- Available pseudo-Lua helpers in fallback mode:
 --   pwf.gsub(text, pattern, replacement)
 --   pwf.replace(text, from, to)
 --   pwf.append(text, suffix)
 --   pwf.prepend(text, prefix)
 --   pwf.trim(text)
---   pwf.call(functionName, payload)
---   pwf.emit(text, functionName, payload)
+--   pwf.call(functionName, payload)         -> execute immediately
+--   pwf.emit(text, functionName, payload)   -> execute immediately and keep text
+--   pwf.dispatch(text, pattern, functionName, payloadTemplate)
+--   pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)
 --
 -- Runtime functions exposed by the system:
 --   live2d.param      payload: id=...,value=...,op=set|del|mul,dur=...,delay=...
@@ -632,12 +639,20 @@ class LuaScriptingService {
 --   overlay.wait      payload: ms=300
 --
 -- Example custom syntax you can enable yourself:
--- text = pwf.gsub(text, [[function\(emotion,\s*([^)]+)\)]], "[pwf-fn:overlay.emotion:name=\$1]")
+-- text = pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=$1")
 
 function onLoad()
 end
 
 function onUserMessage(text)
+  text = pwf.dispatchKeep(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "overlay.emotion", "$1")
+  text = pwf.dispatchKeep(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "overlay.move", "$1")
+  text = pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "$1")
+  text = pwf.dispatchKeep(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "$1")
+  text = pwf.dispatchKeep(text, [[<emotion\s+([^>]*?)/>]], "live2d.emotion", "$1")
+  text = pwf.dispatchKeep(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "$1")
+  text = pwf.dispatchKeep(text, [[\[emotion:([^\]]+)\]]], "live2d.emotion", "$1")
+  text = pwf.dispatchKeep(text, [[\[motion:([^\]]+)\]]], "live2d.motion", "$1")
   return text
 end
 
@@ -646,29 +661,29 @@ function onPromptBuild(text)
 end
 
 function onAssistantMessage(text)
-  text = pwf.gsub(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.move:\$1]")
-  text = pwf.gsub(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.emotion:\$1]")
-  text = pwf.gsub(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.wait:\$1]")
-  text = pwf.gsub(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "[pwf-fn:live2d.wait:\$1]")
+  text = pwf.dispatch(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "overlay.move", "$1")
+  text = pwf.dispatch(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "overlay.emotion", "$1")
+  text = pwf.dispatch(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "overlay.wait", "$1")
+  text = pwf.dispatch(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "live2d.wait", "$1")
 
-  text = pwf.gsub(text, [[<param\s+([^>]*?)/>]], "[pwf-fn:live2d.param:\$1]")
-  text = pwf.gsub(text, [[<motion\s+([^>]*?)/>]], "[pwf-fn:live2d.motion:\$1]")
-  text = pwf.gsub(text, [[<expression\s+([^>]*?)/>]], "[pwf-fn:live2d.expression:\$1]")
-  text = pwf.gsub(text, [[<emotion\s+([^>]*?)/>]], "[pwf-fn:live2d.emotion:\$1]")
-  text = pwf.gsub(text, [[<wait\s+([^>]*?)/>]], "[pwf-fn:live2d.wait:\$1]")
-  text = pwf.gsub(text, [[<preset\s+([^>]*?)/>]], "[pwf-fn:live2d.preset:\$1]")
-  text = pwf.gsub(text, [[<reset\s*([^>]*?)/>]], "[pwf-fn:live2d.reset:\$1]")
-  text = pwf.gsub(text, [[<move\s+([^>]*?)/>]], "[pwf-fn:overlay.move:\$1]")
+  text = pwf.dispatch(text, [[<param\s+([^>]*?)/>]], "live2d.param", "$1")
+  text = pwf.dispatch(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "$1")
+  text = pwf.dispatch(text, [[<expression\s+([^>]*?)/>]], "live2d.expression", "$1")
+  text = pwf.dispatch(text, [[<emotion\s+([^>]*?)/>]], "live2d.emotion", "$1")
+  text = pwf.dispatch(text, [[<wait\s+([^>]*?)/>]], "live2d.wait", "$1")
+  text = pwf.dispatch(text, [[<preset\s+([^>]*?)/>]], "live2d.preset", "$1")
+  text = pwf.dispatch(text, [[<reset\s*([^>]*?)/>]], "live2d.reset", "$1")
+  text = pwf.dispatch(text, [[<move\s+([^>]*?)/>]], "overlay.move", "$1")
 
-  text = pwf.gsub(text, [[\[param:([^\]]+)\]]], "[pwf-fn:live2d.param:\$1]")
-  text = pwf.gsub(text, [[\[motion:([^\]]+)\]]], "[pwf-fn:live2d.motion:\$1]")
-  text = pwf.gsub(text, [[\[expression:([^\]]+)\]]], "[pwf-fn:live2d.expression:\$1]")
-  text = pwf.gsub(text, [[\[emotion:([^\]]+)\]]], "[pwf-fn:live2d.emotion:\$1]")
-  text = pwf.gsub(text, [[\[wait:([^\]]+)\]]], "[pwf-fn:live2d.wait:\$1]")
-  text = pwf.gsub(text, [[\[preset:([^\]]+)\]]], "[pwf-fn:live2d.preset:\$1]")
-  text = pwf.gsub(text, [[\[reset\]]], "[pwf-fn:live2d.reset:]")
-  text = pwf.gsub(text, [[\[img_move:([^\]]+)\]]], "[pwf-fn:overlay.move:\$1]")
-  text = pwf.gsub(text, [[\[img_emotion:([^\]]+)\]]], "[pwf-fn:overlay.emotion:\$1]")
+  text = pwf.dispatch(text, [[\[param:([^\]]+)\]]], "live2d.param", "$1")
+  text = pwf.dispatch(text, [[\[motion:([^\]]+)\]]], "live2d.motion", "$1")
+  text = pwf.dispatch(text, [[\[expression:([^\]]+)\]]], "live2d.expression", "$1")
+  text = pwf.dispatch(text, [[\[emotion:([^\]]+)\]]], "live2d.emotion", "$1")
+  text = pwf.dispatch(text, [[\[wait:([^\]]+)\]]], "live2d.wait", "$1")
+  text = pwf.dispatch(text, [[\[preset:([^\]]+)\]]], "live2d.preset", "$1")
+  text = pwf.dispatch(text, [[\[reset\]]], "live2d.reset", "")
+  text = pwf.dispatch(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "$1")
+  text = pwf.dispatch(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "$1")
 
   text = pwf.gsub(text, [[</?live2d>]], "")
   text = pwf.gsub(text, [[</?overlay>]], "")

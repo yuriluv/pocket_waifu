@@ -37,13 +37,13 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
-  Future<void> expectRuntimeFunctionsRun(
+  Future<void> expectAssistantDispatchRuns(
     LuaScriptingService lua,
     String transformed,
   ) async {
     methodCalls.clear();
 
-    final output = await lua.executeRuntimeFunctions(
+    final output = await lua.onAssistantMessage(
       transformed,
       const LuaHookContext(
         live2dLlmIntegrationEnabled: true,
@@ -66,7 +66,7 @@ void main() {
   }
 
   test(
-    'lua runtime functions execute live2d and overlay commands',
+    'assistant lua hook directly executes live2d and overlay commands',
     () async {
       final lua = LuaScriptingService.instance;
 
@@ -75,21 +75,23 @@ void main() {
           name: 'default_runtime_template.lua',
           content: '''
 function onAssistantMessage(text)
+  text = pwf.dispatch(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "$1")
+  text = pwf.dispatch(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "$1")
   return text
 end
 ''',
         ),
       ]);
 
-      await expectRuntimeFunctionsRun(
+      await expectAssistantDispatchRuns(
         lua,
-        'Hello [pwf-fn:live2d.motion:name=Idle/0] [pwf-fn:overlay.move:x=15,y=25] world',
+        'Hello <motion name="Idle/0"/> [img_move:x=15,y=25] world',
       );
     },
   );
 
   test(
-    'pseudo lua fallback can emit runtime functions from custom text',
+    'user lua hook can dispatch direct interactions and keep prompt text',
     () async {
       final lua = LuaScriptingService.instance;
 
@@ -97,28 +99,26 @@ end
         LuaScript(
           name: 'default_runtime_template.lua',
           content: '''
-function onAssistantMessage(text)
-  text = pwf.gsub(text, [[function\(move,\s*([^)]+)\)]], "[pwf-fn:overlay.move:\$1]")
+function onUserMessage(text)
+  text = pwf.dispatchKeep(text, [[function\(move,\s*([^)]+)\)]], "overlay.move", "$1")
   return text
 end
 ''',
         ),
       ]);
 
-      final transformed = await lua.onAssistantMessage(
+      final output = await lua.onUserMessage(
         'Hello function(move, x=15,y=25) world',
-        const LuaHookContext(),
-      );
-
-      final output = await lua.executeRuntimeFunctions(
-        transformed,
         const LuaHookContext(
           live2dLlmIntegrationEnabled: true,
           live2dDirectiveParsingEnabled: true,
         ),
       );
 
-      expect(output.replaceAll(RegExp(r'\s+'), ' ').trim(), 'Hello world');
+      expect(
+        output.replaceAll(RegExp(r'\s+'), ' ').trim(),
+        'Hello function(move, x=15,y=25) world',
+      );
       expect(
         methodCalls.where((call) => call.method == 'setPosition'),
         hasLength(1),
