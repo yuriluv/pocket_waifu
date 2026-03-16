@@ -1,30 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+SnackBar _buildFeedbackSnackBar({
+  required String message,
+  required Duration duration,
+  Color? backgroundColor,
+  Color? closeIconColor,
+}) {
+  return SnackBar(
+    content: Text(message),
+    behavior: SnackBarBehavior.floating,
+    duration: duration,
+    backgroundColor: backgroundColor,
+    showCloseIcon: true,
+    closeIconColor: closeIconColor,
+  );
+}
+
 extension UiFeedbackX on BuildContext {
-  void showInfoSnackBar(String message) {
+  void showSnackBarMessage(
+    String message, {
+    Duration duration = const Duration(seconds: 2),
+    Color? backgroundColor,
+    Color? closeIconColor,
+  }) {
     ScaffoldMessenger.of(this)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
+        _buildFeedbackSnackBar(
+          message: message,
+          duration: duration,
+          backgroundColor: backgroundColor,
+          closeIconColor: closeIconColor,
         ),
       );
   }
 
+  void showInfoSnackBar(String message) {
+    showSnackBarMessage(message);
+  }
+
   void showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(this)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Theme.of(this).colorScheme.error,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+    final colorScheme = Theme.of(this).colorScheme;
+    showSnackBarMessage(
+      message,
+      duration: const Duration(seconds: 3),
+      backgroundColor: colorScheme.error,
+      closeIconColor: colorScheme.onError,
+    );
   }
 
   Future<void> copyToClipboard(String text, {String? successMessage}) async {

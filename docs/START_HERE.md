@@ -58,6 +58,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 - Regex or Lua behavior -> `docs/FEATURES/TRANSFORMS.md`
 - Notification action, proactive logic, or agent loop -> `docs/FEATURES/NOTIFICATIONS.md`
 - Screenshot or capture integration -> `docs/FEATURES/SCREENSHOTS.md`
+- In-app status/error feedback UX -> `lib/utils/ui_feedback.dart` and `lib/screens/chat_screen.dart`
 - "Where should I add this feature?" -> `docs/EXTENSION_PLAYBOOK.md`
 
 ## Four Core Pipelines
@@ -88,6 +89,7 @@ Pocket Waifu is a provider-driven Flutter app with one shared native Android run
 ## Critical Ownership Rules
 
 - UI ownership lives in `lib/screens/` and feature presentation folders.
+- Shared transient in-app feedback lives in `lib/utils/ui_feedback.dart`; persistent chat error feedback is rendered in `lib/screens/chat_screen.dart`.
 - App state ownership lives in providers under `lib/providers/`.
 - Cross-feature orchestration lives in services under `lib/services/`.
 - Feature-specific runtime logic lives under `lib/features/<feature>/`.
