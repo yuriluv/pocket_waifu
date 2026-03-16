@@ -98,7 +98,7 @@ end
           name: 'default_runtime_template.lua',
           content: '''
 function onAssistantMessage(text)
-  text = pwf.gsub(text, [[function\(move,\s*([^)]+)\)]], "[pwf-fn:overlay.move:$1]")
+  text = pwf.gsub(text, [[function\(move,\s*([^)]+)\)]], "[pwf-fn:overlay.move:\$1]")
   return text
 end
 ''',

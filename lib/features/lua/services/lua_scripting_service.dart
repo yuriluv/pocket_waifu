@@ -632,7 +632,7 @@ class LuaScriptingService {
 --   overlay.wait      payload: ms=300
 --
 -- Example custom syntax you can enable yourself:
--- text = pwf.gsub(text, [[function\(emotion,\s*([^)]+)\)]], "[pwf-fn:overlay.emotion:name=$1]")
+-- text = pwf.gsub(text, [[function\(emotion,\s*([^)]+)\)]], "[pwf-fn:overlay.emotion:name=\$1]")
 
 function onLoad()
 end
@@ -646,29 +646,29 @@ function onPromptBuild(text)
 end
 
 function onAssistantMessage(text)
-  text = pwf.gsub(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.move:$1]")
-  text = pwf.gsub(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.emotion:$1]")
-  text = pwf.gsub(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.wait:$1]")
-  text = pwf.gsub(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "[pwf-fn:live2d.wait:$1]")
+  text = pwf.gsub(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.move:\$1]")
+  text = pwf.gsub(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.emotion:\$1]")
+  text = pwf.gsub(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.wait:\$1]")
+  text = pwf.gsub(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "[pwf-fn:live2d.wait:\$1]")
 
-  text = pwf.gsub(text, [[<param\s+([^>]*?)/>]], "[pwf-fn:live2d.param:$1]")
-  text = pwf.gsub(text, [[<motion\s+([^>]*?)/>]], "[pwf-fn:live2d.motion:$1]")
-  text = pwf.gsub(text, [[<expression\s+([^>]*?)/>]], "[pwf-fn:live2d.expression:$1]")
-  text = pwf.gsub(text, [[<emotion\s+([^>]*?)/>]], "[pwf-fn:live2d.emotion:$1]")
-  text = pwf.gsub(text, [[<wait\s+([^>]*?)/>]], "[pwf-fn:live2d.wait:$1]")
-  text = pwf.gsub(text, [[<preset\s+([^>]*?)/>]], "[pwf-fn:live2d.preset:$1]")
-  text = pwf.gsub(text, [[<reset\s*([^>]*?)/>]], "[pwf-fn:live2d.reset:$1]")
-  text = pwf.gsub(text, [[<move\s+([^>]*?)/>]], "[pwf-fn:overlay.move:$1]")
+  text = pwf.gsub(text, [[<param\s+([^>]*?)/>]], "[pwf-fn:live2d.param:\$1]")
+  text = pwf.gsub(text, [[<motion\s+([^>]*?)/>]], "[pwf-fn:live2d.motion:\$1]")
+  text = pwf.gsub(text, [[<expression\s+([^>]*?)/>]], "[pwf-fn:live2d.expression:\$1]")
+  text = pwf.gsub(text, [[<emotion\s+([^>]*?)/>]], "[pwf-fn:live2d.emotion:\$1]")
+  text = pwf.gsub(text, [[<wait\s+([^>]*?)/>]], "[pwf-fn:live2d.wait:\$1]")
+  text = pwf.gsub(text, [[<preset\s+([^>]*?)/>]], "[pwf-fn:live2d.preset:\$1]")
+  text = pwf.gsub(text, [[<reset\s*([^>]*?)/>]], "[pwf-fn:live2d.reset:\$1]")
+  text = pwf.gsub(text, [[<move\s+([^>]*?)/>]], "[pwf-fn:overlay.move:\$1]")
 
-  text = pwf.gsub(text, [[\[param:([^\]]+)\]]], "[pwf-fn:live2d.param:$1]")
-  text = pwf.gsub(text, [[\[motion:([^\]]+)\]]], "[pwf-fn:live2d.motion:$1]")
-  text = pwf.gsub(text, [[\[expression:([^\]]+)\]]], "[pwf-fn:live2d.expression:$1]")
-  text = pwf.gsub(text, [[\[emotion:([^\]]+)\]]], "[pwf-fn:live2d.emotion:$1]")
-  text = pwf.gsub(text, [[\[wait:([^\]]+)\]]], "[pwf-fn:live2d.wait:$1]")
-  text = pwf.gsub(text, [[\[preset:([^\]]+)\]]], "[pwf-fn:live2d.preset:$1]")
+  text = pwf.gsub(text, [[\[param:([^\]]+)\]]], "[pwf-fn:live2d.param:\$1]")
+  text = pwf.gsub(text, [[\[motion:([^\]]+)\]]], "[pwf-fn:live2d.motion:\$1]")
+  text = pwf.gsub(text, [[\[expression:([^\]]+)\]]], "[pwf-fn:live2d.expression:\$1]")
+  text = pwf.gsub(text, [[\[emotion:([^\]]+)\]]], "[pwf-fn:live2d.emotion:\$1]")
+  text = pwf.gsub(text, [[\[wait:([^\]]+)\]]], "[pwf-fn:live2d.wait:\$1]")
+  text = pwf.gsub(text, [[\[preset:([^\]]+)\]]], "[pwf-fn:live2d.preset:\$1]")
   text = pwf.gsub(text, [[\[reset\]]], "[pwf-fn:live2d.reset:]")
-  text = pwf.gsub(text, [[\[img_move:([^\]]+)\]]], "[pwf-fn:overlay.move:$1]")
-  text = pwf.gsub(text, [[\[img_emotion:([^\]]+)\]]], "[pwf-fn:overlay.emotion:$1]")
+  text = pwf.gsub(text, [[\[img_move:([^\]]+)\]]], "[pwf-fn:overlay.move:\$1]")
+  text = pwf.gsub(text, [[\[img_emotion:([^\]]+)\]]], "[pwf-fn:overlay.emotion:\$1]")
 
   text = pwf.gsub(text, [[</?live2d>]], "")
   text = pwf.gsub(text, [[</?overlay>]], "")
