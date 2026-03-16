@@ -104,37 +104,9 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                 ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    DropdownButtonFormField<LlmDirectiveTarget>(
-                      initialValue: settings.llmDirectiveTarget,
-                      decoration: const InputDecoration(
-                        labelText: 'LLM 연결 대상',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: LlmDirectiveTarget.live2d,
-                          child: Text('Live2D'),
-                        ),
-                        DropdownMenuItem(
-                          value: LlmDirectiveTarget.imageOverlay,
-                          child: Text('이미지 오버레이'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          settingsProvider.setLlmDirectiveTarget(value);
-                          setState(() {});
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 12),
                     SwitchListTile(
-                      title: const Text('지시어 파싱 사용'),
-                      subtitle: Text(
-                        settings.llmDirectiveTarget == LlmDirectiveTarget.live2d
-                            ? 'AI 응답의 <live2d> 지시어 블록 실행'
-                            : 'AI 응답의 <overlay> 지시어 블록 실행',
-                      ),
+                      title: const Text('Lua 런타임 함수 실행 사용'),
+                      subtitle: const Text('Lua가 만든 runtime function token을 실제 오버레이/파라미터 동작으로 실행'),
                       value: settings.live2dDirectiveParsingEnabled,
                       onChanged:
                           settingsProvider.setLive2DDirectiveParsingEnabled,
@@ -153,31 +125,30 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                       onChanged: settingsProvider.setRunRegexBeforeLua,
                     ),
                     const SizedBox(height: 12),
-                    if (settings.llmDirectiveTarget ==
-                        LlmDirectiveTarget.live2d)
-                      TextFormField(
-                        initialValue: settings.live2dSystemPromptTemplate,
-                        minLines: 6,
-                        maxLines: 14,
-                        decoration: const InputDecoration(
-                          labelText: 'Live2D 시스템 프롬프트 템플릿',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged:
-                            settingsProvider.setLive2DSystemPromptTemplate,
-                      )
-                    else
-                      TextFormField(
-                        initialValue: settings.imageOverlaySystemPromptTemplate,
-                        minLines: 6,
-                        maxLines: 14,
-                        decoration: const InputDecoration(
-                          labelText: '이미지 오버레이 시스템 프롬프트 템플릿',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: settingsProvider
-                            .setImageOverlaySystemPromptTemplate,
+                    TextFormField(
+                      initialValue: settings.live2dSystemPromptTemplate,
+                      minLines: 4,
+                      maxLines: 10,
+                      decoration: const InputDecoration(
+                        labelText: 'Live2D 예시 프롬프트 템플릿',
+                        helperText: '현재 기본 Lua 템플릿이 인식하는 Live2D 예시 형식',
+                        border: OutlineInputBorder(),
                       ),
+                      onChanged: settingsProvider.setLive2DSystemPromptTemplate,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      initialValue: settings.imageOverlaySystemPromptTemplate,
+                      minLines: 4,
+                      maxLines: 10,
+                      decoration: const InputDecoration(
+                        labelText: '이미지 오버레이 예시 프롬프트 템플릿',
+                        helperText: '현재 기본 Lua 템플릿이 인식하는 Overlay 예시 형식',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged:
+                          settingsProvider.setImageOverlaySystemPromptTemplate,
+                    ),
                     const SizedBox(height: 16),
                     _buildTestChatPanel(settingsProvider),
                   ],
@@ -717,7 +688,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
 
       setState(() {
         _testOutput = promptText;
-        _appendTestLog('USER pipeline -> prompt 생성 완료 (${settings.llmDirectiveTarget.name})');
+        _appendTestLog('USER pipeline -> prompt 생성 완료');
       });
       return;
     }
@@ -856,7 +827,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
     }
 
     if (luaEnabled) {
-      output = await _luaService.applyAssistantDirectiveOwnership(
+      output = await _luaService.executeRuntimeFunctions(
         output,
         LuaHookContext(
           characterId: characterId,
@@ -905,7 +876,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
       );
     }
 
-    _appendTestLog('CHAR pipeline 처리 완료 (${settings.llmDirectiveTarget.name})');
+    _appendTestLog('CHAR pipeline 처리 완료');
     _appendTestLog('명령 실행 로그: Lua/Regex 소유 파이프라인 적용');
 
     return output;
