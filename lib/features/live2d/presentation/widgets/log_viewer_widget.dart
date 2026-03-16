@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/services/live2d_log_service.dart';
+import '../../../../utils/ui_feedback.dart';
 
 void showLive2DLogViewer(BuildContext context) {
   showModalBottomSheet(
@@ -149,9 +150,7 @@ class _Live2DLogViewerState extends State<Live2DLogViewer> {
                         onPressed: () {
                           final text = _logService.exportLogs();
                           Clipboard.setData(ClipboardData(text: text));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('로그가 클립보드에 복사되었습니다')),
-                          );
+                          context.showInfoSnackBar('로그가 클립보드에 복사되었습니다');
                         },
                       ),
                       IconButton(

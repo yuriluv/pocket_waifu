@@ -149,16 +149,8 @@ class _Live2DSettingsScreenContentState
 
           if (controller.hasError) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(controller.errorMessage ?? '오류가 발생했습니다'),
-                  backgroundColor: theme.colorScheme.error,
-                  action: SnackBarAction(
-                    label: '확인',
-                    textColor: theme.colorScheme.onError,
-                    onPressed: () => controller.clearError(),
-                  ),
-                ),
+              context.showErrorSnackBar(
+                controller.errorMessage ?? '오류가 발생했습니다',
               );
               controller.clearError();
             });
@@ -1236,9 +1228,7 @@ class _EditModeControlPanel extends StatelessWidget {
               if (name.isNotEmpty) {
                 controller.savePreset(name);
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('프리셋 "$name" 저장됨')));
+                context.showInfoSnackBar('프리셋 "$name" 저장됨');
               }
             },
             child: const Text('저장'),
@@ -1400,9 +1390,7 @@ class _PresetsDialogState extends State<_PresetsDialog> {
         await widget.controller.loadPreset(preset);
         if (mounted) {
           Navigator.pop(context);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('프리셋 "${preset.name}" 적용됨')));
+          context.showInfoSnackBar('프리셋 "${preset.name}" 적용됨');
         }
         break;
       case 'delete':
@@ -1447,12 +1435,8 @@ class _PresetsDialogState extends State<_PresetsDialog> {
                         );
                         Navigator.pop(ctx);
                         setState(() {});
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '"${preset.name}" → ${model.name} 링크됨',
-                            ),
-                          ),
+                        context.showInfoSnackBar(
+                          '"${preset.name}" → ${model.name} 링크됨',
                         );
                       },
                     );

@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/models/live2d_settings.dart';
+import '../../../../utils/ui_feedback.dart';
 
 class DisplaySettingsScreen extends StatefulWidget {
   const DisplaySettingsScreen({super.key});
@@ -58,11 +59,9 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     await newSettings.save();
     
     setState(() => _hasChanges = false);
-    
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('설정이 저장되었습니다')),
-      );
+      context.showInfoSnackBar('설정이 저장되었습니다');
     }
   }
 

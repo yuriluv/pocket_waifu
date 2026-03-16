@@ -14,6 +14,7 @@ import '../../data/services/gesture_motion_mapper.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/model3_json_parser.dart';
 import '../../domain/entities/interaction_event.dart';
+import '../../../../utils/ui_feedback.dart';
 import 'live2d_function_test_screen.dart';
 
 class Live2DAdvancedSettingsScreen extends StatefulWidget {
@@ -1218,9 +1219,7 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('File not found: $filePath')));
+      context.showErrorSnackBar('File not found: $filePath');
       return;
     }
 
@@ -1261,9 +1260,7 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     if (confirmed == true) {
       await file.writeAsString(controller.text);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Saved: $filePath')));
+        context.showInfoSnackBar('Saved: $filePath');
       }
     }
     controller.dispose();
@@ -1708,9 +1705,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Exported: $path')),
-    );
+    context.showInfoSnackBar('Exported: $path');
   }
 
   Future<void> _importPresets() async {
