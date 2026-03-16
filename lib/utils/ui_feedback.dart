@@ -5,10 +5,14 @@ SnackBar _buildFeedbackSnackBar({
   required String message,
   required Duration duration,
   Color? backgroundColor,
+  Color? textColor,
   Color? closeIconColor,
 }) {
   return SnackBar(
-    content: Text(message),
+    content: Text(
+      message,
+      style: textColor == null ? null : TextStyle(color: textColor),
+    ),
     behavior: SnackBarBehavior.floating,
     duration: duration,
     backgroundColor: backgroundColor,
@@ -22,6 +26,7 @@ extension UiFeedbackX on BuildContext {
     String message, {
     Duration duration = const Duration(seconds: 2),
     Color? backgroundColor,
+    Color? textColor,
     Color? closeIconColor,
   }) {
     ScaffoldMessenger.of(this)
@@ -31,13 +36,20 @@ extension UiFeedbackX on BuildContext {
           message: message,
           duration: duration,
           backgroundColor: backgroundColor,
+          textColor: textColor,
           closeIconColor: closeIconColor,
         ),
       );
   }
 
   void showInfoSnackBar(String message) {
-    showSnackBarMessage(message);
+    final colorScheme = Theme.of(this).colorScheme;
+    showSnackBarMessage(
+      message,
+      backgroundColor: colorScheme.inverseSurface,
+      textColor: colorScheme.onInverseSurface,
+      closeIconColor: colorScheme.onInverseSurface,
+    );
   }
 
   void showErrorSnackBar(String message) {
@@ -46,6 +58,7 @@ extension UiFeedbackX on BuildContext {
       message,
       duration: const Duration(seconds: 3),
       backgroundColor: colorScheme.error,
+      textColor: colorScheme.onError,
       closeIconColor: colorScheme.onError,
     );
   }

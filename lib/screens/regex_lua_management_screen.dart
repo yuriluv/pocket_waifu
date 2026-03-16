@@ -950,7 +950,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    await _regexService.saveRules(_regexRules);
+                    await _saveRegex();
                     final result = await _regexService.applyAiOutput(
                       inputController.text,
                     );
