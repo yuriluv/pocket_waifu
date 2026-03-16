@@ -80,6 +80,12 @@ pwf.emit(text, functionName, payload)  -- 즉시 실행 + text 유지
 pwf.dispatch(text, pattern, functionName, payloadTemplate)
 pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)
 
+[fallback 한계]
+- 현재 fallback는 일반 Lua 전체를 해석하지 않습니다.
+- 안전하게 지원되는 형태는 pwf.* helper 호출과 단순 return/assignment입니다.
+- text:match(...), if ... then ... end, "a" .. b 같은 일반 Lua 문법은 fallback에서 기대대로 동작하지 않을 수 있습니다.
+- 그런 문법을 쓰려면 네이티브 Lua 브리지가 실제로 동작해야 합니다.
+
 [시스템이 제공하는 runtime function]
 live2d.param
 live2d.motion
@@ -113,7 +119,7 @@ overlay.wait
 
 [커스텀 예시]
 기본 템플릿 주석처럼 사용자가 직접 원하는 형식을 매핑할 수 있습니다.
-예: function(emotion, happy) -> overlay.emotion 호출
+예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=$1")
 
 [Regex/Lua 실행 순서]
 설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
@@ -138,6 +144,7 @@ executeHookAndReturn(script, hook, input, timeoutMs)
 - onLoad/onUnload는 반환값이 없습니다.
 - 실제 Lua 네이티브 브리지가 없으면 위 helper 기반 fallback 실행이 사용됩니다.
 - 기본 템플릿을 바꾸면 어떤 문자열이 어떤 함수가 되는지도 함께 바뀝니다.
+- fallback 기준으로는 helper 기반 패턴을 우선 사용하세요.
   ''';
 
   static const String _regexText = '''

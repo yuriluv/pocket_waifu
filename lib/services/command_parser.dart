@@ -247,10 +247,16 @@ class CommandParser {
 
 🧩 **지원 지시어 문법**
 
+• 아래 문법은 기본 Lua 템플릿이 인식하는 기본 예시입니다.
 • Live2D 블록: <live2d>...</live2d>
 • Live2D 인라인: [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset]
 • Overlay 블록: <overlay>...</overlay> 내부에서 <move .../>, <emotion .../>, <wait .../>
 • Overlay 인라인: [img_move:...], [img_emotion:...]
+
+🧠 **Lua fallback 팁**
+
+• Lua를 커스텀하면 위 문법도 직접 바꿀 수 있습니다.
+• 현재 fallback Lua는 일반 Lua 전체보다 `pwf.dispatch`, `pwf.dispatchKeep`, `pwf.emit` 같은 helper 중심으로 쓰는 것이 안전합니다.
 
 💡 메시지 번호는 1부터 시작합니다.
 ''';
