@@ -156,8 +156,8 @@ They are used by directives such as `<preset name="..."/>` and by editor/test to
 
 - `Live2DDirectiveService` is the runtime executor for Live2D commands such as `param`, `motion`, `expression`, `emotion`, `wait`, `preset`, and `reset`
 - the editable Lua template decides which assistant text should map to those commands
-- `LuaScriptingService.executeRuntimeFunctions(...)` dispatches Lua-emitted runtime function tokens to `Live2DDirectiveService`
-- the legacy internal token parsers still exist for compatibility, but they are no longer the intended ownership boundary
+- the current pseudo-Lua fallback invokes these commands directly from the hook helper layer (`pwf.call`, `pwf.dispatch`, `pwf.dispatchKeep`)
+- the legacy internal token parsers still exist only as compatibility support and are not the intended normal-flow contract
 - commands are serialized through `Live2DCommandQueue`
 - parameter writes are clamped to known bounds when possible
 - alias names are resolved before runtime writes

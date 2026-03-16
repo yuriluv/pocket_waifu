@@ -46,8 +46,7 @@ They reuse the same building blocks but have different entrypoints.
 8. `ApiService` formats and sends the request using the active `ApiConfig`.
 9. Assistant output comes back to `ChatProvider` and enters the assistant post-processing pipeline:
     - regex/Lua on assistant text
-    - Lua emits runtime function tokens for any overlay/parameter behavior it wants to trigger
-    - the system executes those runtime functions without assigning meaning to XML or inline control text on its own
+    - Lua directly invokes overlay/Live2D runtime actions while it parses assistant text
     - display-only regex/Lua cleanup
 10. Final assistant text is stored in `ChatSessionProvider`.
 

@@ -96,11 +96,11 @@ The shipped default script is an editable template, not a hardcoded semantic own
 
 - seed source: `LuaScriptingService._defaultScripts()`
 - default script name: `default_runtime_template.lua`
-- responsibility: recognize text and emit runtime function tokens such as `[pwf-fn:live2d.motion:name=Idle/0]`
+- responsibility: recognize text and directly invoke runtime actions from the hook layer
 
 The system contract is now:
 - Lua decides what input text means.
-- the app only executes exposed runtime functions.
+- the app exposes callable runtime functions, and Lua hooks invoke them directly.
 - Regex is for text repair and display cleanup, not for assigning runtime semantics.
 
 The fallback pseudo-Lua runtime exposes helper functions like:
@@ -108,8 +108,10 @@ The fallback pseudo-Lua runtime exposes helper functions like:
 - `pwf.replace(text, from, to)`
 - `pwf.call(functionName, payload)`
 - `pwf.emit(text, functionName, payload)`
+- `pwf.dispatch(text, pattern, functionName, payloadTemplate)`
+- `pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)`
 
-Those helpers let the default template support legacy XML-like strings while remaining fully user-editable.
+Those helpers let the default template support legacy XML-like strings while directly firing runtime actions and remaining fully user-editable.
 
 ## Ordering Rules
 
@@ -131,11 +133,9 @@ In `ChatProvider` and `NotificationCoordinator`:
 - if true:
   - regex `aiOutput`
   - Lua `onAssistantMessage`
-  - runtime function execution step
 - if false:
   - Lua `onAssistantMessage`
   - regex `aiOutput`
-  - runtime function execution step
 
 ### Prompt build path
 
@@ -150,7 +150,7 @@ Inside `ApiService`:
 
 ### Display-only path
 
-After assistant output cleanup/runtime function execution:
+After assistant output cleanup/direct Lua dispatch:
 
 - if true:
   - regex `displayOnly`
@@ -184,8 +184,8 @@ This means agent mode is not a simple reuse of the normal prompt block transform
 
 The shipped default regex set is intentionally small.
 
-- it hides Lua-emitted runtime function tokens from final display
-- it trims blank lines left after token removal
+- it hides or repairs residual control text when needed
+- it trims blank lines left after direct dispatch removes control strings
 - it may be extended by the user to repair malformed model output before Lua parses it
 
 Default regex no longer assigns meaning to `<live2d>`, `<overlay>`, or inline command syntax.
@@ -194,7 +194,7 @@ Default regex no longer assigns meaning to `<live2d>`, `<overlay>`, or inline co
 
 ### Use regex when
 
-- you need stable machine-token cleanup
+- you need stable residual control-text cleanup
 - you are normalizing formatting
 - you are extracting or removing deterministic markers
 - you are repairing malformed control text before Lua parses it
