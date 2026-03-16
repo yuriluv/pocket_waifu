@@ -50,6 +50,10 @@ class LuaScriptingService {
       Live2DDirectiveService.instance;
   final ImageOverlayDirectiveService _imageDirectiveService =
       ImageOverlayDirectiveService.instance;
+  static final RegExp _runtimeFunctionRegex = RegExp(
+    r'\[pwf-fn:([a-zA-Z0-9_.-]+):([^\]]*)\]',
+    caseSensitive: false,
+  );
 
   List<String> get logs => List.unmodifiable(_logs);
   String get injectedCss => _injectedCss;
@@ -203,43 +207,7 @@ class LuaScriptingService {
     return output;
   }
 
-  Future<String> applyAssistantDirectiveOwnership(
-    String text,
-    LuaHookContext context,
-  ) async {
-    if (!context.directiveSyntaxOwnershipEnabled) {
-      return text;
-    }
-
-    final scripts = await getScripts();
-    final runnable = scripts.where((script) {
-      if (!script.isEnabled) {
-        return false;
-      }
-      if (script.scope == LuaScriptScope.perCharacter &&
-          script.characterId != context.characterId) {
-        return false;
-      }
-      return true;
-    }).toList()..sort((a, b) => a.order.compareTo(b.order));
-
-    if (!_ownsAssistantDirectiveSyntax(runnable)) {
-      return text;
-    }
-
-    return _applyAssistantDirectiveOwnership(text, context);
-  }
-
-  bool _ownsAssistantDirectiveSyntax(List<LuaScript> scripts) {
-    for (final script in scripts) {
-      if (script.content.contains('-- hook:onAssistantMessage directives:owned')) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Future<String> _applyAssistantDirectiveOwnership(
+  Future<String> executeRuntimeFunctions(
     String text,
     LuaHookContext context,
   ) async {
@@ -249,43 +217,105 @@ class LuaScriptingService {
       return text;
     }
 
-    var output = text;
-    final orderedTargets =
-        context.llmDirectiveTarget == LlmDirectiveTarget.imageOverlay
-        ? const <LlmDirectiveTarget>[
-            LlmDirectiveTarget.imageOverlay,
-            LlmDirectiveTarget.live2d,
-          ]
-        : const <LlmDirectiveTarget>[
-            LlmDirectiveTarget.live2d,
-            LlmDirectiveTarget.imageOverlay,
-          ];
+    final errors = <String>[];
+    for (final match in _runtimeFunctionRegex.allMatches(text)) {
+      final functionName = (match.group(1) ?? '').trim();
+      final rawPayload = match.group(2) ?? '';
+      try {
+        await _executeRuntimeFunction(functionName, rawPayload);
+      } catch (e) {
+        final message = 'Lua runtime function failed ($functionName): $e';
+        errors.add(message);
+        _log(message);
+        debugPrint(message);
+      }
+    }
 
-    for (final target in orderedTargets) {
-      output = await _applyAssistantDirectiveTarget(output, target, context);
+    final cleaned = (context.live2dShowRawDirectivesInChat ?? false)
+        ? text.replaceAllMapped(_runtimeFunctionRegex, (match) {
+            final name = match.group(1) ?? '';
+            final payload = (match.group(2) ?? '').trim();
+            return payload.isEmpty ? '⟦$name⟧' : '⟦$name:$payload⟧';
+          })
+        : text.replaceAll(_runtimeFunctionRegex, '');
+    return cleaned.trim();
+  }
+
+  Future<void> _executeRuntimeFunction(String name, String rawPayload) async {
+    final attrs = _parseRuntimePayload(rawPayload);
+    switch (name) {
+      case 'live2d.param':
+      case 'live2d.motion':
+      case 'live2d.expression':
+      case 'live2d.emotion':
+      case 'live2d.wait':
+      case 'live2d.preset':
+      case 'live2d.reset':
+        await _live2dDirectiveService.executeCommand(
+          name.substring('live2d.'.length),
+          attrs,
+        );
+        return;
+      case 'overlay.move':
+      case 'overlay.emotion':
+      case 'overlay.wait':
+        final mapped = switch (name) {
+          'overlay.move' => 'move',
+          'overlay.emotion' => 'emotion',
+          _ => 'wait',
+        };
+        await _imageDirectiveService.executeCommand(mapped, attrs);
+        return;
+      default:
+        _log('Unknown Lua runtime function: $name');
+        return;
+    }
+  }
+
+  Map<String, String> _parseRuntimePayload(String rawPayload) {
+    final output = <String, String>{};
+
+    final quotedRegex = RegExp(r'(\w+)\s*=\s*"([^"]*)"');
+    var remainder = rawPayload;
+    for (final match in quotedRegex.allMatches(rawPayload)) {
+      final key = match.group(1);
+      final value = match.group(2);
+      if (key != null && value != null) {
+        output[key] = value;
+      }
+      remainder = remainder.replaceFirst(match.group(0) ?? '', ' ');
+    }
+
+    for (final segment in remainder.split(',')) {
+      final trimmed = segment.trim();
+      if (trimmed.isEmpty) {
+        continue;
+      }
+      if (trimmed.contains('=')) {
+        final index = trimmed.indexOf('=');
+        final key = trimmed.substring(0, index).trim();
+        final value = trimmed.substring(index + 1).trim();
+        if (key.isNotEmpty && value.isNotEmpty) {
+          output[key] = value;
+        }
+      } else {
+        final whitespaceParts = trimmed.split(RegExp(r'\s+'));
+        for (final part in whitespaceParts) {
+          final item = part.trim();
+          if (item.isEmpty || !item.contains('=')) {
+            continue;
+          }
+          final index = item.indexOf('=');
+          final key = item.substring(0, index).trim();
+          final value = item.substring(index + 1).trim();
+          if (key.isNotEmpty && value.isNotEmpty) {
+            output[key] = value;
+          }
+        }
+      }
     }
 
     return output;
-  }
-
-  Future<String> _applyAssistantDirectiveTarget(
-    String text,
-    LlmDirectiveTarget target,
-    LuaHookContext context,
-  ) async {
-    if (target == LlmDirectiveTarget.imageOverlay) {
-      final result = await _imageDirectiveService.processAssistantOutput(text);
-      return result.cleanedText;
-    }
-
-    final result = await _live2dDirectiveService.processAssistantOutput(
-      text,
-      parsingEnabled: true,
-      exposeRawDirectives:
-          (context.live2dShowRawDirectivesInChat ?? false) &&
-          context.llmDirectiveTarget != LlmDirectiveTarget.imageOverlay,
-    );
-    return result.cleanedText;
   }
 
   Future<void> _runHookVoid(String hook, LuaHookContext context) async {
@@ -350,11 +380,49 @@ class LuaScriptingService {
     String hook,
     String input,
   ) async {
-    // Placeholder execution model for lifecycle compatibility.
-    // Recognized directives in script.content:
-    //   -- hook:onUserMessage replace:foo=>bar
-    //   -- hook:onAssistantMessage append:...text...
+    var output = input;
+
     final lines = script.content.split('\n');
+    output = _applyPseudoLuaCommentDirectives(lines, hook, output);
+    final functionBody = _extractPseudoLuaFunctionBody(script.content, hook);
+    if (functionBody == null) {
+      return output;
+    }
+
+    final env = <String, String>{'text': output};
+    final bodyLines = functionBody.split('\n');
+    for (final rawLine in bodyLines) {
+      final line = rawLine.trim();
+      if (line.isEmpty || line.startsWith('--')) {
+        continue;
+      }
+
+      if (line.startsWith('return ')) {
+        final expr = line.substring('return '.length).trim();
+        return _evaluatePseudoLuaExpression(expr, env) ?? (env['text'] ?? output);
+      }
+
+      final assignment = RegExp(
+        r'^(?:local\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$',
+      ).firstMatch(line);
+      if (assignment != null) {
+        final variable = assignment.group(1)!;
+        final expr = assignment.group(2)!.trim();
+        final value = _evaluatePseudoLuaExpression(expr, env);
+        if (value != null) {
+          env[variable] = value;
+        }
+      }
+    }
+
+    return env['text'] ?? output;
+  }
+
+  String _applyPseudoLuaCommentDirectives(
+    List<String> lines,
+    String hook,
+    String input,
+  ) {
     var output = input;
 
     for (final line in lines) {
@@ -387,31 +455,184 @@ class LuaScriptingService {
     return output;
   }
 
+  String? _extractPseudoLuaFunctionBody(String script, String hook) {
+    final regex = RegExp(
+      'function\\s+$hook\\s*\\([^)]*\\)\\s*([\\s\\S]*?)\\nend',
+      caseSensitive: false,
+    );
+    final match = regex.firstMatch(script);
+    return match?.group(1);
+  }
+
+  String? _evaluatePseudoLuaExpression(
+    String expression,
+    Map<String, String> env,
+  ) {
+    final trimmed = expression.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+
+    if (env.containsKey(trimmed)) {
+      return env[trimmed];
+    }
+
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.substring(1, trimmed.length - 1);
+    }
+
+    if (trimmed.startsWith('[[') && trimmed.endsWith(']]')) {
+      return trimmed.substring(2, trimmed.length - 2);
+    }
+
+    final callMatch = RegExp(r'^(pwf\.[A-Za-z_][A-Za-z0-9_]*)\((.*)\)$')
+        .firstMatch(trimmed);
+    if (callMatch == null) {
+      return null;
+    }
+
+    final functionName = callMatch.group(1)!;
+    final rawArgs = callMatch.group(2) ?? '';
+    final parsedArgs = _splitPseudoLuaArgs(rawArgs)
+        .map((arg) => _evaluatePseudoLuaExpression(arg, env) ?? '')
+        .toList(growable: false);
+
+    switch (functionName) {
+      case 'pwf.replace':
+        if (parsedArgs.length < 3) return null;
+        return parsedArgs[0].replaceAll(parsedArgs[1], parsedArgs[2]);
+      case 'pwf.append':
+        if (parsedArgs.length < 2) return null;
+        return parsedArgs[0] + parsedArgs[1];
+      case 'pwf.prepend':
+        if (parsedArgs.length < 2) return null;
+        return parsedArgs[1] + parsedArgs[0];
+      case 'pwf.trim':
+        if (parsedArgs.isEmpty) return null;
+        return parsedArgs[0].trim();
+      case 'pwf.call':
+        if (parsedArgs.isEmpty) return null;
+        final payload = parsedArgs.length > 1 ? parsedArgs[1] : '';
+        return _buildRuntimeFunctionToken(parsedArgs[0], payload);
+      case 'pwf.emit':
+        if (parsedArgs.length < 2) return null;
+        final payload = parsedArgs.length > 2 ? parsedArgs[2] : '';
+        return parsedArgs[0] + _buildRuntimeFunctionToken(parsedArgs[1], payload);
+      case 'pwf.gsub':
+        if (parsedArgs.length < 3) return null;
+        return _pseudoLuaGsub(parsedArgs[0], parsedArgs[1], parsedArgs[2]);
+      default:
+        return null;
+    }
+  }
+
+  List<String> _splitPseudoLuaArgs(String raw) {
+    final args = <String>[];
+    final buffer = StringBuffer();
+    var index = 0;
+    var inSingle = false;
+    var inDouble = false;
+    var longDepth = 0;
+
+    while (index < raw.length) {
+      final char = raw[index];
+      final next = index + 1 < raw.length ? raw[index + 1] : '';
+
+      if (!inSingle && !inDouble && char == '[' && next == '[') {
+        longDepth++;
+        buffer.write('[[');
+        index += 2;
+        continue;
+      }
+      if (longDepth > 0 && char == ']' && next == ']') {
+        longDepth--;
+        buffer.write(']]');
+        index += 2;
+        continue;
+      }
+      if (longDepth == 0 && !inDouble && char == "'") {
+        inSingle = !inSingle;
+        buffer.write(char);
+        index++;
+        continue;
+      }
+      if (longDepth == 0 && !inSingle && char == '"') {
+        inDouble = !inDouble;
+        buffer.write(char);
+        index++;
+        continue;
+      }
+      if (longDepth == 0 && !inSingle && !inDouble && char == ',') {
+        args.add(buffer.toString().trim());
+        buffer.clear();
+        index++;
+        continue;
+      }
+
+      buffer.write(char);
+      index++;
+    }
+
+    final tail = buffer.toString().trim();
+    if (tail.isNotEmpty) {
+      args.add(tail);
+    }
+    return args;
+  }
+
+  String _pseudoLuaGsub(String input, String pattern, String replacement) {
+    final regex = RegExp(pattern, multiLine: true, dotAll: true);
+    return input.replaceAllMapped(regex, (match) {
+      var output = replacement;
+      for (var i = match.groupCount; i >= 1; i--) {
+        output = output.replaceAll('\$' + i.toString(), match.group(i) ?? '');
+      }
+      return output;
+    });
+  }
+
+  String _buildRuntimeFunctionToken(String functionName, String payload) {
+    final normalizedName = functionName.trim();
+    final normalizedPayload = payload.trim();
+    return normalizedPayload.isEmpty
+        ? '[pwf-fn:$normalizedName:]'
+        : '[pwf-fn:$normalizedName:$normalizedPayload]';
+  }
+
   List<LuaScript> _defaultScripts() {
     return <LuaScript>[
       LuaScript(
-        name: 'assistant_directive_ownership.lua',
+        name: 'default_runtime_template.lua',
         order: 0,
         scope: LuaScriptScope.global,
-        content: '''-- Editable assistant directive ownership.
--- Remove or edit the marker below to disable built-in directive parsing ownership.
--- hook:onAssistantMessage directives:owned
+        content: '''-- Editable default Lua template.
+-- The app only provides runtime functions. This script decides what text means.
+-- Runtime function token format emitted by Lua: [pwf-fn:function.name:key=value,...]
 --
--- Supported Live2D syntax (owned here):
---   <live2d> ... </live2d>
---   [param:id=...,value=...,op=set|del|mul]
---   [motion:name=Idle/0] / [motion:group=Idle,index=0]
---   [expression:id=smile] / [expression:name=smile]
---   [emotion:name=happy]
---   [wait:ms=300]
---   [preset:name=idle]
---   [reset]
+-- Available pseudo-Lua helpers in fallback mode:
+--   pwf.gsub(text, pattern, replacement)
+--   pwf.replace(text, from, to)
+--   pwf.append(text, suffix)
+--   pwf.prepend(text, prefix)
+--   pwf.trim(text)
+--   pwf.call(functionName, payload)
+--   pwf.emit(text, functionName, payload)
 --
--- Supported image overlay syntax (owned here):
---   <overlay> ... </overlay>
---   [img_move:x=100,y=200,op=set|del|mul]
---   [img_emotion:name=happy]
---   Inside <overlay>: <move .../>, <emotion .../>, <wait .../>
+-- Runtime functions exposed by the system:
+--   live2d.param      payload: id=...,value=...,op=set|del|mul,dur=...,delay=...
+--   live2d.motion     payload: group=...,index=... OR name=Idle/0
+--   live2d.expression payload: id=... OR name=...
+--   live2d.emotion    payload: name=happy
+--   live2d.wait       payload: ms=300
+--   live2d.preset     payload: name=idle,delay=...
+--   live2d.reset      payload: delay=...
+--   overlay.move      payload: x=100,y=200,op=set|del|mul,delay=...
+--   overlay.emotion   payload: name=happy
+--   overlay.wait      payload: ms=300
+--
+-- Example custom syntax you can enable yourself:
+-- text = pwf.gsub(text, [[function\(emotion,\s*([^)]+)\)]], "[pwf-fn:overlay.emotion:name=$1]")
 
 function onLoad()
 end
@@ -425,6 +646,32 @@ function onPromptBuild(text)
 end
 
 function onAssistantMessage(text)
+  text = pwf.gsub(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.move:$1]")
+  text = pwf.gsub(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.emotion:$1]")
+  text = pwf.gsub(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "[pwf-fn:overlay.wait:$1]")
+  text = pwf.gsub(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "[pwf-fn:live2d.wait:$1]")
+
+  text = pwf.gsub(text, [[<param\s+([^>]*?)/>]], "[pwf-fn:live2d.param:$1]")
+  text = pwf.gsub(text, [[<motion\s+([^>]*?)/>]], "[pwf-fn:live2d.motion:$1]")
+  text = pwf.gsub(text, [[<expression\s+([^>]*?)/>]], "[pwf-fn:live2d.expression:$1]")
+  text = pwf.gsub(text, [[<emotion\s+([^>]*?)/>]], "[pwf-fn:live2d.emotion:$1]")
+  text = pwf.gsub(text, [[<wait\s+([^>]*?)/>]], "[pwf-fn:live2d.wait:$1]")
+  text = pwf.gsub(text, [[<preset\s+([^>]*?)/>]], "[pwf-fn:live2d.preset:$1]")
+  text = pwf.gsub(text, [[<reset\s*([^>]*?)/>]], "[pwf-fn:live2d.reset:$1]")
+  text = pwf.gsub(text, [[<move\s+([^>]*?)/>]], "[pwf-fn:overlay.move:$1]")
+
+  text = pwf.gsub(text, [[\[param:([^\]]+)\]]], "[pwf-fn:live2d.param:$1]")
+  text = pwf.gsub(text, [[\[motion:([^\]]+)\]]], "[pwf-fn:live2d.motion:$1]")
+  text = pwf.gsub(text, [[\[expression:([^\]]+)\]]], "[pwf-fn:live2d.expression:$1]")
+  text = pwf.gsub(text, [[\[emotion:([^\]]+)\]]], "[pwf-fn:live2d.emotion:$1]")
+  text = pwf.gsub(text, [[\[wait:([^\]]+)\]]], "[pwf-fn:live2d.wait:$1]")
+  text = pwf.gsub(text, [[\[preset:([^\]]+)\]]], "[pwf-fn:live2d.preset:$1]")
+  text = pwf.gsub(text, [[\[reset\]]], "[pwf-fn:live2d.reset:]")
+  text = pwf.gsub(text, [[\[img_move:([^\]]+)\]]], "[pwf-fn:overlay.move:$1]")
+  text = pwf.gsub(text, [[\[img_emotion:([^\]]+)\]]], "[pwf-fn:overlay.emotion:$1]")
+
+  text = pwf.gsub(text, [[</?live2d>]], "")
+  text = pwf.gsub(text, [[</?overlay>]], "")
   return text
 end
 

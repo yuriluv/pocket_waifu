@@ -4,9 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_application_1/features/lua/models/lua_script.dart';
 import 'package:flutter_application_1/features/lua/services/lua_scripting_service.dart';
-import 'package:flutter_application_1/features/regex/models/regex_rule.dart';
-import 'package:flutter_application_1/features/regex/services/regex_pipeline_service.dart';
-import 'package:flutter_application_1/models/settings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -40,20 +37,17 @@ void main() {
     messenger.setMockMethodCallHandler(channel, null);
   });
 
-  Future<void> expectOwnershipRunsForTarget(
+  Future<void> expectRuntimeFunctionsRun(
     LuaScriptingService lua,
     String transformed,
-    LlmDirectiveTarget target,
   ) async {
     methodCalls.clear();
 
-    final output = await lua.applyAssistantDirectiveOwnership(
+    final output = await lua.executeRuntimeFunctions(
       transformed,
-      LuaHookContext(
-        directiveSyntaxOwnershipEnabled: true,
+      const LuaHookContext(
         live2dLlmIntegrationEnabled: true,
         live2dDirectiveParsingEnabled: true,
-        llmDirectiveTarget: target,
       ),
     );
 
@@ -72,34 +66,14 @@ void main() {
   }
 
   test(
-    'assistant directive ownership runs live2d and overlay tokens for both targets',
+    'lua runtime functions execute live2d and overlay commands',
     () async {
-      final regex = RegexPipelineService.instance;
       final lua = LuaScriptingService.instance;
-
-      await regex.saveRules([
-        RegexRule(
-          name: 'Route Live2D inline directives to runtime',
-          type: RegexRuleType.aiOutput,
-          pattern: r'\[(motion):([^\]]+)\]',
-          replacement: r'[pwf-live2d:$1:$2]',
-          caseInsensitive: true,
-          priority: -20,
-        ),
-        RegexRule(
-          name: 'Route image overlay inline directives to runtime',
-          type: RegexRuleType.aiOutput,
-          pattern: r'\[(img_move):([^\]]+)\]',
-          replacement: r'[pwf-overlay:$1:$2]',
-          caseInsensitive: true,
-          priority: -10,
-        ),
-      ]);
 
       await lua.saveScripts([
         LuaScript(
-          name: 'assistant_directive_ownership.lua',
-          content: '''-- hook:onAssistantMessage directives:owned
+          name: 'default_runtime_template.lua',
+          content: '''
 function onAssistantMessage(text)
   return text
 end
@@ -107,62 +81,48 @@ end
         ),
       ]);
 
-      final transformed = await regex.applyAiOutput(
-        'Hello [motion:name=Idle/0] [img_move:x=15,y=25] world',
+      await expectRuntimeFunctionsRun(
+        lua,
+        'Hello [pwf-fn:live2d.motion:name=Idle/0] [pwf-fn:overlay.move:x=15,y=25] world',
       );
-
-      for (final target in LlmDirectiveTarget.values) {
-        await expectOwnershipRunsForTarget(lua, transformed, target);
-      }
     },
   );
 
   test(
-    'assistant directive ownership still works after lua-first assistant stage',
+    'pseudo lua fallback can emit runtime functions from custom text',
     () async {
-      final regex = RegexPipelineService.instance;
       final lua = LuaScriptingService.instance;
-
-      await regex.saveRules([
-        RegexRule(
-          name: 'Route Live2D inline directives to runtime',
-          type: RegexRuleType.aiOutput,
-          pattern: r'\[(motion):([^\]]+)\]',
-          replacement: r'[pwf-live2d:$1:$2]',
-          caseInsensitive: true,
-          priority: -20,
-        ),
-        RegexRule(
-          name: 'Route image overlay inline directives to runtime',
-          type: RegexRuleType.aiOutput,
-          pattern: r'\[(img_move):([^\]]+)\]',
-          replacement: r'[pwf-overlay:$1:$2]',
-          caseInsensitive: true,
-          priority: -10,
-        ),
-      ]);
 
       await lua.saveScripts([
         LuaScript(
-          name: 'assistant_directive_ownership.lua',
-          content: '''-- hook:onAssistantMessage directives:owned
--- hook:onAssistantMessage append:
+          name: 'default_runtime_template.lua',
+          content: '''
 function onAssistantMessage(text)
+  text = pwf.gsub(text, [[function\(move,\s*([^)]+)\)]], "[pwf-fn:overlay.move:$1]")
   return text
 end
 ''',
         ),
       ]);
 
-      final luaFirst = await lua.onAssistantMessage(
-        'Hello [motion:name=Idle/0] [img_move:x=15,y=25] world',
+      final transformed = await lua.onAssistantMessage(
+        'Hello function(move, x=15,y=25) world',
         const LuaHookContext(),
       );
-      final transformed = await regex.applyAiOutput(luaFirst);
 
-      for (final target in LlmDirectiveTarget.values) {
-        await expectOwnershipRunsForTarget(lua, transformed, target);
-      }
+      final output = await lua.executeRuntimeFunctions(
+        transformed,
+        const LuaHookContext(
+          live2dLlmIntegrationEnabled: true,
+          live2dDirectiveParsingEnabled: true,
+        ),
+      );
+
+      expect(output.replaceAll(RegExp(r'\s+'), ' ').trim(), 'Hello world');
+      expect(
+        methodCalls.where((call) => call.method == 'setPosition'),
+        hasLength(1),
+      );
     },
   );
 }

@@ -69,6 +69,10 @@ class ImageOverlayDirectiveService {
     return ImageOverlayDirectiveResult(cleanedText: cleaned, errors: errors);
   }
 
+  Future<void> executeCommand(String command, Map<String, String> attrs) {
+    return _execute(command, attrs);
+  }
+
   Future<void> _runBlock(String block) async {
     final commandRegex = RegExp(
       r'<(move|emotion|wait)\b([^/>]*)/?>',

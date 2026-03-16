@@ -127,6 +127,10 @@ class Live2DDirectiveService {
     return Live2DDirectiveResult(cleanedText: cleaned, errors: errors);
   }
 
+  Future<void> executeCommand(String command, Map<String, String> attrs) {
+    return _queue.enqueue(() => _executeSingleDirective(command, attrs));
+  }
+
   String _renderDirectivesAsChips(String text) {
     final xmlRegex = RegExp(
       r'<pwf-live2d>([\s\S]*?)</pwf-live2d>',
