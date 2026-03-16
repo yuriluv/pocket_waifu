@@ -13,6 +13,7 @@ import '../models/message.dart';
 import '../models/settings.dart';
 import '../services/prompt_builder.dart';
 import '../providers/settings_provider.dart';
+import '../utils/ui_feedback.dart';
 
 class RegexLuaManagementScreen extends StatefulWidget {
   const RegexLuaManagementScreen({super.key});
@@ -66,17 +67,13 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   Future<void> _saveRegex() async {
     await _regexService.saveRules(_regexRules);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Regex 규칙이 저장되었습니다.')));
+    context.showInfoSnackBar('Regex 규칙이 저장되었습니다.');
   }
 
   Future<void> _saveLua() async {
     await _luaService.saveScripts(_luaScripts);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Lua 스크립트가 저장되었습니다.')));
+    context.showInfoSnackBar('Lua 스크립트가 저장되었습니다.');
   }
 
   @override
@@ -910,9 +907,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
     );
     await File(path).writeAsString(payload);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Regex 규칙을 내보냈습니다.')));
+    context.showInfoSnackBar('Regex 규칙을 내보냈습니다.');
   }
 
   Future<void> _showRegexTestDialog() async {
@@ -1008,9 +1003,7 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
     );
     await File(path).writeAsString(payload);
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Lua 스크립트를 내보냈습니다.')));
+    context.showInfoSnackBar('Lua 스크립트를 내보냈습니다.');
   }
 
   void _reindexRegexPriority() {
@@ -1115,9 +1108,7 @@ class _RegexRuleEditorPageState extends State<_RegexRuleEditorPage> {
     final replacement = _replacementController.text;
 
     if (name.isEmpty || pattern.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이름과 패턴은 필수입니다.')),
-      );
+      context.showErrorSnackBar('이름과 패턴은 필수입니다.');
       return;
     }
 
@@ -1328,9 +1319,7 @@ class _LuaScriptEditorPageState extends State<_LuaScriptEditorPage> {
     final content = _contentController.text;
 
     if (name.isEmpty || content.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이름과 스크립트 내용은 필수입니다.')),
-      );
+      context.showErrorSnackBar('이름과 스크립트 내용은 필수입니다.');
       return;
     }
 
