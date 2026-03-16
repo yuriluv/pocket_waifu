@@ -255,12 +255,14 @@ class CbsService {
     final condition = _renderTemplate(conditionSource, context);
     final elseIndex = _findElseIndex(body);
     final truthy = _isTruthy(condition);
-    final selected = if (elseIndex == -1)
-      (truthy ? body : '')
-    else if (truthy)
-      body.substring(0, elseIndex)
-    else
-      body.substring(elseIndex + '{{:else}}'.length);
+    String selected;
+    if (elseIndex == -1) {
+      selected = truthy ? body : '';
+    } else if (truthy) {
+      selected = body.substring(0, elseIndex);
+    } else {
+      selected = body.substring(elseIndex + '{{:else}}'.length);
+    }
     return _renderTemplate(_dedentBlock(selected), context);
   }
 
