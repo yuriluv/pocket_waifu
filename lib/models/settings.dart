@@ -16,11 +16,11 @@ enum LlmDirectiveTarget {
 }
 
 const String _fallbackPromptTruthNotes =
-    'Fallback note: ${LuaHelpContract.fallbackLimitRules[0]} '
-    '${LuaHelpContract.fallbackAuthoringRules[0]} '
-    'Prefer helper-first scripts such as ${LuaHelpContract.fallbackHelperCalls[7]}, '
-    '${LuaHelpContract.fallbackHelperCalls[8]}, '
-    'and ${LuaHelpContract.fallbackHelperCalls[6]} over general Lua forms.';
+    'Fallback note: The current fallback engine does not implement general Lua. '
+    'Fallback patterns use Dart RegExp semantics, not Lua pattern semantics. '
+    'Prefer helper-first scripts such as pwf.dispatch(text, pattern, functionName, payloadTemplate), '
+    'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate), '
+    'and pwf.emit(text, functionName, payload) over general Lua forms.';
 
 const String _defaultLive2dSystemPromptTemplate =
     '[Lua Runtime Template · Live2D Examples]\n'

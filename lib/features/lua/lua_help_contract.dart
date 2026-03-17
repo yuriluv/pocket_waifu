@@ -31,7 +31,7 @@ class LuaHelpContract {
     'if text:match("#alarm") then return text end',
     'return "prefix:" .. text',
     'return pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "name=" .. text)',
-    'return pwf.dispatchKeep(\n  text,\n  r"#alarm\\(([^)]*)\\)",\n  "alarm_keep",\n  "{\\"label\\":\\"$1\\"}"\n)',
+    'return pwf.dispatchKeep(\n  text,\n  r"#alarm\\(([^)]*)\\)",\n  "alarm_keep",\n  "{\\"label\\":\\"\$1\\"}"\n)',
   ];
 
   static const List<String> fallbackLimitRules = [
