@@ -2,6 +2,8 @@
 // ============================================================================
 // ============================================================================
 
+import 'package:flutter_application_1/features/lua/lua_help_contract.dart';
+
 enum ApiProvider {
   openai,
   anthropic,
@@ -12,6 +14,27 @@ enum LlmDirectiveTarget {
   live2d,
   imageOverlay,
 }
+
+const String _fallbackPromptTruthNotes =
+    'Fallback note: ${LuaHelpContract.fallbackLimitRules[0]} '
+    '${LuaHelpContract.fallbackAuthoringRules[0]} '
+    'Prefer helper-first scripts such as ${LuaHelpContract.fallbackHelperCalls[7]}, '
+    '${LuaHelpContract.fallbackHelperCalls[8]}, '
+    'and ${LuaHelpContract.fallbackHelperCalls[6]} over general Lua forms.';
+
+const String _defaultLive2dSystemPromptTemplate =
+    '[Lua Runtime Template · Live2D Examples]\n'
+    'The app does not assign control-text meaning by itself. The editable Lua template parses text and emits runtime functions.\n'
+    'The shipped default Lua template recognizes examples such as <param .../>, <motion .../>, <expression .../>, <emotion .../>, <wait .../>, <preset .../>, <reset .../>, and inline forms like [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset].\n'
+    'If you customize Lua, you may change these examples to any syntax you want.\n'
+    '$_fallbackPromptTruthNotes';
+
+const String _defaultImageOverlaySystemPromptTemplate =
+    '[Lua Runtime Template · Overlay Examples]\n'
+    'The editable Lua template can also map image-overlay text to runtime functions.\n'
+    'The shipped default Lua template recognizes examples such as <move .../>, <emotion .../>, <wait .../>, [img_move:...], and [img_emotion:...].\n'
+    'You may replace this with any custom text format that your Lua script parses.\n'
+    '$_fallbackPromptTruthNotes';
 
 class AppSettings {
   final ApiProvider apiProvider;
@@ -60,10 +83,8 @@ class AppSettings {
     this.live2dLuaExecutionEnabled = true,
     this.live2dShowRawDirectivesInChat = false,
     this.runRegexBeforeLua = true,
-    this.live2dSystemPromptTemplate =
-        '[Lua Runtime Template · Live2D Examples]\nThe app does not assign control-text meaning by itself. The editable Lua template parses text and emits runtime functions.\nThe shipped default Lua template recognizes examples such as <param .../>, <motion .../>, <expression .../>, <emotion .../>, <wait .../>, <preset .../>, <reset .../>, and inline forms like [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset].\nIf you customize Lua, you may change these examples to any syntax you want.',
-    this.imageOverlaySystemPromptTemplate =
-        '[Lua Runtime Template · Overlay Examples]\nThe editable Lua template can also map image-overlay text to runtime functions.\nThe shipped default Lua template recognizes examples such as <move .../>, <emotion .../>, <wait .../>, [img_move:...], and [img_emotion:...].\nYou may replace this with any custom text format that your Lua script parses.',
+    this.live2dSystemPromptTemplate = _defaultLive2dSystemPromptTemplate,
+    this.imageOverlaySystemPromptTemplate = _defaultImageOverlaySystemPromptTemplate,
     this.live2dSystemPromptTokenBudget = 500,
     this.llmDirectiveTarget = LlmDirectiveTarget.live2d,
   });
@@ -165,11 +186,10 @@ class AppSettings {
           map['live2dShowRawDirectivesInChat'] ?? false,
       runRegexBeforeLua: map['runRegexBeforeLua'] ?? true,
       live2dSystemPromptTemplate:
-          map['live2dSystemPromptTemplate'] ??
-          '[Lua Runtime Template · Live2D Examples]\nThe app does not assign control-text meaning by itself. The editable Lua template parses text and emits runtime functions.\nThe shipped default Lua template recognizes examples such as <param .../>, <motion .../>, <expression .../>, <emotion .../>, <wait .../>, <preset .../>, <reset .../>, and inline forms like [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset].\nIf you customize Lua, you may change these examples to any syntax you want.',
+          map['live2dSystemPromptTemplate'] ?? _defaultLive2dSystemPromptTemplate,
       imageOverlaySystemPromptTemplate:
           map['imageOverlaySystemPromptTemplate'] ??
-          '[Lua Runtime Template · Overlay Examples]\nThe editable Lua template can also map image-overlay text to runtime functions.\nThe shipped default Lua template recognizes examples such as <move .../>, <emotion .../>, <wait .../>, [img_move:...], and [img_emotion:...].\nYou may replace this with any custom text format that your Lua script parses.',
+              _defaultImageOverlaySystemPromptTemplate,
       live2dSystemPromptTokenBudget:
           (map['live2dSystemPromptTokenBudget'] ?? 500) as int,
       llmDirectiveTarget: switch (map['llmDirectiveTarget']) {
