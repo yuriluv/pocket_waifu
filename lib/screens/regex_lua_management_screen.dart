@@ -15,6 +15,26 @@ import '../services/prompt_builder.dart';
 import '../providers/settings_provider.dart';
 import '../utils/ui_feedback.dart';
 
+class _LuaLogSummary {
+  const _LuaLogSummary({
+    this.latestExecutionStage,
+    this.latestExecutionReason,
+    this.latestExecutionHook,
+    this.latestDiagnosticReason,
+    this.latestDiagnosticSeverity,
+    this.latestDiagnosticEngine,
+    this.latestDiagnosticHook,
+  });
+
+  final String? latestExecutionStage;
+  final String? latestExecutionReason;
+  final String? latestExecutionHook;
+  final String? latestDiagnosticReason;
+  final String? latestDiagnosticSeverity;
+  final String? latestDiagnosticEngine;
+  final String? latestDiagnosticHook;
+}
+
 class RegexLuaManagementScreen extends StatefulWidget {
   const RegexLuaManagementScreen({super.key});
 
@@ -210,6 +230,8 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
   }
 
   Widget _buildLuaTab() {
+    final logSummary = _summarizeLuaLogs(_luaService.logs);
+
     return Column(
       children: [
         Padding(
@@ -248,6 +270,53 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '최근 Lua 진단',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      _buildLuaSummaryItem(
+                        icon: Icons.memory_outlined,
+                        label: '최근 엔진 단계',
+                        value: logSummary.latestExecutionStage ?? '기록 없음',
+                        detail: logSummary.latestExecutionHook,
+                      ),
+                      _buildLuaSummaryItem(
+                        icon: Icons.play_circle_outline,
+                        label: '최근 실행 사유',
+                        value: logSummary.latestExecutionReason ?? '기록 없음',
+                        detail: logSummary.latestExecutionHook,
+                      ),
+                      _buildLuaSummaryItem(
+                        icon: Icons.warning_amber_rounded,
+                        label: '최근 경고/오류',
+                        value:
+                            logSummary.latestDiagnosticReason ?? '경고/오류 없음',
+                        detail: _joinLuaSummaryParts([
+                          logSummary.latestDiagnosticSeverity,
+                          logSummary.latestDiagnosticEngine,
+                          logSummary.latestDiagnosticHook,
+                        ]),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: _luaScripts.isEmpty
               ? const Center(child: Text('저장된 Lua 스크립트가 없습니다.'))
@@ -283,6 +352,126 @@ class _RegexLuaManagementScreenState extends State<RegexLuaManagementScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildLuaSummaryItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    String? detail,
+  }) {
+    final subtitle = detail == null ? label : '$label · $detail';
+
+    return SizedBox(
+      width: 240,
+      child: ListTile(
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        minLeadingWidth: 28,
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, size: 20),
+        title: Text(
+          value,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
+
+  _LuaLogSummary _summarizeLuaLogs(List<String> logs) {
+    String? latestExecutionStage;
+    String? latestExecutionReason;
+    String? latestExecutionHook;
+    String? latestDiagnosticReason;
+    String? latestDiagnosticSeverity;
+    String? latestDiagnosticEngine;
+    String? latestDiagnosticHook;
+
+    for (final line in logs.reversed) {
+      if ((latestExecutionStage == null || latestExecutionReason == null) &&
+          line.contains('lua.exec ')) {
+        latestExecutionStage ??= _extractLuaLogValue(line, 'stage');
+        latestExecutionReason ??= _extractLuaLogValue(line, 'reason');
+        latestExecutionHook ??= _extractLuaLogValue(line, 'hook');
+      }
+
+      if (latestDiagnosticReason == null && line.contains('lua.diag ')) {
+        final context = _extractLuaLogContext(line);
+        final severity = context?['severity']?.toString();
+        if (severity == 'warning' || severity == 'error') {
+          latestDiagnosticReason = _extractLuaLogValue(line, 'reason');
+          latestDiagnosticSeverity = severity;
+          latestDiagnosticEngine = context?['engine']?.toString();
+          latestDiagnosticHook = context?['hook']?.toString();
+        }
+      }
+
+      if (latestExecutionStage != null &&
+          latestExecutionReason != null &&
+          latestDiagnosticReason != null) {
+        break;
+      }
+    }
+
+    return _LuaLogSummary(
+      latestExecutionStage: latestExecutionStage,
+      latestExecutionReason: latestExecutionReason,
+      latestExecutionHook: latestExecutionHook,
+      latestDiagnosticReason: latestDiagnosticReason,
+      latestDiagnosticSeverity: latestDiagnosticSeverity,
+      latestDiagnosticEngine: latestDiagnosticEngine,
+      latestDiagnosticHook: latestDiagnosticHook,
+    );
+  }
+
+  String? _extractLuaLogValue(String line, String key) {
+    final match = RegExp('\\b${RegExp.escape(key)}=([^ ]+)').firstMatch(line);
+    return match?.group(1);
+  }
+
+  Map<String, dynamic>? _extractLuaLogContext(String line) {
+    const marker = ' context=';
+    final markerIndex = line.indexOf(marker);
+    if (markerIndex == -1) {
+      return null;
+    }
+
+    final rawContext = line.substring(markerIndex + marker.length).trim();
+    if (rawContext.isEmpty) {
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(rawContext);
+      if (decoded is Map) {
+        return decoded.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
+  String? _joinLuaSummaryParts(Iterable<String?> parts) {
+    final values = parts
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (values.isEmpty) {
+      return null;
+    }
+    return values.join(' · ');
   }
 
   Widget _buildRegexRuleBlock({required RegexRule rule, required int index}) {
