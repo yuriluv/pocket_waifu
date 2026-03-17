@@ -35,17 +35,75 @@ class LuaHookContext {
   final Duration timeout;
 }
 
+enum _LuaExecutionStage { native, fallback }
+
+class _LuaExecutionReport {
+  const _LuaExecutionReport({
+    required this.scriptId,
+    required this.scriptName,
+    required this.hook,
+    required this.stage,
+    required this.elapsed,
+    required this.reasonCode,
+    required this.context,
+  });
+
+  final String scriptId;
+  final String scriptName;
+  final String hook;
+  final _LuaExecutionStage stage;
+  final Duration elapsed;
+  final String reasonCode;
+  final Map<String, Object?> context;
+
+  String toDiagnosticLine(DateTime timestamp) {
+    final scriptLabel = scriptName.trim().isEmpty ? scriptId : scriptName.trim();
+    final stageLabel = switch (stage) {
+      _LuaExecutionStage.native => 'native',
+      _LuaExecutionStage.fallback => 'fallback',
+    };
+    return '[${timestamp.toIso8601String()}] '
+        'lua.exec script=$scriptLabel '
+        'scriptId=$scriptId '
+        'hook=$hook '
+        'stage=$stageLabel '
+        'reason=$reasonCode '
+        'elapsedMs=${elapsed.inMilliseconds} '
+        'context=${jsonEncode(context)}';
+  }
+}
+
+class _PseudoLuaHookBody {
+  const _PseudoLuaHookBody({required this.body, required this.startLine});
+
+  final String body;
+  final int startLine;
+}
+
+class _PseudoLuaGuardState {
+  _PseudoLuaGuardState({required this.script, required this.hook});
+
+  final LuaScript script;
+  final String hook;
+  int runtimeActionCount = 0;
+  bool actionLimitLogged = false;
+}
+
 class LuaScriptingService {
   LuaScriptingService._();
 
   static const String _scriptsKey = 'lua_scripts_v1';
+  static const int _pseudoLuaMaxRegexInputLength = 24000;
+  static const int _pseudoLuaMaxRegexMatchesPerHelper = 64;
+  static const int _pseudoLuaMaxRuntimeActionsPerHook = 48;
+  static const int _pseudoLuaRegexSoftLimitMs = 200;
   static final LuaScriptingService instance = LuaScriptingService._();
 
   List<LuaScript>? _scriptsCache;
   bool _hooksInitialized = false;
   final List<String> _logs = [];
   String _injectedCss = '';
-  final LuaNativeBridge _nativeBridge = LuaNativeBridge();
+  LuaNativeBridge _nativeBridge = LuaNativeBridge();
   final Live2DDirectiveService _live2dDirectiveService =
       Live2DDirectiveService.instance;
   final ImageOverlayDirectiveService _imageDirectiveService =
@@ -58,12 +116,149 @@ class LuaScriptingService {
     _logs.clear();
   }
 
-  void _log(String message) {
-    final line = '[${DateTime.now().toIso8601String()}] $message';
+  @visibleForTesting
+  void setNativeBridgeForTesting(LuaNativeBridge bridge) {
+    _nativeBridge = bridge;
+  }
+
+  @visibleForTesting
+  void resetNativeBridgeForTesting() {
+    _nativeBridge = LuaNativeBridge();
+  }
+
+  @visibleForTesting
+  void setLogsForTesting(List<String> logs) {
+    _logs
+      ..clear()
+      ..addAll(logs);
+  }
+
+  void _logLine(String line) {
     _logs.add(line);
     if (_logs.length > 200) {
       _logs.removeAt(0);
     }
+  }
+
+  void _logDiagnostic({
+    required String reasonCode,
+    required Map<String, Object?> context,
+  }) {
+    final bounded = _boundContext(context);
+    final line =
+        '[${DateTime.now().toIso8601String()}] '
+        'lua.diag reason=$reasonCode context=${jsonEncode(bounded)}';
+    _logLine(line);
+  }
+
+  void _logExecution(_LuaExecutionReport report) {
+    _logLine(report.toDiagnosticLine(DateTime.now()));
+  }
+
+  void _logPseudoLuaWarning({
+    required String reasonCode,
+    required LuaScript script,
+    required String hook,
+    required int line,
+    required String source,
+    String? expression,
+  }) {
+    _logDiagnostic(
+      reasonCode: reasonCode,
+      context: {
+        'severity': 'warning',
+        'engine': 'fallback',
+        'script': script.name,
+        'scriptId': script.id,
+        'hook': hook,
+        'line': line,
+        'source': source,
+        if (expression != null) 'expression': expression,
+      },
+    );
+  }
+
+  String _unsupportedExpressionReasonCode(String expression) {
+    final trimmed = expression.trim();
+    if (trimmed.contains('..')) {
+      return 'pseudo_unsupported_expression_concat';
+    }
+    if (RegExp(r'[A-Za-z_][A-Za-z0-9_]*\s*:[A-Za-z_][A-Za-z0-9_]*\s*\(')
+        .hasMatch(trimmed)) {
+      return 'pseudo_unsupported_expression_method_call';
+    }
+    if (RegExp(r'^if\b.*\bthen\b').hasMatch(trimmed)) {
+      return 'pseudo_unsupported_expression_if_then';
+    }
+    if (RegExp(r'^pwf\.[A-Za-z_][A-Za-z0-9_]*\s*\(').hasMatch(trimmed) &&
+        '('.allMatches(trimmed).length > ')'.allMatches(trimmed).length) {
+      return 'pseudo_risky_multiline_helper';
+    }
+    return 'pseudo_unsupported_expression';
+  }
+
+  String _unsupportedStatementReasonCode(String statement) {
+    final trimmed = statement.trim();
+    if (RegExp(r'^if\b.*\bthen\b').hasMatch(trimmed)) {
+      return 'pseudo_unsupported_statement_if_then';
+    }
+    if (trimmed.contains('..')) {
+      return 'pseudo_unsupported_statement_concat';
+    }
+    if (RegExp(r'[A-Za-z_][A-Za-z0-9_]*\s*:[A-Za-z_][A-Za-z0-9_]*\s*\(')
+        .hasMatch(trimmed)) {
+      return 'pseudo_unsupported_statement_method_call';
+    }
+    if (RegExp(r'^pwf\.[A-Za-z_][A-Za-z0-9_]*\s*\(').hasMatch(trimmed) &&
+        '('.allMatches(trimmed).length > ')'.allMatches(trimmed).length) {
+      return 'pseudo_risky_multiline_helper';
+    }
+    return 'pseudo_unsupported_statement';
+  }
+
+  String _nativeReasonCode(LuaNativeBridgeStatus status) {
+    return switch (status) {
+      LuaNativeBridgeStatus.success => 'native_success',
+      LuaNativeBridgeStatus.noResult => 'native_no_result',
+      LuaNativeBridgeStatus.unavailable => 'native_unavailable',
+      LuaNativeBridgeStatus.exception => 'native_exception',
+    };
+  }
+
+  Map<String, Object?> _baseExecutionContext(
+    LuaScript script,
+    LuaHookContext context,
+  ) {
+    return <String, Object?>{
+      'order': script.order,
+      'scope': script.scope.name,
+      'characterId': context.characterId,
+      'timeoutMs': context.timeout.inMilliseconds,
+    };
+  }
+
+  Map<String, Object?> _boundContext(Map<String, Object?> input) {
+    final output = <String, Object?>{};
+    final keys = input.keys.toList(growable: false)..sort();
+    for (final key in keys) {
+      final value = input[key];
+      if (value == null) {
+        continue;
+      }
+      if (value is String) {
+        output[key] = _truncate(value, 96);
+      } else {
+        output[key] = value;
+      }
+    }
+    return output;
+  }
+
+  String _truncate(String value, int maxLength) {
+    if (value.length <= maxLength) {
+      return value;
+    }
+    return '${value.substring(0, maxLength)}...';
   }
 
   Future<List<LuaScript>> getScripts() async {
@@ -177,26 +372,106 @@ class LuaScriptingService {
     }).toList()..sort((a, b) => a.order.compareTo(b.order));
 
     for (final script in runnable) {
-      try {
-        final native = await _nativeBridge.executeHookAndReturn(
-          script: script.content,
-          hook: hook,
-          input: output,
-          timeoutMs: context.timeout.inMilliseconds,
+      var stageInputLength = output.length;
+      final nativeWatch = Stopwatch()..start();
+      final nativeResult = await _nativeBridge.executeHookAndReturn(
+        script: script.content,
+        hook: hook,
+        input: output,
+        timeoutMs: context.timeout.inMilliseconds,
+      );
+      nativeWatch.stop();
+
+      final nativeReasonCode = _nativeReasonCode(nativeResult.status);
+      final nativeContext = <String, Object?>{
+        ..._baseExecutionContext(script, context),
+        'inputLength': stageInputLength,
+        'nativeAvailable': nativeResult.isAvailable,
+        'nativeCause': nativeResult.causeLabel,
+      };
+      if (nativeResult.error != null) {
+        nativeContext['error'] = nativeResult.error.toString();
+      }
+
+      if (nativeResult.isSuccess && nativeResult.value != null) {
+        output = nativeResult.value!;
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.native,
+            elapsed: nativeWatch.elapsed,
+            reasonCode: nativeReasonCode,
+            context: _boundContext({
+              ...nativeContext,
+              'outputLength': output.length,
+            }),
+          ),
         );
-        if (native != null) {
-          output = native;
-        } else {
-          output = await _executePseudoLua(
-            script,
-            hook,
-            output,
-          ).timeout(context.timeout);
-        }
+        continue;
+      }
+
+      _logExecution(
+        _LuaExecutionReport(
+          scriptId: script.id,
+          scriptName: script.name,
+          hook: hook,
+          stage: _LuaExecutionStage.native,
+          elapsed: nativeWatch.elapsed,
+          reasonCode: nativeReasonCode,
+          context: _boundContext(nativeContext),
+        ),
+      );
+
+      stageInputLength = output.length;
+      final fallbackWatch = Stopwatch()..start();
+      try {
+        output = await _executePseudoLua(
+          script,
+          hook,
+          output,
+        ).timeout(context.timeout);
+        fallbackWatch.stop();
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.fallback,
+            elapsed: fallbackWatch.elapsed,
+            reasonCode: 'fallback_success',
+            context: _boundContext({
+              ..._baseExecutionContext(script, context),
+              'fallbackCause': nativeReasonCode,
+              'inputLength': stageInputLength,
+              'outputLength': output.length,
+            }),
+          ),
+        );
       } catch (e) {
-        final message = 'Lua script hook failed (${script.name}/$hook): $e';
-        _log(message);
-        debugPrint(message);
+        fallbackWatch.stop();
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.fallback,
+            elapsed: fallbackWatch.elapsed,
+            reasonCode: 'fallback_exception',
+            context: _boundContext({
+              ..._baseExecutionContext(script, context),
+              'fallbackCause': nativeReasonCode,
+              'inputLength': stageInputLength,
+              'error': e.toString(),
+            }),
+          ),
+        );
+        debugPrint(
+          'Lua script hook failed (${script.name}/$hook) '
+          'stage=fallback reason=fallback_exception '
+          'cause=$nativeReasonCode: $e',
+        );
       }
     }
 
@@ -229,7 +504,10 @@ class LuaScriptingService {
         await _imageDirectiveService.executeCommand(mapped, attrs);
         return;
       default:
-        _log('Unknown Lua runtime function: $name');
+        _logDiagnostic(
+          reasonCode: 'runtime_unknown_function',
+          context: {'function': name},
+        );
         return;
     }
   }
@@ -294,46 +572,133 @@ class LuaScriptingService {
     }).toList()..sort((a, b) => a.order.compareTo(b.order));
 
     for (final script in runnable) {
-      try {
-        final executed = await _nativeBridge.executeHook(
-          script: script.content,
-          hook: hook,
-          input: '',
-          timeoutMs: context.timeout.inMilliseconds,
+      final nativeWatch = Stopwatch()..start();
+      final nativeResult = await _nativeBridge.executeHook(
+        script: script.content,
+        hook: hook,
+        input: '',
+        timeoutMs: context.timeout.inMilliseconds,
+      );
+      nativeWatch.stop();
+
+      final nativeReasonCode = _nativeReasonCode(nativeResult.status);
+      final nativeContext = <String, Object?>{
+        ..._baseExecutionContext(script, context),
+        'nativeAvailable': nativeResult.isAvailable,
+        'nativeCause': nativeResult.causeLabel,
+      };
+      if (nativeResult.error != null) {
+        nativeContext['error'] = nativeResult.error.toString();
+      }
+
+      if (nativeResult.isSuccess) {
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.native,
+            elapsed: nativeWatch.elapsed,
+            reasonCode: nativeReasonCode,
+            context: _boundContext(nativeContext),
+          ),
         );
-        if (!executed) {
-          await _executePseudoLua(script, hook, '').timeout(context.timeout);
-        }
+        continue;
+      }
+
+      _logExecution(
+        _LuaExecutionReport(
+          scriptId: script.id,
+          scriptName: script.name,
+          hook: hook,
+          stage: _LuaExecutionStage.native,
+          elapsed: nativeWatch.elapsed,
+          reasonCode: nativeReasonCode,
+          context: _boundContext(nativeContext),
+        ),
+      );
+
+      final fallbackWatch = Stopwatch()..start();
+      try {
+        await _executePseudoLua(script, hook, '').timeout(context.timeout);
+        fallbackWatch.stop();
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.fallback,
+            elapsed: fallbackWatch.elapsed,
+            reasonCode: 'fallback_success',
+            context: _boundContext({
+              ..._baseExecutionContext(script, context),
+              'fallbackCause': nativeReasonCode,
+            }),
+          ),
+        );
       } catch (e) {
-        final message = 'Lua script hook failed (${script.name}/$hook): $e';
-        _log(message);
-        debugPrint(message);
+        fallbackWatch.stop();
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.fallback,
+            elapsed: fallbackWatch.elapsed,
+            reasonCode: 'fallback_exception',
+            context: _boundContext({
+              ..._baseExecutionContext(script, context),
+              'fallbackCause': nativeReasonCode,
+              'error': e.toString(),
+            }),
+          ),
+        );
+        debugPrint(
+          'Lua script hook failed (${script.name}/$hook) '
+          'stage=fallback reason=fallback_exception '
+          'cause=$nativeReasonCode: $e',
+        );
       }
     }
   }
 
   void uiInjectCss(String cssString) {
     _injectedCss = cssString;
-    _log('ui.injectCSS called');
+    _logDiagnostic(
+      reasonCode: 'ui_inject_css',
+      context: {'cssLength': cssString.length},
+    );
   }
 
   Future<String?> uiLoadAsset(String assetPath) async {
     try {
       final file = File(assetPath);
       if (!await file.exists()) {
-        _log('ui.loadAsset missing: $assetPath');
+        _logDiagnostic(
+          reasonCode: 'ui_load_asset_missing',
+          context: {'assetPath': assetPath},
+        );
         return null;
       }
-      _log('ui.loadAsset loaded: $assetPath');
+      _logDiagnostic(
+        reasonCode: 'ui_load_asset_loaded',
+        context: {'assetPath': assetPath},
+      );
       return file.uri.toString();
     } catch (e) {
-      _log('ui.loadAsset failed: $e');
+      _logDiagnostic(
+        reasonCode: 'ui_load_asset_failed',
+        context: {'assetPath': assetPath, 'error': e.toString()},
+      );
       return null;
     }
   }
 
   String uiSetMessageHtml(String html) {
-    _log('ui.setMessageHTML called');
+    _logDiagnostic(
+      reasonCode: 'ui_set_message_html',
+      context: {'htmlLength': html.length},
+    );
     return html;
   }
 
@@ -343,26 +708,54 @@ class LuaScriptingService {
     String input,
   ) async {
     var output = input;
+    final guardState = _PseudoLuaGuardState(script: script, hook: hook);
 
     final lines = script.content.split('\n');
     output = _applyPseudoLuaCommentDirectives(lines, hook, output);
-    final functionBody = _extractPseudoLuaFunctionBody(script.content, hook);
+    final functionBody = _extractPseudoLuaFunctionBody(lines, hook);
     if (functionBody == null) {
+      final declaration = _findPseudoLuaHookDeclaration(lines, hook);
+      if (declaration != null) {
+        _logPseudoLuaWarning(
+          reasonCode: 'pseudo_missing_hook_body',
+          script: script,
+          hook: hook,
+          line: declaration.$1,
+          source: declaration.$2.trim(),
+        );
+      }
       return output;
     }
 
     final env = <String, String>{'text': output};
-    final bodyLines = functionBody.split('\n');
-    for (final rawLine in bodyLines) {
+    final bodyLines = functionBody.body.split('\n');
+    for (var i = 0; i < bodyLines.length; i++) {
+      final rawLine = bodyLines[i];
       final line = rawLine.trim();
       if (line.isEmpty || line.startsWith('--')) {
         continue;
       }
 
+      final sourceLine = functionBody.startLine + i;
+
       if (line.startsWith('return ')) {
         final expr = line.substring('return '.length).trim();
-        return await _evaluatePseudoLuaExpression(expr, env) ??
-            (env['text'] ?? output);
+        final evaluated = await _evaluatePseudoLuaExpression(
+          expr,
+          env,
+          guardState,
+        );
+        if (evaluated == null) {
+          _logPseudoLuaWarning(
+            reasonCode: _unsupportedExpressionReasonCode(expr),
+            script: script,
+            hook: hook,
+            line: sourceLine,
+            source: line,
+            expression: expr,
+          );
+        }
+        return evaluated ?? (env['text'] ?? output);
       }
 
       final assignment = RegExp(
@@ -371,11 +764,29 @@ class LuaScriptingService {
       if (assignment != null) {
         final variable = assignment.group(1)!;
         final expr = assignment.group(2)!.trim();
-        final value = await _evaluatePseudoLuaExpression(expr, env);
+        final value = await _evaluatePseudoLuaExpression(expr, env, guardState);
         if (value != null) {
           env[variable] = value;
+        } else {
+          _logPseudoLuaWarning(
+            reasonCode: _unsupportedExpressionReasonCode(expr),
+            script: script,
+            hook: hook,
+            line: sourceLine,
+            source: line,
+            expression: expr,
+          );
         }
+        continue;
       }
+
+      _logPseudoLuaWarning(
+        reasonCode: _unsupportedStatementReasonCode(line),
+        script: script,
+        hook: hook,
+        line: sourceLine,
+        source: line,
+      );
     }
 
     return env['text'] ?? output;
@@ -418,18 +829,58 @@ class LuaScriptingService {
     return output;
   }
 
-  String? _extractPseudoLuaFunctionBody(String script, String hook) {
-    final regex = RegExp(
-      'function\\s+$hook\\s*\\([^)]*\\)\\s*([\\s\\S]*?)\\nend',
+  (int, String)? _findPseudoLuaHookDeclaration(List<String> lines, String hook) {
+    final declarationRegex = RegExp(
+      '^function\\s+$hook\\s*\\([^)]*\\)',
       caseSensitive: false,
     );
-    final match = regex.firstMatch(script);
-    return match?.group(1);
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (declarationRegex.hasMatch(line)) {
+        return (i + 1, lines[i]);
+      }
+    }
+    return null;
+  }
+
+  _PseudoLuaHookBody? _extractPseudoLuaFunctionBody(
+    List<String> lines,
+    String hook,
+  ) {
+    final declarationRegex = RegExp(
+      '^function\\s+$hook\\s*\\([^)]*\\)',
+      caseSensitive: false,
+    );
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (declarationRegex.hasMatch(lines[i].trim())) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) {
+      return null;
+    }
+
+    var end = -1;
+    for (var i = start + 1; i < lines.length; i++) {
+      if (lines[i].trim().toLowerCase() == 'end') {
+        end = i;
+        break;
+      }
+    }
+    if (end < 0) {
+      return null;
+    }
+
+    final body = lines.sublist(start + 1, end).join('\n');
+    return _PseudoLuaHookBody(body: body, startLine: start + 2);
   }
 
   Future<String?> _evaluatePseudoLuaExpression(
     String expression,
     Map<String, String> env,
+    _PseudoLuaGuardState guardState,
   ) async {
     final trimmed = expression.trim();
     if (trimmed.isEmpty) {
@@ -459,7 +910,9 @@ class LuaScriptingService {
     final rawArgs = callMatch.group(2) ?? '';
     final parsedArgs = <String>[];
     for (final arg in _splitPseudoLuaArgs(rawArgs)) {
-      parsedArgs.add(await _evaluatePseudoLuaExpression(arg, env) ?? '');
+      parsedArgs.add(
+        await _evaluatePseudoLuaExpression(arg, env, guardState) ?? '',
+      );
     }
 
     switch (functionName) {
@@ -478,16 +931,27 @@ class LuaScriptingService {
       case 'pwf.call':
         if (parsedArgs.isEmpty) return null;
         final payload = parsedArgs.length > 1 ? parsedArgs[1] : '';
-        await _executeRuntimeFunction(parsedArgs[0], payload);
+        await _executeRuntimeFunctionGuarded(
+          guardState,
+          helperName: 'pwf.call',
+          functionName: parsedArgs[0],
+          payload: payload,
+        );
         return '';
       case 'pwf.emit':
         if (parsedArgs.length < 2) return null;
         final payload = parsedArgs.length > 2 ? parsedArgs[2] : '';
-        await _executeRuntimeFunction(parsedArgs[1], payload);
+        await _executeRuntimeFunctionGuarded(
+          guardState,
+          helperName: 'pwf.emit',
+          functionName: parsedArgs[1],
+          payload: payload,
+        );
         return parsedArgs[0];
       case 'pwf.dispatch':
         if (parsedArgs.length < 4) return null;
         return _pseudoLuaDispatch(
+          guardState,
           parsedArgs[0],
           parsedArgs[1],
           parsedArgs[2],
@@ -496,6 +960,7 @@ class LuaScriptingService {
       case 'pwf.dispatchKeep':
         if (parsedArgs.length < 4) return null;
         return _pseudoLuaDispatch(
+          guardState,
           parsedArgs[0],
           parsedArgs[1],
           parsedArgs[2],
@@ -504,7 +969,12 @@ class LuaScriptingService {
         );
       case 'pwf.gsub':
         if (parsedArgs.length < 3) return null;
-        return _pseudoLuaGsub(parsedArgs[0], parsedArgs[1], parsedArgs[2]);
+        return _pseudoLuaGsub(
+          guardState,
+          parsedArgs[0],
+          parsedArgs[1],
+          parsedArgs[2],
+        );
       default:
         return null;
     }
@@ -564,38 +1034,290 @@ class LuaScriptingService {
     return args;
   }
 
-  String _pseudoLuaGsub(String input, String pattern, String replacement) {
-    final regex = RegExp(pattern, multiLine: true, dotAll: true);
-    return input.replaceAllMapped(regex, (match) {
-      var output = replacement;
-      for (var i = match.groupCount; i >= 1; i--) {
-        output = output.replaceAll('\$' + i.toString(), match.group(i) ?? '');
+  String _pseudoLuaGsub(
+    _PseudoLuaGuardState guardState,
+    String input,
+    String pattern,
+    String replacement,
+  ) {
+    final regex = _buildPseudoLuaRegexOrLog(
+      guardState,
+      helperName: 'pwf.gsub',
+      input: input,
+      pattern: pattern,
+    );
+    if (regex == null) {
+      return input;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    final allMatches = regex
+        .allMatches(input)
+        .take(_pseudoLuaMaxRegexMatchesPerHelper + 1)
+        .toList(growable: false);
+    final capped = allMatches.length > _pseudoLuaMaxRegexMatchesPerHelper;
+    final matches = capped
+        ? allMatches.take(_pseudoLuaMaxRegexMatchesPerHelper).toList(
+            growable: false,
+          )
+        : allMatches;
+
+    if (matches.isEmpty) {
+      stopwatch.stop();
+      _logPseudoLuaRegexSoftLimitIfNeeded(
+        guardState,
+        helperName: 'pwf.gsub',
+        stopwatch: stopwatch,
+        pattern: pattern,
+        matchCount: 0,
+      );
+      return input;
+    }
+
+    final buffer = StringBuffer();
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.start < cursor) {
+        continue;
       }
-      return output;
-    });
+      buffer.write(input.substring(cursor, match.start));
+      buffer.write(_expandPseudoLuaTemplate(replacement, match));
+      cursor = match.end;
+    }
+    buffer.write(input.substring(cursor));
+    final output = buffer.toString();
+    stopwatch.stop();
+
+    if (capped) {
+      _logPseudoLuaGuard(
+        guardState,
+        reasonCode: 'pseudo_regex_guard_match_cap',
+        helperName: 'pwf.gsub',
+        context: {
+          'pattern': pattern,
+          'matchLimit': _pseudoLuaMaxRegexMatchesPerHelper,
+          'processedMatches': matches.length,
+          'replacementLength': replacement.length,
+        },
+      );
+    }
+    _logPseudoLuaRegexSoftLimitIfNeeded(
+      guardState,
+      helperName: 'pwf.gsub',
+      stopwatch: stopwatch,
+      pattern: pattern,
+      matchCount: matches.length,
+    );
+    return output;
   }
 
   Future<String> _pseudoLuaDispatch(
+    _PseudoLuaGuardState guardState,
     String input,
     String pattern,
     String functionName,
     String payloadTemplate, {
     bool keepMatches = false,
   }) async {
-    final regex = RegExp(pattern, multiLine: true, dotAll: true);
-    final matches = regex.allMatches(input).toList(growable: false);
-    for (final match in matches) {
-      await _executeRuntimeFunction(
-        functionName,
-        _expandPseudoLuaTemplate(payloadTemplate, match),
+    final helperName = keepMatches ? 'pwf.dispatchKeep' : 'pwf.dispatch';
+    final regex = _buildPseudoLuaRegexOrLog(
+      guardState,
+      helperName: helperName,
+      input: input,
+      pattern: pattern,
+    );
+    if (regex == null) {
+      return input;
+    }
+
+    final stopwatch = Stopwatch()..start();
+    final allMatches = regex
+        .allMatches(input)
+        .take(_pseudoLuaMaxRegexMatchesPerHelper + 1)
+        .toList(growable: false);
+    final cappedByMatchLimit =
+        allMatches.length > _pseudoLuaMaxRegexMatchesPerHelper;
+    final matches = cappedByMatchLimit
+        ? allMatches.take(_pseudoLuaMaxRegexMatchesPerHelper).toList(
+            growable: false,
+          )
+        : allMatches;
+
+    if (cappedByMatchLimit) {
+      _logPseudoLuaGuard(
+        guardState,
+        reasonCode: 'pseudo_regex_guard_match_cap',
+        helperName: helperName,
+        context: {
+          'function': functionName,
+          'matchLimit': _pseudoLuaMaxRegexMatchesPerHelper,
+          'processedMatches': matches.length,
+          'pattern': pattern,
+        },
       );
     }
+
+    var processedMatchCount = 0;
+    for (final match in matches) {
+      final didExecute = await _executeRuntimeFunctionGuarded(
+        guardState,
+        helperName: helperName,
+        functionName: functionName,
+        payload: _expandPseudoLuaTemplate(payloadTemplate, match),
+      );
+      if (!didExecute) {
+        break;
+      }
+      processedMatchCount++;
+    }
+    stopwatch.stop();
+    _logPseudoLuaRegexSoftLimitIfNeeded(
+      guardState,
+      helperName: helperName,
+      stopwatch: stopwatch,
+      pattern: pattern,
+      matchCount: processedMatchCount,
+    );
 
     if (keepMatches) {
       return input;
     }
 
-    return input.replaceAllMapped(regex, (_) => '');
+    return _removePseudoLuaMatches(input, matches.take(processedMatchCount));
+  }
+
+  String _removePseudoLuaMatches(String input, Iterable<RegExpMatch> matches) {
+    final buffer = StringBuffer();
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.start < cursor) {
+        continue;
+      }
+      buffer.write(input.substring(cursor, match.start));
+      cursor = match.end;
+    }
+    buffer.write(input.substring(cursor));
+    return buffer.toString();
+  }
+
+  RegExp? _buildPseudoLuaRegexOrLog(
+    _PseudoLuaGuardState guardState, {
+    required String helperName,
+    required String input,
+    required String pattern,
+  }) {
+    if (input.length > _pseudoLuaMaxRegexInputLength) {
+      _logPseudoLuaGuard(
+        guardState,
+        reasonCode: 'pseudo_regex_guard_input_too_large',
+        helperName: helperName,
+        context: {
+          'inputLength': input.length,
+          'maxInputLength': _pseudoLuaMaxRegexInputLength,
+          'pattern': pattern,
+        },
+      );
+      return null;
+    }
+    if (_isPotentiallyCatastrophicPseudoLuaPattern(pattern)) {
+      _logPseudoLuaGuard(
+        guardState,
+        reasonCode: 'pseudo_regex_guard_catastrophic_pattern',
+        helperName: helperName,
+        context: {'pattern': pattern},
+      );
+      return null;
+    }
+
+    try {
+      return RegExp(pattern, multiLine: true, dotAll: true);
+    } catch (error) {
+      _logPseudoLuaGuard(
+        guardState,
+        reasonCode: 'pseudo_regex_guard_invalid_pattern',
+        helperName: helperName,
+        context: {'pattern': pattern, 'error': error.toString()},
+      );
+      return null;
+    }
+  }
+
+  bool _isPotentiallyCatastrophicPseudoLuaPattern(String pattern) {
+    final nestedQuantifier = RegExp(r'\([^)]*[+*][^)]*\)[+*]');
+    final ambiguousAlternation = RegExp(r'\((?:[^)]*\|){3,}[^)]*\)[+*]');
+    return nestedQuantifier.hasMatch(pattern) ||
+        ambiguousAlternation.hasMatch(pattern);
+  }
+
+  Future<bool> _executeRuntimeFunctionGuarded(
+    _PseudoLuaGuardState guardState, {
+    required String helperName,
+    required String functionName,
+    required String payload,
+  }) async {
+    if (guardState.runtimeActionCount >= _pseudoLuaMaxRuntimeActionsPerHook) {
+      if (!guardState.actionLimitLogged) {
+        guardState.actionLimitLogged = true;
+        _logPseudoLuaGuard(
+          guardState,
+          reasonCode: 'pseudo_runtime_guard_action_cap',
+          helperName: helperName,
+          context: {
+            'function': functionName,
+            'actionLimit': _pseudoLuaMaxRuntimeActionsPerHook,
+          },
+        );
+      }
+      return false;
+    }
+    guardState.runtimeActionCount++;
+    await _executeRuntimeFunction(functionName, payload);
+    return true;
+  }
+
+  void _logPseudoLuaRegexSoftLimitIfNeeded(
+    _PseudoLuaGuardState guardState, {
+    required String helperName,
+    required Stopwatch stopwatch,
+    required String pattern,
+    required int matchCount,
+  }) {
+    if (stopwatch.elapsedMilliseconds <= _pseudoLuaRegexSoftLimitMs) {
+      return;
+    }
+    _logPseudoLuaGuard(
+      guardState,
+      reasonCode: 'pseudo_regex_guard_runtime_soft_limit',
+      helperName: helperName,
+      context: {
+        'elapsedMs': stopwatch.elapsedMilliseconds,
+        'softLimitMs': _pseudoLuaRegexSoftLimitMs,
+        'matchCount': matchCount,
+        'pattern': pattern,
+        'note': 'soft guard only; synchronous regex cannot be preempted',
+      },
+    );
+  }
+
+  void _logPseudoLuaGuard(
+    _PseudoLuaGuardState guardState, {
+    required String reasonCode,
+    required String helperName,
+    required Map<String, Object?> context,
+  }) {
+    _logDiagnostic(
+      reasonCode: reasonCode,
+      context: {
+        'severity': 'warning',
+        'engine': 'fallback',
+        'script': guardState.script.name,
+        'scriptId': guardState.script.id,
+        'hook': guardState.hook,
+        'helper': helperName,
+        'runtimeActionCount': guardState.runtimeActionCount,
+        ...context,
+      },
+    );
   }
 
   String _expandPseudoLuaTemplate(String template, RegExpMatch match) {
