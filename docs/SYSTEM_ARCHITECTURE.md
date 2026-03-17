@@ -363,6 +363,31 @@ Owns:
 - hook execution
 - hook execution with return value
 
+Contract notes:
+- native Lua is opportunistic; fallback pseudo-Lua remains the supported safe subset unless native availability is verifiably true at runtime
+- caller behavior must remain correct under native success, native no-result, native unavailable, and native exception outcomes
+
+### Lua diagnostics visibility
+
+- Runtime producer: `lib/features/lua/services/lua_scripting_service.dart`
+- Emitted lines:
+  - `lua.exec` for stage outcomes (`native_*` and `fallback_*` reason codes)
+  - `lua.diag` for bounded warning/error/guard context (`pseudo_*` reason codes)
+- Current visibility:
+  - in-memory diagnostics buffer via `LuaScriptingService.logs`
+  - QA contract tests in `test/qa/lua_native_fallback_contract_test.dart`, `test/qa/lua_scripting_diagnostics_test.dart`, and `test/qa/pseudolua_regex_guard_test.dart`
+  - compact diagnostics summary plus raw log list in `lib/screens/regex_lua_management_screen.dart`
+
+### Lua help contract ownership
+
+- Single source: `lib/features/lua/lua_help_contract.dart`
+- Shared consumers:
+  - command help (`lib/services/command_parser.dart`)
+  - prompt-preview Lua help (`lib/widgets/prompt_preview_dialog.dart`)
+  - default settings template hints (`lib/models/settings.dart`)
+
+Any Lua authoring/fallback contract change must update runtime behavior, shared help contract text, and QA drift tests together.
+
 ## Permissions Matrix
 
 ### Overlay permission

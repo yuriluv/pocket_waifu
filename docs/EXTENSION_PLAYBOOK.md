@@ -50,6 +50,10 @@ Decide first:
 - programmable hook behavior -> Lua
 - runtime command encoded in assistant output -> directive service
 
+Lua routing guardrail:
+- treat fallback helper-based Lua as the supported contract
+- only depend on full native-Lua syntax when native availability is verifiably true in the target runtime
+
 Then start at:
 - regex: `lib/features/regex/services/regex_pipeline_service.dart`
 - Lua: `lib/features/lua/services/lua_scripting_service.dart`
@@ -105,6 +109,20 @@ Checklist:
 - add bridge support in Flutter
 - add method handling in Android
 - document the contract change
+
+If Lua authoring shapes this command path, also:
+- keep fallback helper compatibility first
+- add/update reason-coded diagnostics expectations (`lua.exec` / `lua.diag`)
+- update shared help contract text and QA drift coverage
+
+### Lua authoring or fallback contract change
+
+Checklist (all required in one change):
+- update runtime behavior in `lib/features/lua/services/lua_scripting_service.dart` (and native bridge contract if needed)
+- update shared help source `lib/features/lua/lua_help_contract.dart` instead of editing help copies
+- ensure help consumers remain aligned (`lib/services/command_parser.dart`, `lib/widgets/prompt_preview_dialog.dart`, `lib/models/settings.dart`)
+- update/add QA tests that pin behavior and reason-coded diagnostics (`test/qa/lua_*`, `test/qa/help_contract_test.dart`)
+- update `docs/FEATURES/TRANSFORMS.md` and any impacted architecture docs
 
 ### New notification action
 
@@ -163,6 +181,8 @@ When a change touches one of these contracts, update docs in the same change:
 - request ordering or cancellation semantics
 - preset resolution behavior
 - shared overlay mode behavior
+- Lua fallback safe-subset rules, diagnostics reason-code expectations, or helper guardrails
+- shared Lua help contract ownership/wording (`lib/features/lua/lua_help_contract.dart`)
 
 ## Common Traps
 

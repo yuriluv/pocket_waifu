@@ -92,6 +92,10 @@ If native execution fails or returns no value:
 
 Fallback support is intentionally small. It only preserves lifecycle compatibility and a few deterministic transforms.
 
+The hardened contract is:
+- fallback Lua is the supported safe subset
+- full/native Lua behavior is optional and should only be relied on when native Lua availability is verifiably true in the current runtime
+
 ### Shipped default Lua template
 
 The shipped default script is an editable template, not a hardcoded semantic owner.
@@ -113,7 +117,51 @@ The fallback pseudo-Lua runtime exposes helper functions like:
 - `pwf.dispatch(text, pattern, functionName, payloadTemplate)`
 - `pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)`
 
+Helper `pattern` inputs in fallback mode use Dart `RegExp` semantics, not Lua pattern semantics.
+
 Those helpers let the default template support legacy XML-like strings while directly firing runtime actions and remaining fully user-editable.
+
+### Diagnostics model and visibility
+
+Lua diagnostics now use two reason-coded streams:
+
+- `lua.exec` for hook-stage execution reports (native/fallback stage, elapsed time, high-level reason)
+- `lua.diag` for warnings/errors and guardrail events with bounded context
+
+Where diagnostics are visible today:
+- runtime emits them into `LuaScriptingService.logs`
+- QA asserts them in `test/qa/lua_native_fallback_contract_test.dart`, `test/qa/lua_scripting_diagnostics_test.dart`, and `test/qa/pseudolua_regex_guard_test.dart`
+- the Regex/Lua management screen shows a compact Lua diagnostics summary above the raw log list in `lib/screens/regex_lua_management_screen.dart`
+
+High-level reason code groups:
+- native-stage outcomes: `native_success`, `native_no_result`, `native_unavailable`, `native_exception`
+- fallback-stage outcomes: `fallback_success`, `fallback_exception`
+- fallback authoring warnings: `pseudo_missing_hook_body`, `pseudo_unsupported_*`, `pseudo_risky_multiline_helper`
+- fallback guardrails: `pseudo_regex_guard_*` and `pseudo_runtime_guard_action_cap`
+
+These codes are contract-level diagnostics labels. Extensions should key tests and triage logic to these stable reason classes, not to ad-hoc log wording.
+
+### Guardrails in the fallback engine
+
+Fallback helper execution is bounded to prevent runaway patterns/actions:
+
+- input size cap before helper regex work
+- match cap per helper invocation
+- per-hook runtime action cap
+- soft runtime limit for helper-heavy paths
+
+When a guard trips, fallback keeps processing deterministically where possible and emits reason-coded diagnostics instead of hanging.
+
+### Shared help ownership (single source)
+
+Fallback help text is owned by `lib/features/lua/lua_help_contract.dart`.
+
+Consumers must read from that source, not duplicate fallback wording:
+- `/help` summary in `lib/services/command_parser.dart`
+- prompt-preview Lua help in `lib/widgets/prompt_preview_dialog.dart`
+- default prompt template hints in `lib/models/settings.dart`
+
+If fallback rules/helpers/examples change, update the shared help contract and all contract tests in the same change to prevent drift.
 
 ## Ordering Rules
 
@@ -227,7 +275,11 @@ This is a structural change. It affects all callers and should only happen if th
 Update:
 - `LuaScriptingService`
 - native Lua bridge contract if needed
-- docs and UI help text
+- shared help contract (`lib/features/lua/lua_help_contract.dart`) and any consuming help surfaces
+- QA coverage for diagnostics/contract drift
+- docs
+
+Lua authoring contract changes are incomplete unless runtime, shared help, and tests are updated together.
 
 ### Add a new transform-driven feature
 
