@@ -1,4 +1,88 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/features/lua/lua_help_contract.dart';
+
+String get promptPreviewLuaHelpText => '''
+[지원 Lua 훅]
+onLoad()
+onUnload()
+onUserMessage(text) -> string
+onAssistantMessage(text) -> string
+onPromptBuild(text) -> string
+onDisplayRender(text) -> string
+
+[스크립트 실행 조건]
+- isEnabled=true
+- scope=global 또는 perCharacter
+- perCharacter는 현재 캐릭터 id가 일치해야 실행
+- order 오름차순 실행
+
+[핵심 계약]
+- 시스템은 텍스트 의미를 직접 정하지 않습니다.
+- Lua가 문자열을 읽고 훅 안에서 직접 오버레이/Live2D 함수를 호출합니다.
+- 기본 Lua 블록은 수정 가능한 템플릿일 뿐이며, 원하는 형식으로 바꿀 수 있습니다.
+
+${LuaHelpContract.promptPreviewFallbackSection}
+
+[시스템이 제공하는 runtime function]
+live2d.param
+live2d.motion
+live2d.expression
+live2d.emotion
+live2d.wait
+live2d.preset
+live2d.reset
+overlay.move
+overlay.emotion
+overlay.wait
+
+[기본 Lua 템플릿이 인식하는 예시 형식]
+<param .../>
+<motion .../>
+<expression .../>
+<emotion .../>
+<wait .../>
+<preset .../>
+<reset .../>
+<move .../>
+[param:...]
+[motion:...]
+[expression:...]
+[emotion:...]
+[wait:...]
+[preset:...]
+[reset]
+[img_move:...]
+[img_emotion:...]
+
+[커스텀 예시]
+기본 템플릿 주석처럼 사용자가 직접 원하는 형식을 매핑할 수 있습니다.
+예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=\$1")
+
+[Regex/Lua 실행 순서]
+설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
+- userInput: Regex -> Lua
+- aiOutput: Regex -> Lua(직접 실행)
+- promptInjection: Regex -> Lua
+- displayOnly: Regex -> Lua
+끄면:
+- aiOutput: Lua(직접 실행) -> Regex
+- 나머지 단계는 Lua -> Regex 순서로 실행됩니다.
+
+[네이티브 브리지]
+LuaNativeBridge.executeHook(...) -> LuaNativeBridgeResult<bool>
+LuaNativeBridge.executeHookAndReturn(...) -> LuaNativeBridgeResult<String>
+
+[의사 Lua(폴백) 주석 문법]
+-- hook:onUserMessage replace:foo=>bar
+-- hook:onAssistantMessage append:...text...
+-- hook:onPromptBuild prepend:...text...
+
+[주의]
+- onLoad/onUnload는 반환값이 없습니다.
+- 실제 Lua 네이티브 브리지가 없으면 위 helper 기반 fallback 실행이 사용됩니다.
+- 기본 템플릿을 바꾸면 어떤 문자열이 어떤 함수가 되는지도 함께 바뀝니다.
+- fallback 기준으로는 helper 기반 패턴을 우선 사용하세요.
+''';
 
 class CommandHelpDialog {
   const CommandHelpDialog._();
@@ -49,104 +133,6 @@ class _CommandHelpPage extends StatelessWidget {
 메시지 번호는 1부터 시작합니다.
 ''';
 
-  static const String _luaText = '''
-[지원 Lua 훅]
-onLoad()
-onUnload()
-onUserMessage(text) -> string
-onAssistantMessage(text) -> string
-onPromptBuild(text) -> string
-onDisplayRender(text) -> string
-
-[스크립트 실행 조건]
-- isEnabled=true
-- scope=global 또는 perCharacter
-- perCharacter는 현재 캐릭터 id가 일치해야 실행
-- order 오름차순 실행
-
-[핵심 계약]
-- 시스템은 텍스트 의미를 직접 정하지 않습니다.
-- Lua가 문자열을 읽고 훅 안에서 직접 오버레이/Live2D 함수를 호출합니다.
-- 기본 Lua 블록은 수정 가능한 템플릿일 뿐이며, 원하는 형식으로 바꿀 수 있습니다.
-
-[기본 fallback helper]
-pwf.gsub(text, pattern, replacement)
-pwf.replace(text, from, to)
-pwf.append(text, suffix)
-pwf.prepend(text, prefix)
-pwf.trim(text)
-pwf.call(functionName, payload)        -- 즉시 실행
-pwf.emit(text, functionName, payload)  -- 즉시 실행 + text 유지
-pwf.dispatch(text, pattern, functionName, payloadTemplate)
-pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)
-
-[fallback 한계]
-- 현재 fallback는 일반 Lua 전체를 해석하지 않습니다.
-- 안전하게 지원되는 형태는 pwf.* helper 호출과 단순 return/assignment입니다.
-- text:match(...), if ... then ... end, "a" .. b 같은 일반 Lua 문법은 fallback에서 기대대로 동작하지 않을 수 있습니다.
-- 그런 문법을 쓰려면 네이티브 Lua 브리지가 실제로 동작해야 합니다.
-
-[시스템이 제공하는 runtime function]
-live2d.param
-live2d.motion
-live2d.expression
-live2d.emotion
-live2d.wait
-live2d.preset
-live2d.reset
-overlay.move
-overlay.emotion
-overlay.wait
-
-[기본 Lua 템플릿이 인식하는 예시 형식]
-<param .../>
-<motion .../>
-<expression .../>
-<emotion .../>
-<wait .../>
-<preset .../>
-<reset .../>
-<move .../>
-[param:...]
-[motion:...]
-[expression:...]
-[emotion:...]
-[wait:...]
-[preset:...]
-[reset]
-[img_move:...]
-[img_emotion:...]
-
-[커스텀 예시]
-기본 템플릿 주석처럼 사용자가 직접 원하는 형식을 매핑할 수 있습니다.
-예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=\$1")
-
-[Regex/Lua 실행 순서]
-설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
-- userInput: Regex -> Lua
-- aiOutput: Regex -> Lua(직접 실행)
-- promptInjection: Regex -> Lua
-- displayOnly: Regex -> Lua
-끄면:
-- aiOutput: Lua(직접 실행) -> Regex
-- 나머지 단계는 Lua -> Regex 순서로 실행됩니다.
-
-[네이티브 브리지]
-executeHook(script, hook, input, timeoutMs)
-executeHookAndReturn(script, hook, input, timeoutMs)
-
-[의사 Lua(폴백) 주석 문법]
--- hook:onUserMessage replace:foo=>bar
--- hook:onAssistantMessage append:...text...
--- hook:onPromptBuild prepend:...text...
-
-[주의]
-- onLoad/onUnload는 반환값이 없습니다.
-- 실제 Lua 네이티브 브리지가 없으면 위 helper 기반 fallback 실행이 사용됩니다.
-- 기본 템플릿을 바꾸면 어떤 문자열이 어떤 함수가 되는지도 함께 바뀝니다.
-- fallback 기준으로는 helper 기반 패턴을 우선 사용하세요.
-  ''';
-
   static const String _regexText = '''
 [룰 타입]
 userInput
@@ -195,11 +181,11 @@ dotAll           -> RegExp(dotAll: true)
             ],
           ),
         ),
-        body: const TabBarView(
+        body: TabBarView(
           children: [
-            _PlainTextTab(text: _chatCommandsText),
-            _PlainTextTab(text: _luaText),
-            _PlainTextTab(text: _regexText),
+            const _PlainTextTab(text: _chatCommandsText),
+            _PlainTextTab(text: promptPreviewLuaHelpText),
+            const _PlainTextTab(text: _regexText),
           ],
         ),
       ),

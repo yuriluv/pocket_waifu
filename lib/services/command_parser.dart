@@ -3,6 +3,7 @@
 // ============================================================================
 
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/features/lua/lua_help_contract.dart';
 
 class CommandResult {
   final CommandType type;
@@ -60,6 +61,34 @@ enum CommandType {
 }
 
 class CommandParser {
+  static String get helpText => '''
+📖 **명령어 목록**
+
+• /del n - n번째 메시지 삭제
+• /del n~m - n~m번째 메시지 범위 삭제
+• /send 내용 - API 호출 없이 메시지 기록만 추가
+• /edit n 내용 - n번째 메시지 수정
+• /copy n - n번째 메시지 클립보드 복사
+• /clear - 현재 대화 전체 삭제
+• /export - 현재 대화 JSON 내보내기
+• /help - 이 도움말 표시
+
+🧩 **지원 지시어 문법**
+
+• 아래 문법은 기본 Lua 템플릿이 인식하는 기본 예시입니다.
+• Live2D 블록: <live2d>...</live2d>
+• Live2D 인라인: [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset]
+• Overlay 블록: <overlay>...</overlay> 내부에서 <move .../>, <emotion .../>, <wait .../>
+• Overlay 인라인: [img_move:...], [img_emotion:...]
+
+🧠 **Lua fallback 팁**
+
+• Lua를 커스텀하면 위 문법도 직접 바꿀 수 있습니다.
+${LuaHelpContract.commandHelpFallbackSummary}
+
+💡 메시지 번호는 1부터 시작합니다.
+''';
+
   /// 
   static (bool, CommandResult?) parse(String input) {
     final normalizedInput = input.trim();
@@ -233,34 +262,6 @@ class CommandParser {
   }
 
   static CommandResult _getHelp() {
-    const helpText = '''
-📖 **명령어 목록**
-
-• /del n - n번째 메시지 삭제
-• /del n~m - n~m번째 메시지 범위 삭제
-• /send 내용 - API 호출 없이 메시지 기록만 추가
-• /edit n 내용 - n번째 메시지 수정
-• /copy n - n번째 메시지 클립보드 복사
-• /clear - 현재 대화 전체 삭제
-• /export - 현재 대화 JSON 내보내기
-• /help - 이 도움말 표시
-
-🧩 **지원 지시어 문법**
-
-• 아래 문법은 기본 Lua 템플릿이 인식하는 기본 예시입니다.
-• Live2D 블록: <live2d>...</live2d>
-• Live2D 인라인: [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset]
-• Overlay 블록: <overlay>...</overlay> 내부에서 <move .../>, <emotion .../>, <wait .../>
-• Overlay 인라인: [img_move:...], [img_emotion:...]
-
-🧠 **Lua fallback 팁**
-
-• Lua를 커스텀하면 위 문법도 직접 바꿀 수 있습니다.
-• 현재 fallback Lua는 일반 Lua 전체보다 `pwf.dispatch`, `pwf.dispatchKeep`, `pwf.emit` 같은 helper 중심으로 쓰는 것이 안전합니다.
-
-💡 메시지 번호는 1부터 시작합니다.
-''';
-
     return CommandResult(
       type: CommandType.help,
       success: true,
