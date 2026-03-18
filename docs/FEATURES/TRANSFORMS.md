@@ -9,8 +9,13 @@ CBS now sits beside these transforms as a session-aware syntax renderer. It is n
 - `lib/features/regex/models/regex_rule.dart`
 - `lib/features/regex/services/regex_pipeline_service.dart`
 - `lib/features/lua/models/lua_script.dart`
+- `lib/features/lua/runtime/real_lua_runtime.dart`
+- `lib/features/lua/runtime/flutter_embed_lua_runtime.dart`
+- `lib/features/lua/runtime/lua_host_api.dart`
+- `lib/features/lua/runtime/directive_lua_host_api.dart`
 - `lib/features/lua/services/lua_native_bridge.dart`
 - `lib/features/lua/services/lua_scripting_service.dart`
+- `lib/features/lua/lua_help_contract.dart`
 - `lib/screens/regex_lua_management_screen.dart`
 - `lib/providers/chat_provider.dart`
 - `lib/services/api_service.dart`
@@ -73,6 +78,9 @@ Neither system owns transport or storage. They only transform strings or hookabl
 - scope:
   - global
   - perCharacter
+- runtime metadata:
+  - `schemaVersion`
+  - `runtimeMode` (`legacyCompatible` or `realRuntimeNative`)
 
 ### Hook names
 
@@ -85,29 +93,45 @@ Neither system owns transport or storage. They only transform strings or hookabl
 
 ### Execution strategy
 
-`LuaScriptingService` tries the native Lua bridge first.
+`LuaScriptingService` now routes each script through a staged compatibility pipeline.
 
-If native execution fails or returns no value:
-- it falls back to a pseudo-Lua comment-based interpreter
+For each enabled hook invocation:
+- if `LuaScript.runtimeMode == realRuntimeNative`, or the script still carries a real-Lua opt-in marker (`-- pwf:runtime=real-lua` or `-- pocketwaifu:runtime=real-lua`), it tries `RealLuaRuntime` first
+- the shipped engine is `FlutterEmbedLuaRuntime`
+- the shipped host-action boundary is the typed `LuaHostApi`
+- the shipped adapter is `DirectiveLuaHostApi`, which maps typed `overlay.*` and `live2d.*` actions back into the existing directive services
 
-Fallback support is intentionally small. It only preserves lifecycle compatibility and a few deterministic transforms.
+If the real runtime is not selected, returns no result, is unavailable, or errors:
+- `LuaScriptingService` continues through the legacy `LuaNativeBridge`
+- if that path also fails or returns no value, it falls back to the pseudo-Lua comment/helper interpreter
 
-The hardened contract is:
-- fallback Lua is the supported safe subset
-- full/native Lua behavior is optional and should only be relied on when native Lua availability is verifiably true in the current runtime
+### Current migration stage
+
+- new installs seed `default_runtime_template.lua` with `runtimeMode=realRuntimeNative`
+- `/help`, prompt-preview Lua help, and shipped prompt template hints are now real-runtime-first
+- older persisted scripts still load as `legacyCompatible` unless stored metadata or an opt-in marker migrates them
+- fallback helper semantics are still required for older scripts and compatibility coverage
+- the typed host API already reserves additional domains such as screenshot, session, interaction, and API calls, but `DirectiveLuaHostApi` does not execute those domains yet
 
 ### Shipped default Lua template
 
-The shipped default script is an editable template, not a hardcoded semantic owner.
+The shipped default script is now the real-runtime-first editable template.
 
 - seed source: `LuaScriptingService._defaultScripts()`
 - default script name: `default_runtime_template.lua`
-- responsibility: recognize text and directly invoke runtime actions from the hook layer
+- default runtime mode: `LuaScriptRuntimeMode.realRuntimeNative`
+- responsibility: parse assistant text with normal Lua string/pattern code and invoke explicit host functions such as `overlay.move(...)` and `live2d.motion(...)`
 
 The system contract is now:
 - Lua decides what input text means.
-- the app exposes callable runtime functions, and Lua hooks invoke them directly.
+- the app exposes callable host functions, and Lua hooks invoke them directly.
 - Regex is for text repair and display cleanup, not for assigning runtime semantics.
+
+The template still recognizes legacy XML-like blocks and inline shorthand, but it translates them inside Lua instead of relying on hidden system parsing.
+
+### Legacy compatibility path
+
+Older scripts may still run through the legacy native bridge plus pseudo-Lua helpers.
 
 The fallback pseudo-Lua runtime exposes helper functions like:
 - `pwf.gsub(text, pattern, replacement)`
@@ -119,13 +143,13 @@ The fallback pseudo-Lua runtime exposes helper functions like:
 
 Helper `pattern` inputs in fallback mode use Dart `RegExp` semantics, not Lua pattern semantics.
 
-Those helpers let the default template support legacy XML-like strings while directly firing runtime actions and remaining fully user-editable.
+That path exists for migration and older stored scripts. It is no longer the default authoring target for new scripts.
 
 ### Diagnostics model and visibility
 
 Lua diagnostics now use two reason-coded streams:
 
-- `lua.exec` for hook-stage execution reports (native/fallback stage, elapsed time, high-level reason)
+- `lua.exec` for hook-stage execution reports (real-runtime/native/fallback stage, elapsed time, high-level reason)
 - `lua.diag` for warnings/errors and guardrail events with bounded context
 
 Where diagnostics are visible today:
@@ -134,6 +158,7 @@ Where diagnostics are visible today:
 - the Regex/Lua management screen shows a compact Lua diagnostics summary above the raw log list in `lib/screens/regex_lua_management_screen.dart`
 
 High-level reason code groups:
+- real-runtime-stage outcomes: `real_runtime_success`, `real_runtime_no_result`, `real_runtime_unavailable`, `real_runtime_not_initialized`, `real_runtime_error`
 - native-stage outcomes: `native_success`, `native_no_result`, `native_unavailable`, `native_exception`
 - fallback-stage outcomes: `fallback_success`, `fallback_exception`
 - fallback authoring warnings: `pseudo_missing_hook_body`, `pseudo_unsupported_*`, `pseudo_risky_multiline_helper`
@@ -154,14 +179,14 @@ When a guard trips, fallback keeps processing deterministically where possible a
 
 ### Shared help ownership (single source)
 
-Fallback help text is owned by `lib/features/lua/lua_help_contract.dart`.
+Real-runtime-first Lua help text is owned by `lib/features/lua/lua_help_contract.dart`.
 
-Consumers must read from that source, not duplicate fallback wording:
+Consumers must read from that source, not duplicate Lua wording:
 - `/help` summary in `lib/services/command_parser.dart`
 - prompt-preview Lua help in `lib/widgets/prompt_preview_dialog.dart`
 - default prompt template hints in `lib/models/settings.dart`
 
-If fallback rules/helpers/examples change, update the shared help contract and all contract tests in the same change to prevent drift.
+If host functions, runtime rules, working examples, or legacy migration notes change, update the shared help contract and all contract tests in the same change to prevent drift.
 
 ## Ordering Rules
 
@@ -256,9 +281,10 @@ Default regex no longer assigns meaning to `<live2d>`, `<overlay>`, or inline co
 ### Use Lua when
 
 - you want hook-based custom logic
+- you want explicit host-function calls from Lua into runtime features
 - you need a user-editable programmable stage
 - you want to map arbitrary text formats to runtime functions
-- you want the possibility of native Lua runtime expansion later
+- you need to keep older scripts working while migrating toward the real runtime path
 
 ### Use prompt blocks instead when
 
@@ -274,10 +300,13 @@ This is a structural change. It affects all callers and should only happen if th
 
 Update:
 - `LuaScriptingService`
-- native Lua bridge contract if needed
+- `lib/features/lua/runtime/real_lua_runtime.dart` hook mapping and `FlutterEmbedLuaRuntime` invocation if real-runtime scripts must see the new hook
+- `LuaHostApi` / `DirectiveLuaHostApi` if the new hook needs new host calls or domains
 - shared help contract (`lib/features/lua/lua_help_contract.dart`) and any consuming help surfaces
 - QA coverage for diagnostics/contract drift
 - docs
+
+If the change must preserve older scripts, keep legacy compatibility behavior and diagnostics reason codes accurate too.
 
 Lua authoring contract changes are incomplete unless runtime, shared help, and tests are updated together.
 
@@ -294,8 +323,9 @@ If parity matters, do not implement it in only one caller.
 ## Common Failure Modes
 
 - Forgetting that prompt text has its own transform phase inside `ApiService`.
-- Implementing a cleanup rule in regex when it should actually be a directive parser.
-- Assuming Lua is always native; it can fall back to pseudo-Lua behavior.
+- Implementing a cleanup rule in regex when it should actually be a directive parser or explicit Lua host call.
+- Assuming all stored scripts already run in the real runtime; older scripts can still stay `legacyCompatible`.
+- Assuming every typed host domain is executable today; the shipped adapter only handles overlay/live2d.
 - Changing transform order without checking both chat and notification flows.
 
 ## Cross-Links

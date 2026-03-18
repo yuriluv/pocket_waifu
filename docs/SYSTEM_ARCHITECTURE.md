@@ -101,7 +101,7 @@ The primary navigation surface is `lib/screens/menu_drawer.dart`.
 - `lib/screens/live2d_llm_settings_screen.dart`
   - Live2D-LLM integration toggles and prompt capability preview.
 - `lib/screens/regex_lua_management_screen.dart`
-  - Regex rules, Lua scripts, and directive target selection.
+  - Regex rules, Lua scripts, Lua runtime-mode metadata, and directive target selection.
 - `lib/screens/screen_share_settings_screen.dart`
   - Screenshot mode, Shizuku connection status, quality, and test capture.
 
@@ -354,25 +354,36 @@ Owns:
 - Channel names:
   - `com.pocketwaifu/adb_screen_capture`
 
-### Lua channel
+### Lua runtime surfaces
 
-- Flutter side: `lib/features/lua/services/lua_native_bridge.dart`
-- Channel name: `pocketwaifu/lua`
+- Real runtime ownership:
+  - `lib/features/lua/services/lua_scripting_service.dart`
+  - `lib/features/lua/runtime/real_lua_runtime.dart`
+  - `lib/features/lua/runtime/flutter_embed_lua_runtime.dart`
+  - `lib/features/lua/runtime/lua_host_api.dart`
+  - `lib/features/lua/runtime/directive_lua_host_api.dart`
+- Legacy/native bridge channel:
+  - Flutter side: `lib/features/lua/services/lua_native_bridge.dart`
+  - Channel name: `pocketwaifu/lua`
 
 Owns:
-- hook execution
-- hook execution with return value
+- hook execution routing for `onLoad`, `onUnload`, `onUserMessage`, `onAssistantMessage`, `onPromptBuild`, and `onDisplayRender`
+- opt-in real-runtime execution for scripts marked `realRuntimeNative` or carrying a real-Lua opt-in marker
+- legacy native-bridge execution plus pseudo-Lua fallback for older or non-opted-in scripts
+- typed host-action dispatch from real-runtime scripts into the current overlay/live2d directive services
 
 Contract notes:
-- native Lua is opportunistic; fallback pseudo-Lua remains the supported safe subset unless native availability is verifiably true at runtime
-- caller behavior must remain correct under native success, native no-result, native unavailable, and native exception outcomes
+- `RealLuaRuntime` is the current primary runtime abstraction, and `FlutterEmbedLuaRuntime` is the shipped engine implementation
+- `LuaHostApi` already models more domains than the app currently executes, but `DirectiveLuaHostApi` only implements overlay/live2d actions today
+- fresh installs seed a real-runtime default template and real-runtime-first help text; existing saved scripts remain migration-sensitive because missing metadata defaults to `legacyCompatible`
+- keep docs, help text, and compatibility tests honest about that staged migration; do not describe universal real-runtime coverage yet
 
 ### Lua diagnostics visibility
 
 - Runtime producer: `lib/features/lua/services/lua_scripting_service.dart`
 - Emitted lines:
-  - `lua.exec` for stage outcomes (`native_*` and `fallback_*` reason codes)
-  - `lua.diag` for bounded warning/error/guard context (`pseudo_*` reason codes)
+  - `lua.exec` for stage outcomes (`real_runtime_*`, `native_*`, and `fallback_*` reason codes)
+  - `lua.diag` for bounded warning/error/guard context (`pseudo_*` and `runtime_*` reason codes)
 - Current visibility:
   - in-memory diagnostics buffer via `LuaScriptingService.logs`
   - QA contract tests in `test/qa/lua_native_fallback_contract_test.dart`, `test/qa/lua_scripting_diagnostics_test.dart`, and `test/qa/pseudolua_regex_guard_test.dart`
@@ -381,12 +392,13 @@ Contract notes:
 ### Lua help contract ownership
 
 - Single source: `lib/features/lua/lua_help_contract.dart`
+- Current posture: real-runtime-first help/examples, with legacy compatibility notes retained for migration
 - Shared consumers:
   - command help (`lib/services/command_parser.dart`)
   - prompt-preview Lua help (`lib/widgets/prompt_preview_dialog.dart`)
   - default settings template hints (`lib/models/settings.dart`)
 
-Any Lua authoring/fallback contract change must update runtime behavior, shared help contract text, and QA drift tests together.
+Any Lua authoring/runtime/compatibility contract change must update runtime behavior, shared help contract text, and QA drift tests together.
 
 ## Permissions Matrix
 
@@ -438,6 +450,10 @@ Do not treat the master switch as a UI-only flag. It is a cross-cutting runtime 
 
 ## High-Risk Hotspots
 
+- `lib/features/lua/services/lua_scripting_service.dart`
+  - Real-runtime opt-in routing, legacy bridge fallback, default script seeding, and diagnostics all meet here.
+- `lib/features/lua/runtime/flutter_embed_lua_runtime.dart`
+  - Real-runtime host bindings and typed host-action flushing meet here.
 - `lib/services/notification_coordinator.dart`
   - Most cross-feature interactions meet here.
 - `lib/features/live2d/data/services/live2d_native_bridge.dart`

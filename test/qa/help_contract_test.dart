@@ -7,78 +7,70 @@ import 'package:flutter_application_1/widgets/prompt_preview_dialog.dart';
 
 void main() {
   group('Lua help contract drift protection', () {
-    test('shared help contract keeps required fallback rules', () {
-      expect(LuaHelpContract.fallbackSafeSubsetRules, isNotEmpty);
-      expect(LuaHelpContract.fallbackLimitRules, hasLength(3));
-      expect(LuaHelpContract.fallbackAuthoringRules, hasLength(2));
-      expect(LuaHelpContract.fallbackHelperCalls, hasLength(9));
-      expect(LuaHelpContract.fallbackWorkingExamples, hasLength(1));
-      expect(LuaHelpContract.fallbackAntiExamples, hasLength(5));
+    test('shared help contract keeps required real Lua rules', () {
+      expect(LuaHelpContract.runtimeRules, hasLength(3));
+      expect(LuaHelpContract.hostFunctionCalls, hasLength(10));
+      expect(LuaHelpContract.authoringRules, hasLength(3));
+      expect(LuaHelpContract.workingExamples, hasLength(2));
+      expect(LuaHelpContract.antiExamples, hasLength(3));
+      expect(LuaHelpContract.legacyCompatibilityRules, hasLength(2));
 
       expect(
-        LuaHelpContract.fallbackSafeSubsetRules.single,
-        'The supported safe subset is pwf.* helper calls plus simple return and assignment statements.',
+        LuaHelpContract.runtimeRules,
+        contains('The primary contract is real Lua runtime execution.'),
       );
       expect(
-        LuaHelpContract.fallbackLimitRules,
-        contains('The current fallback engine does not implement general Lua.'),
-      );
-      expect(
-        LuaHelpContract.fallbackLimitRules,
+        LuaHelpContract.runtimeRules,
         contains(
-          'General Lua forms such as text:match(...), if ... then ... end, and "a" .. b may not behave as expected in fallback mode.',
+          'Legacy compatibility mode may still run older scripts, but new scripts should target the real runtime path.',
         ),
       );
       expect(
-        LuaHelpContract.fallbackLimitRules,
-        contains('Use those forms only when native Lua availability is verifiably true at runtime.'),
-      );
-      expect(
-        LuaHelpContract.fallbackAuthoringRules,
-        contains('Fallback patterns use Dart RegExp semantics, not Lua pattern semantics.'),
-      );
-      expect(
-        LuaHelpContract.fallbackWorkingExamples.single,
-        'return pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "name=\$1")',
-      );
-      expect(
-        LuaHelpContract.fallbackAntiExamples,
-        contains('text:match("#alarm")'),
-      );
-      expect(
-        LuaHelpContract.fallbackAntiExamples,
-        contains('if text:match("#alarm") then return text end'),
-      );
-      expect(
-        LuaHelpContract.fallbackAntiExamples,
-        contains('return "prefix:" .. text'),
-      );
-      expect(
-        LuaHelpContract.fallbackAntiExamples,
+        LuaHelpContract.runtimeRules,
         contains(
-          'return pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "name=" .. text)',
+          'Use normal Lua syntax and explicit host functions instead of pseudo-Lua helper patterns for new scripts.',
+        ),
+      );
+      expect(
+        LuaHelpContract.authoringRules,
+        contains('Prefer one host call per logical action and pass typed table arguments.'),
+      );
+      expect(
+        LuaHelpContract.workingExamples,
+        contains(
+          'for emotion in text:gmatch("<emotion%s+name=\"([^\"]+)\"%s*/?>") do overlay.emotion({ name = emotion }) end',
+        ),
+      );
+      expect(
+        LuaHelpContract.antiExamples,
+        contains(
+          'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)  -- legacy compatibility only, not the primary model for new scripts',
+        ),
+      );
+      expect(
+        LuaHelpContract.legacyCompatibilityRules,
+        contains(
+          'Legacy helper semantics are retained only for migration and should not be used as the main authoring target for new scripts.',
         ),
       );
     });
 
-    test('shared help contract keeps required helper list', () {
+    test('shared help contract keeps required host function list', () {
       expect(
-        LuaHelpContract.fallbackHelperCalls,
-        contains('pwf.dispatch(text, pattern, functionName, payloadTemplate)'),
+        LuaHelpContract.hostFunctionCalls,
+        contains('overlay.move({ x = 120, y = 240, op = "set", durationMs = 150 })'),
       );
       expect(
-        LuaHelpContract.fallbackHelperCalls,
-        contains(
-          'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)',
-        ),
+        LuaHelpContract.hostFunctionCalls,
+        contains('live2d.motion({ name = "Idle/0" })'),
       );
       expect(
-        LuaHelpContract.fallbackHelperCalls,
-        contains('pwf.emit(text, functionName, payload)  -- execute immediately and keep text'),
+        LuaHelpContract.hostFunctionCalls,
+        contains('live2d.reset({ durationMs = 200 })'),
       );
     });
 
-    test('command help and prompt preview both include shared fallback contract', () {
+    test('command help and prompt preview both include shared real Lua contract', () {
       final commandHelp = CommandParser.helpText;
       final promptHelp = promptPreviewLuaHelpText;
 
@@ -86,54 +78,101 @@ void main() {
         commandHelp,
         contains(LuaHelpContract.commandHelpFallbackSummary),
       );
-      expect(commandHelp, contains(LuaHelpContract.fallbackAuthoringRules.first));
-      expect(commandHelp, contains(LuaHelpContract.fallbackWorkingExamples.single));
-      expect(commandHelp, contains(LuaHelpContract.fallbackAntiExamples.first));
+      expect(commandHelp, contains(LuaHelpContract.runtimeRules[2]));
+      expect(commandHelp, contains(LuaHelpContract.authoringRules.first));
+      expect(commandHelp, contains(LuaHelpContract.antiExamples.first));
       expect(
         promptHelp,
         contains(LuaHelpContract.promptPreviewFallbackSection),
       );
 
-      expect(commandHelp, contains(LuaHelpContract.fallbackSafeSubsetRules.single));
-      expect(promptHelp, contains(LuaHelpContract.fallbackSafeSubsetRules.single));
-      expect(commandHelp, contains(LuaHelpContract.fallbackLimitRules.first));
-      expect(promptHelp, contains(LuaHelpContract.fallbackLimitRules.first));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAuthoringRules.first));
-      expect(promptHelp, contains(LuaHelpContract.fallbackWorkingExamples.single));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAntiExamples[0]));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAntiExamples[1]));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAntiExamples[2]));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAntiExamples[3]));
-      expect(promptHelp, contains(LuaHelpContract.fallbackAntiExamples[4]));
+      expect(promptHelp, contains(LuaHelpContract.runtimeRules.first));
+      expect(promptHelp, contains(LuaHelpContract.runtimeRules[1]));
+      expect(promptHelp, contains(LuaHelpContract.authoringRules[1]));
+      expect(promptHelp, contains(LuaHelpContract.workingExamples.first));
+      expect(promptHelp, contains(LuaHelpContract.workingExamples[1]));
+      expect(promptHelp, contains(LuaHelpContract.antiExamples[0]));
+      expect(promptHelp, contains(LuaHelpContract.antiExamples[1]));
+      expect(promptHelp, contains(LuaHelpContract.antiExamples[2]));
+      expect(promptHelp, contains(LuaHelpContract.legacyCompatibilityRules.first));
+      expect(promptHelp, contains(LuaHelpContract.legacyCompatibilityRules[1]));
     });
 
-    test('default shipped prompt templates keep truthful fallback wording', () {
-      const settings = AppSettings();
+    test('default shipped prompt templates keep truthful real Lua wording', () {
+      final settings = AppSettings();
 
       expect(
         settings.live2dSystemPromptTemplate,
-        contains(LuaHelpContract.fallbackLimitRules.first),
+        contains(LuaHelpContract.runtimeRules.first),
       );
       expect(
         settings.live2dSystemPromptTemplate,
-        contains(LuaHelpContract.fallbackAuthoringRules.first),
+        contains(LuaHelpContract.runtimeRules[2]),
       );
       expect(
         settings.live2dSystemPromptTemplate,
-        contains(LuaHelpContract.fallbackHelperCalls[7]),
+        contains(LuaHelpContract.authoringRules.first),
       );
       expect(
         settings.live2dSystemPromptTemplate,
-        contains(LuaHelpContract.fallbackHelperCalls[8]),
+        contains(LuaHelpContract.hostFunctionCalls[3]),
+      );
+      expect(
+        settings.live2dSystemPromptTemplate,
+        contains(LuaHelpContract.hostFunctionCalls[9]),
+      );
+      expect(
+        settings.live2dSystemPromptTemplate,
+        contains(LuaHelpContract.antiExamples[2]),
+      );
+      expect(
+        settings.live2dSystemPromptTemplate,
+        contains(LuaHelpContract.legacyCompatibilityRules[1]),
+      );
+      expect(
+        settings.live2dSystemPromptTemplate,
+        isNot(contains('Fallback note:')),
+      );
+      expect(
+        settings.live2dSystemPromptTemplate,
+        isNot(contains('Prefer helper-first scripts')),
       );
 
       expect(
         settings.imageOverlaySystemPromptTemplate,
-        contains(LuaHelpContract.fallbackLimitRules.first),
+        contains(LuaHelpContract.runtimeRules.first),
       );
       expect(
         settings.imageOverlaySystemPromptTemplate,
-        contains(LuaHelpContract.fallbackAuthoringRules.first),
+        contains(LuaHelpContract.runtimeRules[2]),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        contains(LuaHelpContract.authoringRules.first),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        contains(LuaHelpContract.hostFunctionCalls.first),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        contains(LuaHelpContract.hostFunctionCalls[2]),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        contains(LuaHelpContract.antiExamples[2]),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        contains(LuaHelpContract.legacyCompatibilityRules[1]),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        isNot(contains('Fallback note:')),
+      );
+      expect(
+        settings.imageOverlaySystemPromptTemplate,
+        isNot(contains('Prefer helper-first scripts')),
       );
     });
   });

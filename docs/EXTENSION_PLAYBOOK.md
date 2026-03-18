@@ -47,16 +47,21 @@ Start at:
 
 Decide first:
 - deterministic text rule -> regex
-- programmable hook behavior -> Lua
+- programmable hook behavior or explicit host-function calls -> Lua
 - runtime command encoded in assistant output -> directive service
 
 Lua routing guardrail:
-- treat fallback helper-based Lua as the supported contract
-- only depend on full native-Lua syntax when native availability is verifiably true in the target runtime
+- new scripts, default templates, and shared help now target the real-runtime host-function path first
+- older persisted scripts may still remain `legacyCompatible` or rely on opt-in markers during migration
+- `DirectiveLuaHostApi` currently routes only overlay/live2d actions, so new host domains need runtime and adapter work, not just Lua authoring changes
 
 Then start at:
 - regex: `lib/features/regex/services/regex_pipeline_service.dart`
-- Lua: `lib/features/lua/services/lua_scripting_service.dart`
+- Lua routing: `lib/features/lua/services/lua_scripting_service.dart`
+- Lua runtime contract: `lib/features/lua/runtime/real_lua_runtime.dart`
+- Lua typed host API: `lib/features/lua/runtime/lua_host_api.dart`
+- Lua directive-backed adapter: `lib/features/lua/runtime/directive_lua_host_api.dart`
+- Lua shared help: `lib/features/lua/lua_help_contract.dart`
 - Live2D directives: `lib/features/live2d_llm/services/live2d_directive_service.dart`
 - image overlay directives: `lib/features/image_overlay/services/image_overlay_directive_service.dart`
 
@@ -106,19 +111,24 @@ Checklist:
 Checklist:
 - decide whether it belongs to Live2D or image overlay
 - add parser support in the correct directive service
+- if real-runtime Lua should call it directly, add/update the typed `LuaHostAction` surface and `DirectiveLuaHostApi` mapping
 - add bridge support in Flutter
 - add method handling in Android
 - document the contract change
 
 If Lua authoring shapes this command path, also:
-- keep fallback helper compatibility first
+- keep the real-runtime-first help/default-template examples accurate
+- preserve legacy compatibility notes if older helper-based scripts still need equivalent behavior
 - add/update reason-coded diagnostics expectations (`lua.exec` / `lua.diag`)
 - update shared help contract text and QA drift coverage
 
-### Lua authoring or fallback contract change
+### Lua authoring or runtime contract change
 
 Checklist (all required in one change):
-- update runtime behavior in `lib/features/lua/services/lua_scripting_service.dart` (and native bridge contract if needed)
+- update runtime behavior in `lib/features/lua/services/lua_scripting_service.dart`
+- update `lib/features/lua/runtime/real_lua_runtime.dart` / `lib/features/lua/runtime/flutter_embed_lua_runtime.dart` if real-runtime hook execution changes
+- update `lib/features/lua/runtime/lua_host_api.dart` and `lib/features/lua/runtime/directive_lua_host_api.dart` if host functions or typed domains change
+- keep `LuaScript.runtimeMode` defaults, opt-in markers, and legacy compatibility behavior intentional
 - update shared help source `lib/features/lua/lua_help_contract.dart` instead of editing help copies
 - ensure help consumers remain aligned (`lib/services/command_parser.dart`, `lib/widgets/prompt_preview_dialog.dart`, `lib/models/settings.dart`)
 - update/add QA tests that pin behavior and reason-coded diagnostics (`test/qa/lua_*`, `test/qa/help_contract_test.dart`)
@@ -181,7 +191,7 @@ When a change touches one of these contracts, update docs in the same change:
 - request ordering or cancellation semantics
 - preset resolution behavior
 - shared overlay mode behavior
-- Lua fallback safe-subset rules, diagnostics reason-code expectations, or helper guardrails
+- Lua runtime-mode defaults, legacy compatibility rules, diagnostics reason-code expectations, or helper guardrails
 - shared Lua help contract ownership/wording (`lib/features/lua/lua_help_contract.dart`)
 
 ## Common Traps
@@ -190,6 +200,8 @@ When a change touches one of these contracts, update docs in the same change:
 - Adding a feature only to chat while forgetting notification reply or proactive paths.
 - Changing the shared Live2D native bridge and accidentally breaking image overlay mode.
 - Storing preset ids without rebinding fallback behavior.
+- Treating helper-first pseudo-Lua as the main authoring target even though shipped help and defaults are now real-runtime-first.
+- Assuming a new `LuaHostAction` is live without wiring `DirectiveLuaHostApi` or another host adapter.
 - Implementing a directive when the behavior should have been a regex/Lua transform, or vice versa.
 - Treating the mini menu as a Flutter widget instead of a native overlay contract.
 
