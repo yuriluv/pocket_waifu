@@ -1,70 +1,73 @@
 class LuaHelpContract {
   const LuaHelpContract._();
 
-  static const List<String> fallbackHelperCalls = [
-    'pwf.gsub(text, pattern, replacement)',
-    'pwf.replace(text, from, to)',
-    'pwf.append(text, suffix)',
-    'pwf.prepend(text, prefix)',
-    'pwf.trim(text)',
-    'pwf.call(functionName, payload)        -- execute immediately',
-    'pwf.emit(text, functionName, payload)  -- execute immediately and keep text',
-    'pwf.dispatch(text, pattern, functionName, payloadTemplate)',
-    'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)',
+  static const List<String> runtimeRules = [
+    'The primary contract is real Lua runtime execution.',
+    'Legacy compatibility mode may still run older scripts, but new scripts should target the real runtime path.',
+    'Use normal Lua syntax and explicit host functions instead of pseudo-Lua helper patterns for new scripts.',
   ];
 
-  static const List<String> fallbackSafeSubsetRules = [
-    'The supported safe subset is pwf.* helper calls plus simple return and assignment statements.',
+  static const List<String> hostFunctionCalls = [
+    'overlay.move({ x = 120, y = 240, op = "set", durationMs = 150 })',
+    'overlay.emotion({ name = "Reilla_happy" })',
+    'overlay.wait({ ms = 300 })',
+    'live2d.param({ id = "ParamAngleX", value = 15, op = "set", durationMs = 200 })',
+    'live2d.motion({ name = "Idle/0" })',
+    'live2d.expression({ name = "smile" })',
+    'live2d.emotion({ name = "happy" })',
+    'live2d.wait({ ms = 300 })',
+    'live2d.preset({ name = "idle", durationMs = 200 })',
+    'live2d.reset({ durationMs = 200 })',
   ];
 
-  static const List<String> fallbackAuthoringRules = [
-    'Fallback patterns use Dart RegExp semantics, not Lua pattern semantics.',
-    'Prefer one helper call per line; multiline helper invocations are unsupported and nested helper forms are harder to diagnose.',
+  static const List<String> authoringRules = [
+    'Prefer one host call per logical action and pass typed table arguments.',
+    'Use standard Lua string functions such as string.gmatch and string.gsub when parsing text.',
+    'Treat host functions as the boundary for side effects; keep parsing logic in Lua and runtime effects in host calls.',
   ];
 
-  static const List<String> fallbackWorkingExamples = [
-    'return pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "name=\$1")',
+  static const List<String> workingExamples = [
+    'for emotion in text:gmatch("<emotion%s+name=\"([^\"]+)\"%s*/?>") do overlay.emotion({ name = emotion }) end',
+    'text = text:gsub("<move%s+x=\"([^\"]+)\"%s+y=\"([^\"]+)\"%s*/?>", function(x, y) overlay.move({ x = tonumber(x), y = tonumber(y) }) return "" end)',
   ];
 
-  static const List<String> fallbackAntiExamples = [
-    'text:match("#alarm")',
-    'if text:match("#alarm") then return text end',
-    'return "prefix:" .. text',
-    'return pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "name=" .. text)',
-    'return pwf.dispatchKeep(\n  text,\n  r"#alarm\\(([^)]*)\\)",\n  "alarm_keep",\n  "{\\"label\\":\\"\$1\\"}"\n)',
+  static const List<String> antiExamples = [
+    'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)  -- legacy compatibility only, not the primary model for new scripts',
+    'pwf.emit(text, functionName, payload)  -- legacy compatibility only',
+    '<emotion name="happy"/> should not rely on hidden system parsing; your Lua should parse it and call overlay.emotion(...) or live2d.emotion(...) explicitly',
   ];
 
-  static const List<String> fallbackLimitRules = [
-    'The current fallback engine does not implement general Lua.',
-    'General Lua forms such as text:match(...), if ... then ... end, and "a" .. b may not behave as expected in fallback mode.',
-    'Use those forms only when native Lua availability is verifiably true at runtime.',
+  static const List<String> legacyCompatibilityRules = [
+    'Older scripts may still run in legacy compatibility mode.',
+    'Legacy helper semantics are retained only for migration and should not be used as the main authoring target for new scripts.',
   ];
 
   static String get commandHelpFallbackSummary =>
-      '• In fallback mode, helper-first scripts using `pwf.dispatch`, `pwf.dispatchKeep`, and `pwf.emit` are the safest option.\n'
-      '• ${fallbackAuthoringRules[0]}\n'
-      '• Working example: `${fallbackWorkingExamples[0]}`\n'
-      '• Avoid examples like `${fallbackAntiExamples[0]}` and `${fallbackAntiExamples[4]}` in fallback mode.\n'
-      '• ${fallbackSafeSubsetRules.first}\n'
-      '• ${fallbackLimitRules.first}';
+      '• ${runtimeRules[0]}\n'
+      '• ${runtimeRules[1]}\n'
+      '• Working example: `${workingExamples[0]}`\n'
+      '• Host functions: `${hostFunctionCalls[0]}`, `${hostFunctionCalls[1]}`, `${hostFunctionCalls[4]}`\n'
+      '• ${legacyCompatibilityRules[1]}';
 
   static String get promptPreviewFallbackSection =>
-      '[Fallback helpers]\n'
-      '${fallbackHelperCalls.join('\n')}\n\n'
-      '[Fallback authoring rules]\n'
-      '- ${fallbackAuthoringRules[0]}\n'
-      '- ${fallbackAuthoringRules[1]}\n\n'
-      '[Fallback working example]\n'
-      '- ${fallbackWorkingExamples[0]}\n\n'
-      '[Fallback anti-examples]\n'
-      '- ${fallbackAntiExamples[0]}\n'
-      '- ${fallbackAntiExamples[1]}\n'
-      '- ${fallbackAntiExamples[2]}\n'
-      '- ${fallbackAntiExamples[3]}\n'
-      '- ${fallbackAntiExamples[4]}\n\n'
-      '[Fallback limits]\n'
-      '- ${fallbackLimitRules[0]}\n'
-      '- ${fallbackSafeSubsetRules[0]}\n'
-      '- ${fallbackLimitRules[1]}\n'
-      '- ${fallbackLimitRules[2]}';
+      '[Real Lua runtime]\n'
+      '- ${runtimeRules[0]}\n'
+      '- ${runtimeRules[1]}\n'
+      '- ${runtimeRules[2]}\n\n'
+      '[Host functions]\n'
+      '${hostFunctionCalls.join('\n')}\n\n'
+      '[Authoring rules]\n'
+      '- ${authoringRules[0]}\n'
+      '- ${authoringRules[1]}\n'
+      '- ${authoringRules[2]}\n\n'
+      '[Working examples]\n'
+      '- ${workingExamples[0]}\n'
+      '- ${workingExamples[1]}\n\n'
+      '[Legacy compatibility]\n'
+      '- ${legacyCompatibilityRules[0]}\n'
+      '- ${legacyCompatibilityRules[1]}\n\n'
+      '[Anti-examples]\n'
+      '- ${antiExamples[0]}\n'
+      '- ${antiExamples[1]}\n'
+      '- ${antiExamples[2]}';
 }

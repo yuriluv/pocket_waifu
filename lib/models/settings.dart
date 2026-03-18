@@ -15,26 +15,31 @@ enum LlmDirectiveTarget {
   imageOverlay,
 }
 
-const String _fallbackPromptTruthNotes =
-    'Fallback note: The current fallback engine does not implement general Lua. '
-    'Fallback patterns use Dart RegExp semantics, not Lua pattern semantics. '
-    'Prefer helper-first scripts such as pwf.dispatch(text, pattern, functionName, payloadTemplate), '
-    'pwf.dispatchKeep(text, pattern, functionName, payloadTemplate), '
-    'and pwf.emit(text, functionName, payload) over general Lua forms.';
+const String _legacyCompatibilityMigrationNote =
+    '${LuaHelpContract.legacyCompatibilityRules[0]} '
+    '${LuaHelpContract.legacyCompatibilityRules[1]}';
 
 const String _defaultLive2dSystemPromptTemplate =
     '[Lua Runtime Template · Live2D Examples]\n'
-    'The app does not assign control-text meaning by itself. The editable Lua template parses text and emits runtime functions.\n'
+    '${LuaHelpContract.runtimeRules[0]}\n'
+    '${LuaHelpContract.runtimeRules[2]}\n'
+    '${LuaHelpContract.authoringRules[0]}\n'
+    '${LuaHelpContract.authoringRules[2]}\n'
     'The shipped default Lua template recognizes examples such as <param .../>, <motion .../>, <expression .../>, <emotion .../>, <wait .../>, <preset .../>, <reset .../>, and inline forms like [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset].\n'
-    'If you customize Lua, you may change these examples to any syntax you want.\n'
-    '$_fallbackPromptTruthNotes';
+    'Those emitted strings are parsed by Lua and mapped to explicit host calls such as `${LuaHelpContract.hostFunctionCalls[3]}`, `${LuaHelpContract.hostFunctionCalls[4]}`, `${LuaHelpContract.hostFunctionCalls[5]}`, `${LuaHelpContract.hostFunctionCalls[6]}`, `${LuaHelpContract.hostFunctionCalls[7]}`, `${LuaHelpContract.hostFunctionCalls[8]}`, and `${LuaHelpContract.hostFunctionCalls[9]}`.\n'
+    '${LuaHelpContract.antiExamples[2]}\n'
+    '$_legacyCompatibilityMigrationNote';
 
 const String _defaultImageOverlaySystemPromptTemplate =
     '[Lua Runtime Template · Overlay Examples]\n'
-    'The editable Lua template can also map image-overlay text to runtime functions.\n'
+    '${LuaHelpContract.runtimeRules[0]}\n'
+    '${LuaHelpContract.runtimeRules[2]}\n'
+    '${LuaHelpContract.authoringRules[0]}\n'
+    '${LuaHelpContract.authoringRules[2]}\n'
     'The shipped default Lua template recognizes examples such as <move .../>, <emotion .../>, <wait .../>, [img_move:...], and [img_emotion:...].\n'
-    'You may replace this with any custom text format that your Lua script parses.\n'
-    '$_fallbackPromptTruthNotes';
+    'Those emitted strings are parsed by Lua and mapped to explicit host calls such as `${LuaHelpContract.hostFunctionCalls[0]}`, `${LuaHelpContract.hostFunctionCalls[1]}`, and `${LuaHelpContract.hostFunctionCalls[2]}`.\n'
+    '${LuaHelpContract.antiExamples[2]}\n'
+    '$_legacyCompatibilityMigrationNote';
 
 class AppSettings {
   final ApiProvider apiProvider;

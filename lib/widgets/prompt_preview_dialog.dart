@@ -18,8 +18,8 @@ onDisplayRender(text) -> string
 
 [핵심 계약]
 - 시스템은 텍스트 의미를 직접 정하지 않습니다.
-- Lua가 문자열을 읽고 훅 안에서 직접 오버레이/Live2D 함수를 호출합니다.
-- 기본 Lua 블록은 수정 가능한 템플릿일 뿐이며, 원하는 형식으로 바꿀 수 있습니다.
+- Lua가 문자열을 읽고 훅 안에서 직접 host function을 호출합니다.
+- 기본 Lua 템플릿은 수정 가능한 real Lua 스크립트이며, 원하는 형식으로 바꿀 수 있습니다.
 
 ${LuaHelpContract.promptPreviewFallbackSection}
 
@@ -35,7 +35,7 @@ overlay.move
 overlay.emotion
 overlay.wait
 
-[기본 Lua 템플릿이 인식하는 예시 형식]
+[출하된 real Lua 템플릿 예시 형식]
 <param .../>
 <motion .../>
 <expression .../>
@@ -54,9 +54,9 @@ overlay.wait
 [img_move:...]
 [img_emotion:...]
 
-[커스텀 예시]
-기본 템플릿 주석처럼 사용자가 직접 원하는 형식을 매핑할 수 있습니다.
-예: pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=\$1")
+[커스텀 real Lua 예시]
+${LuaHelpContract.workingExamples[0]}
+${LuaHelpContract.workingExamples[1]}
 
 [Regex/Lua 실행 순서]
 설정의 "Regex 선처리 후 Lua 실행"이 켜져 있으면:
@@ -72,16 +72,16 @@ overlay.wait
 LuaNativeBridge.executeHook(...) -> LuaNativeBridgeResult<bool>
 LuaNativeBridge.executeHookAndReturn(...) -> LuaNativeBridgeResult<String>
 
-[의사 Lua(폴백) 주석 문법]
+[레거시 호환 모드 메모]
+- 이전 helper/주석 기반 스크립트에서는 아래 메모 패턴이 보일 수 있습니다.
 -- hook:onUserMessage replace:foo=>bar
 -- hook:onAssistantMessage append:...text...
 -- hook:onPromptBuild prepend:...text...
 
 [주의]
 - onLoad/onUnload는 반환값이 없습니다.
-- 실제 Lua 네이티브 브리지가 없으면 위 helper 기반 fallback 실행이 사용됩니다.
 - 기본 템플릿을 바꾸면 어떤 문자열이 어떤 함수가 되는지도 함께 바뀝니다.
-- fallback 기준으로는 helper 기반 패턴을 우선 사용하세요.
+- ${LuaHelpContract.antiExamples[2]}
 ''';
 
 class CommandHelpDialog {

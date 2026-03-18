@@ -73,17 +73,18 @@ class CommandParser {
 • /export - 현재 대화 JSON 내보내기
 • /help - 이 도움말 표시
 
-🧩 **지원 지시어 문법**
+🧩 **출하된 Real Lua 템플릿 예시 형식**
 
-• 아래 문법은 기본 Lua 템플릿이 인식하는 기본 예시입니다.
+• ${LuaHelpContract.runtimeRules[2]}
 • Live2D 블록: <live2d>...</live2d>
 • Live2D 인라인: [param:...], [motion:...], [expression:...], [emotion:...], [wait:...], [preset:...], [reset]
 • Overlay 블록: <overlay>...</overlay> 내부에서 <move .../>, <emotion .../>, <wait .../>
 • Overlay 인라인: [img_move:...], [img_emotion:...]
 
-🧠 **Lua fallback 팁**
+🧠 **실제 Lua 런타임 계약**
 
-• Lua를 커스텀하면 위 문법도 직접 바꿀 수 있습니다.
+• ${LuaHelpContract.authoringRules[0]}
+• ${LuaHelpContract.antiExamples[0]}
 ${LuaHelpContract.commandHelpFallbackSummary}
 
 💡 메시지 번호는 1부터 시작합니다.
