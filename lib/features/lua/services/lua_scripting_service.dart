@@ -9,6 +9,8 @@ import '../../../models/settings.dart';
 import '../../image_overlay/services/image_overlay_directive_service.dart';
 import '../../live2d_llm/services/live2d_directive_service.dart';
 import '../models/lua_script.dart';
+import '../runtime/flutter_embed_lua_runtime.dart';
+import '../runtime/real_lua_runtime.dart';
 import 'lua_native_bridge.dart';
 
 class LuaHookContext {
@@ -35,7 +37,35 @@ class LuaHookContext {
   final Duration timeout;
 }
 
-enum _LuaExecutionStage { native, fallback }
+enum _LuaExecutionStage { realRuntime, native, fallback }
+
+class _RealLuaExecutionAttempt<T> {
+  const _RealLuaExecutionAttempt({
+    required this.result,
+    required this.elapsed,
+    required this.phase,
+    required this.compatibilitySource,
+    this.optInMarker,
+  });
+
+  final RealLuaResult<T> result;
+  final Duration elapsed;
+  final String phase;
+  final String compatibilitySource;
+  final String? optInMarker;
+}
+
+class _RealLuaCompatibilityDecision {
+  const _RealLuaCompatibilityDecision({
+    required this.shouldUseRealRuntime,
+    required this.source,
+    this.optInMarker,
+  });
+
+  final bool shouldUseRealRuntime;
+  final String source;
+  final String? optInMarker;
+}
 
 class _LuaExecutionReport {
   const _LuaExecutionReport({
@@ -59,6 +89,7 @@ class _LuaExecutionReport {
   String toDiagnosticLine(DateTime timestamp) {
     final scriptLabel = scriptName.trim().isEmpty ? scriptId : scriptName.trim();
     final stageLabel = switch (stage) {
+      _LuaExecutionStage.realRuntime => 'real_runtime',
       _LuaExecutionStage.native => 'native',
       _LuaExecutionStage.fallback => 'fallback',
     };
@@ -97,6 +128,10 @@ class LuaScriptingService {
   static const int _pseudoLuaMaxRegexMatchesPerHelper = 64;
   static const int _pseudoLuaMaxRuntimeActionsPerHook = 48;
   static const int _pseudoLuaRegexSoftLimitMs = 200;
+  static const List<String> _realLuaOptInMarkers = <String>[
+    '-- pwf:runtime=real-lua',
+    '-- pocketwaifu:runtime=real-lua',
+  ];
   static final LuaScriptingService instance = LuaScriptingService._();
 
   List<LuaScript>? _scriptsCache;
@@ -104,6 +139,7 @@ class LuaScriptingService {
   final List<String> _logs = [];
   String _injectedCss = '';
   LuaNativeBridge _nativeBridge = LuaNativeBridge();
+  RealLuaRuntime _realRuntime = FlutterEmbedLuaRuntime();
   final Live2DDirectiveService _live2dDirectiveService =
       Live2DDirectiveService.instance;
   final ImageOverlayDirectiveService _imageDirectiveService =
@@ -124,6 +160,16 @@ class LuaScriptingService {
   @visibleForTesting
   void resetNativeBridgeForTesting() {
     _nativeBridge = LuaNativeBridge();
+  }
+
+  @visibleForTesting
+  void setRealRuntimeForTesting(RealLuaRuntime runtime) {
+    _realRuntime = runtime;
+  }
+
+  @visibleForTesting
+  void resetRealRuntimeForTesting() {
+    _realRuntime = FlutterEmbedLuaRuntime();
   }
 
   @visibleForTesting
@@ -225,6 +271,181 @@ class LuaScriptingService {
     };
   }
 
+  String _realRuntimeReasonCode(RealLuaResultStatus status) {
+    return switch (status) {
+      RealLuaResultStatus.success => 'real_runtime_success',
+      RealLuaResultStatus.noResult => 'real_runtime_no_result',
+      RealLuaResultStatus.unavailable => 'real_runtime_unavailable',
+      RealLuaResultStatus.notInitialized => 'real_runtime_not_initialized',
+      RealLuaResultStatus.error => 'real_runtime_error',
+    };
+  }
+
+  String? _realLuaOptInMarkerForScript(LuaScript script) {
+    for (final marker in _realLuaOptInMarkers) {
+      if (script.content.contains(marker)) {
+        return marker;
+      }
+    }
+    return null;
+  }
+
+  _RealLuaCompatibilityDecision _realLuaCompatibilityDecision(
+    LuaScript script,
+  ) {
+    if (script.runtimeMode == LuaScriptRuntimeMode.realRuntimeNative) {
+      return const _RealLuaCompatibilityDecision(
+        shouldUseRealRuntime: true,
+        source: 'stored_runtime_mode',
+      );
+    }
+    final marker = _realLuaOptInMarkerForScript(script);
+    if (marker != null) {
+      return _RealLuaCompatibilityDecision(
+        shouldUseRealRuntime: true,
+        source: 'legacy_marker_opt_in',
+        optInMarker: marker,
+      );
+    }
+    return const _RealLuaCompatibilityDecision(
+      shouldUseRealRuntime: false,
+      source: 'legacy_compatible_default',
+    );
+  }
+
+  LuaScript _normalizeScriptForStorage(LuaScript script) {
+    var runtimeMode = script.runtimeMode;
+    if (runtimeMode == LuaScriptRuntimeMode.legacyCompatible &&
+        _realLuaOptInMarkerForScript(script) != null) {
+      runtimeMode = LuaScriptRuntimeMode.realRuntimeNative;
+    }
+    if (script.schemaVersion == LuaScript.currentSchemaVersion &&
+        runtimeMode == script.runtimeMode) {
+      return script;
+    }
+    return script.copyWith(
+      schemaVersion: LuaScript.currentSchemaVersion,
+      runtimeMode: runtimeMode,
+    );
+  }
+
+  List<LuaScript> _normalizeScriptsForStorage(List<LuaScript> scripts) {
+    return scripts.map(_normalizeScriptForStorage).toList(growable: false);
+  }
+
+  bool _requiresStorageWriteBack(LuaScript before, LuaScript after) {
+    return before.schemaVersion != after.schemaVersion ||
+        before.runtimeMode != after.runtimeMode;
+  }
+
+  RealLuaHook? _realLuaHookFromName(String hook) {
+    return switch (hook) {
+      'onLoad' => RealLuaHook.onLoad,
+      'onUnload' => RealLuaHook.onUnload,
+      'onUserMessage' => RealLuaHook.onUserMessage,
+      'onAssistantMessage' => RealLuaHook.onAssistantMessage,
+      'onPromptBuild' => RealLuaHook.onPromptBuild,
+      'onDisplayRender' => RealLuaHook.onDisplayRender,
+      _ => null,
+    };
+  }
+
+  Future<_RealLuaExecutionAttempt<String>?> _runRealRuntimeTextHook(
+    LuaScript script,
+    String hook,
+    String input,
+    LuaHookContext context,
+  ) async {
+    final compatibilityDecision = _realLuaCompatibilityDecision(script);
+    if (!compatibilityDecision.shouldUseRealRuntime) {
+      return null;
+    }
+    final realHook = _realLuaHookFromName(hook);
+    if (realHook == null) {
+      return null;
+    }
+
+    final watch = Stopwatch()..start();
+    final initResult = await _realRuntime.initialize();
+    if (!initResult.isSuccess) {
+      watch.stop();
+      return _RealLuaExecutionAttempt<String>(
+        result: RealLuaResult<String>(
+          status: initResult.status,
+          error: initResult.error,
+          stackTrace: initResult.stackTrace,
+          metadata: initResult.metadata,
+        ),
+        elapsed: watch.elapsed,
+        phase: 'initialize',
+        compatibilitySource: compatibilityDecision.source,
+        optInMarker: compatibilityDecision.optInMarker,
+      );
+    }
+
+    final executeResult = await _realRuntime.executeHookAndReturn(
+      RealLuaHookInvocation(
+        script: script.content,
+        hook: realHook,
+        input: input,
+        timeout: context.timeout,
+      ),
+    );
+    watch.stop();
+    return _RealLuaExecutionAttempt<String>(
+      result: executeResult,
+      elapsed: watch.elapsed,
+      phase: 'execute',
+      compatibilitySource: compatibilityDecision.source,
+      optInMarker: compatibilityDecision.optInMarker,
+    );
+  }
+
+  Future<_RealLuaExecutionAttempt<void>?> _runRealRuntimeVoidHook(
+    LuaScript script,
+    String hook,
+    LuaHookContext context,
+  ) async {
+    final compatibilityDecision = _realLuaCompatibilityDecision(script);
+    if (!compatibilityDecision.shouldUseRealRuntime) {
+      return null;
+    }
+    final realHook = _realLuaHookFromName(hook);
+    if (realHook == null) {
+      return null;
+    }
+
+    final watch = Stopwatch()..start();
+    final initResult = await _realRuntime.initialize();
+    if (!initResult.isSuccess) {
+      watch.stop();
+      return _RealLuaExecutionAttempt<void>(
+        result: initResult,
+        elapsed: watch.elapsed,
+        phase: 'initialize',
+        compatibilitySource: compatibilityDecision.source,
+        optInMarker: compatibilityDecision.optInMarker,
+      );
+    }
+
+    final executeResult = await _realRuntime.executeHook(
+      RealLuaHookInvocation(
+        script: script.content,
+        hook: realHook,
+        input: '',
+        timeout: context.timeout,
+      ),
+    );
+    watch.stop();
+    return _RealLuaExecutionAttempt<void>(
+      result: executeResult,
+      elapsed: watch.elapsed,
+      phase: 'execute',
+      compatibilitySource: compatibilityDecision.source,
+      optInMarker: compatibilityDecision.optInMarker,
+    );
+  }
+
   Map<String, Object?> _baseExecutionContext(
     LuaScript script,
     LuaHookContext context,
@@ -270,7 +491,7 @@ class LuaScriptingService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_scriptsKey);
       if (raw == null || raw.trim().isEmpty) {
-        _scriptsCache = _defaultScripts();
+        _scriptsCache = _normalizeScriptsForStorage(_defaultScripts());
         await prefs.setString(
           _scriptsKey,
           jsonEncode(_scriptsCache!.map((script) => script.toMap()).toList()),
@@ -292,14 +513,28 @@ class LuaScriptingService {
         return _scriptsCache!;
       }
 
-      _scriptsCache =
-          parsed
-              .whereType<Map<String, dynamic>>()
-              .map(LuaScript.fromMap)
-              .toList()
-            ..sort((a, b) => a.order.compareTo(b.order));
+      var shouldWriteBack = false;
+      final loadedScripts = <LuaScript>[];
+      for (final item in parsed) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        final loaded = LuaScript.fromMap(item);
+        final normalized = _normalizeScriptForStorage(loaded);
+        if (_requiresStorageWriteBack(loaded, normalized)) {
+          shouldWriteBack = true;
+        }
+        loadedScripts.add(normalized);
+      }
+      loadedScripts.sort((a, b) => a.order.compareTo(b.order));
+      _scriptsCache = loadedScripts;
       if (_scriptsCache!.isEmpty) {
-        _scriptsCache = _defaultScripts();
+        _scriptsCache = _normalizeScriptsForStorage(_defaultScripts());
+        await prefs.setString(
+          _scriptsKey,
+          jsonEncode(_scriptsCache!.map((script) => script.toMap()).toList()),
+        );
+      } else if (shouldWriteBack) {
         await prefs.setString(
           _scriptsKey,
           jsonEncode(_scriptsCache!.map((script) => script.toMap()).toList()),
@@ -318,8 +553,9 @@ class LuaScriptingService {
   }
 
   Future<void> saveScripts(List<LuaScript> scripts) async {
-    _scriptsCache = List<LuaScript>.from(scripts)
-      ..sort((a, b) => a.order.compareTo(b.order));
+    _scriptsCache =
+        _normalizeScriptsForStorage(List<LuaScript>.from(scripts)
+          ..sort((a, b) => a.order.compareTo(b.order)));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _scriptsKey,
@@ -373,6 +609,62 @@ class LuaScriptingService {
 
     for (final script in runnable) {
       var stageInputLength = output.length;
+      final realAttempt = await _runRealRuntimeTextHook(
+        script,
+        hook,
+        output,
+        context,
+      );
+      if (realAttempt != null) {
+        final realReasonCode = _realRuntimeReasonCode(realAttempt.result.status);
+        final realContext = <String, Object?>{
+          ..._baseExecutionContext(script, context),
+          'engine': _realRuntime.engineId,
+          'phase': realAttempt.phase,
+          'compatibilitySource': realAttempt.compatibilitySource,
+          if (realAttempt.optInMarker != null)
+            'optInMarker': realAttempt.optInMarker,
+          'inputLength': stageInputLength,
+          ...realAttempt.result.metadata,
+        };
+        if (realAttempt.result.error != null) {
+          realContext['error'] = realAttempt.result.error.toString();
+        }
+        if (realAttempt.result.isSuccess && realAttempt.result.value != null) {
+          output = realAttempt.result.value!;
+          _logExecution(
+            _LuaExecutionReport(
+              scriptId: script.id,
+              scriptName: script.name,
+              hook: hook,
+              stage: _LuaExecutionStage.realRuntime,
+              elapsed: realAttempt.elapsed,
+              reasonCode: realReasonCode,
+              context: _boundContext({
+                ...realContext,
+                'outputLength': output.length,
+              }),
+            ),
+          );
+          continue;
+        }
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.realRuntime,
+            elapsed: realAttempt.elapsed,
+            reasonCode: realReasonCode,
+            context: _boundContext(realContext),
+          ),
+        );
+      }
+
+      final realReasonCodeForLegacy =
+          realAttempt == null
+              ? null
+              : _realRuntimeReasonCode(realAttempt.result.status);
       final nativeWatch = Stopwatch()..start();
       final nativeResult = await _nativeBridge.executeHookAndReturn(
         script: script.content,
@@ -388,6 +680,8 @@ class LuaScriptingService {
         'inputLength': stageInputLength,
         'nativeAvailable': nativeResult.isAvailable,
         'nativeCause': nativeResult.causeLabel,
+        if (realReasonCodeForLegacy != null)
+          'realRuntimeCause': realReasonCodeForLegacy,
       };
       if (nativeResult.error != null) {
         nativeContext['error'] = nativeResult.error.toString();
@@ -572,6 +866,52 @@ class LuaScriptingService {
     }).toList()..sort((a, b) => a.order.compareTo(b.order));
 
     for (final script in runnable) {
+      final realAttempt = await _runRealRuntimeVoidHook(script, hook, context);
+      if (realAttempt != null) {
+        final realReasonCode = _realRuntimeReasonCode(realAttempt.result.status);
+        final realContext = <String, Object?>{
+          ..._baseExecutionContext(script, context),
+          'engine': _realRuntime.engineId,
+          'phase': realAttempt.phase,
+          'compatibilitySource': realAttempt.compatibilitySource,
+          if (realAttempt.optInMarker != null)
+            'optInMarker': realAttempt.optInMarker,
+          ...realAttempt.result.metadata,
+        };
+        if (realAttempt.result.error != null) {
+          realContext['error'] = realAttempt.result.error.toString();
+        }
+        if (realAttempt.result.isSuccess) {
+          _logExecution(
+            _LuaExecutionReport(
+              scriptId: script.id,
+              scriptName: script.name,
+              hook: hook,
+              stage: _LuaExecutionStage.realRuntime,
+              elapsed: realAttempt.elapsed,
+              reasonCode: realReasonCode,
+              context: _boundContext(realContext),
+            ),
+          );
+          continue;
+        }
+        _logExecution(
+          _LuaExecutionReport(
+            scriptId: script.id,
+            scriptName: script.name,
+            hook: hook,
+            stage: _LuaExecutionStage.realRuntime,
+            elapsed: realAttempt.elapsed,
+            reasonCode: realReasonCode,
+            context: _boundContext(realContext),
+          ),
+        );
+      }
+
+      final realReasonCodeForLegacy =
+          realAttempt == null
+              ? null
+              : _realRuntimeReasonCode(realAttempt.result.status);
       final nativeWatch = Stopwatch()..start();
       final nativeResult = await _nativeBridge.executeHook(
         script: script.content,
@@ -586,6 +926,8 @@ class LuaScriptingService {
         ..._baseExecutionContext(script, context),
         'nativeAvailable': nativeResult.isAvailable,
         'nativeCause': nativeResult.causeLabel,
+        if (realReasonCodeForLegacy != null)
+          'realRuntimeCause': realReasonCodeForLegacy,
       };
       if (nativeResult.error != null) {
         nativeContext['error'] = nativeResult.error.toString();
@@ -1335,46 +1677,184 @@ class LuaScriptingService {
         name: 'default_runtime_template.lua',
         order: 0,
         scope: LuaScriptScope.global,
-        content: '''-- Editable default Lua template.
--- The app only provides runtime functions. This script decides what text means.
--- Available pseudo-Lua helpers in fallback mode:
---   pwf.gsub(text, pattern, replacement)
---   pwf.replace(text, from, to)
---   pwf.append(text, suffix)
---   pwf.prepend(text, prefix)
---   pwf.trim(text)
---   pwf.call(functionName, payload)         -> execute immediately
---   pwf.emit(text, functionName, payload)   -> execute immediately and keep text
---   pwf.dispatch(text, pattern, functionName, payloadTemplate)
---   pwf.dispatchKeep(text, pattern, functionName, payloadTemplate)
---
--- Runtime functions exposed by the system:
---   live2d.param      payload: id=...,value=...,op=set|del|mul,dur=...,delay=...
---   live2d.motion     payload: group=...,index=... OR name=Idle/0
---   live2d.expression payload: id=... OR name=...
---   live2d.emotion    payload: name=happy
---   live2d.wait       payload: ms=300
---   live2d.preset     payload: name=idle,delay=...
---   live2d.reset      payload: delay=...
---   overlay.move      payload: x=100,y=200,op=set|del|mul,delay=...
---   overlay.emotion   payload: name=happy
---   overlay.wait      payload: ms=300
---
--- Example custom syntax you can enable yourself:
--- text = pwf.dispatch(text, [[function\(emotion,\s*([^)]+)\)]], "overlay.emotion", "name=\$1")
+        runtimeMode: LuaScriptRuntimeMode.realRuntimeNative,
+        content: '''-- Editable default Lua template (real runtime mode).
+-- New installs seed this script with runtimeMode=realRuntimeNative.
+-- Exposed host functions:
+--   overlay.move({ x=..., y=..., op="set|del|mul", durationMs=... })
+--   overlay.emotion({ name="happy" })
+--   overlay.wait({ ms=300 })
+--   live2d.param({ id="ParamAngleX", value=15, op="set|del|mul", durationMs=... })
+--   live2d.motion({ group="Idle", index=0 }) or live2d.motion({ name="Idle/0" })
+--   live2d.expression({ name="smile" })
+--   live2d.emotion({ name="happy" })
+--   live2d.wait({ ms=300 })
+--   live2d.preset({ name="idle", durationMs=... })
+--   live2d.reset({ durationMs=... })
+
+local function trim(value)
+  if value == nil then
+    return ""
+  end
+  return (tostring(value):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function parse_attrs(payload)
+  local attrs = {}
+  local raw = trim(payload)
+
+  for key, value in raw:gmatch('(%w+)%s*=%s*"([^"]*)"') do
+    attrs[key] = value
+  end
+  for key, value in raw:gmatch("(%w+)%s*=%s*'([^']*)'") do
+    attrs[key] = value
+  end
+  for key, value in raw:gmatch("(%w+)%s*=%s*([^,%s]+)") do
+    if attrs[key] == nil then
+      attrs[key] = value
+    end
+  end
+
+  return attrs, raw
+end
+
+local function parse_duration(attrs, raw)
+  local value = attrs.ms or attrs.durationMs or attrs.duration or attrs.dur
+  if value == nil and raw ~= nil and raw ~= "" and raw:find("=") == nil then
+    value = raw
+  end
+  local numeric = tonumber(value)
+  if numeric == nil then
+    return nil
+  end
+  if numeric < 0 then
+    return 0
+  end
+  return math.floor(numeric + 0.5)
+end
+
+local function dispatch_keep(text, pattern, handler)
+  for payload in text:gmatch(pattern) do
+    handler(payload)
+  end
+  return text
+end
+
+local function dispatch_remove(text, pattern, handler)
+  return (text:gsub(pattern, function(payload)
+    handler(payload)
+    return ""
+  end))
+end
+
+local function overlay_emotion_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local emotion = trim(attrs.name or attrs.emotion or raw)
+  if emotion ~= "" then
+    overlay.emotion({ name = emotion })
+  end
+end
+
+local function overlay_move_from_payload(payload)
+  local attrs = parse_attrs(payload)
+  local x = tonumber(attrs.x)
+  local y = tonumber(attrs.y)
+  overlay.move({
+    x = x,
+    y = y,
+    op = attrs.op,
+    durationMs = parse_duration(attrs),
+  })
+end
+
+local function overlay_wait_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local duration = parse_duration(attrs, raw)
+  if duration ~= nil then
+    overlay.wait({ ms = duration })
+  end
+end
+
+local function live2d_param_from_payload(payload)
+  local attrs = parse_attrs(payload)
+  local parameter_id = attrs.id or attrs.parameterId
+  local value = tonumber(attrs.value)
+  if parameter_id ~= nil and parameter_id ~= "" and value ~= nil then
+    live2d.param({
+      id = parameter_id,
+      value = value,
+      op = attrs.op,
+      durationMs = parse_duration(attrs),
+    })
+  end
+end
+
+local function live2d_motion_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local motion_name = attrs.name
+  if (motion_name == nil or motion_name == "") and raw ~= "" and raw:find("=") == nil then
+    motion_name = raw
+  end
+  live2d.motion({
+    group = attrs.group,
+    index = tonumber(attrs.index),
+    name = motion_name,
+    priority = tonumber(attrs.priority),
+  })
+end
+
+local function live2d_expression_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local expression = trim(attrs.name or attrs.id or attrs.expression or raw)
+  if expression ~= "" then
+    live2d.expression({ name = expression })
+  end
+end
+
+local function live2d_emotion_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local emotion = trim(attrs.name or attrs.emotion or raw)
+  if emotion ~= "" then
+    live2d.emotion({ name = emotion })
+  end
+end
+
+local function live2d_wait_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local duration = parse_duration(attrs, raw)
+  if duration ~= nil then
+    live2d.wait({ ms = duration })
+  end
+end
+
+local function live2d_preset_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  local name = trim(attrs.name or attrs.presetName or raw)
+  if name ~= "" then
+    live2d.preset({
+      name = name,
+      durationMs = parse_duration(attrs),
+    })
+  end
+end
+
+local function live2d_reset_from_payload(payload)
+  local attrs, raw = parse_attrs(payload)
+  live2d.reset({ durationMs = parse_duration(attrs, raw) })
+end
 
 function onLoad()
 end
 
 function onUserMessage(text)
-  text = pwf.dispatchKeep(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "overlay.emotion", "\$1")
-  text = pwf.dispatchKeep(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "overlay.move", "\$1")
-  text = pwf.dispatchKeep(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "\$1")
-  text = pwf.dispatchKeep(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "\$1")
-  text = pwf.dispatchKeep(text, [[<emotion\s+([^>]*?)/>]], "live2d.emotion", "\$1")
-  text = pwf.dispatchKeep(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "\$1")
-  text = pwf.dispatchKeep(text, [[\[emotion:([^\]]+)\]]], "live2d.emotion", "\$1")
-  text = pwf.dispatchKeep(text, [[\[motion:([^\]]+)\]]], "live2d.motion", "\$1")
+  text = dispatch_keep(text, "<overlay>%s*<emotion%s+([^>]-)/>%s*</overlay>", overlay_emotion_from_payload)
+  text = dispatch_keep(text, "<overlay>%s*<move%s+([^>]-)/>%s*</overlay>", overlay_move_from_payload)
+  text = dispatch_keep(text, "%[img_emotion:([^%]]+)%]", overlay_emotion_from_payload)
+  text = dispatch_keep(text, "%[img_move:([^%]]+)%]", overlay_move_from_payload)
+  text = dispatch_keep(text, "<emotion%s+([^>]-)/>", live2d_emotion_from_payload)
+  text = dispatch_keep(text, "<motion%s+([^>]-)/>", live2d_motion_from_payload)
+  text = dispatch_keep(text, "%[emotion:([^%]]+)%]", live2d_emotion_from_payload)
+  text = dispatch_keep(text, "%[motion:([^%]]+)%]", live2d_motion_from_payload)
   return text
 end
 
@@ -1383,32 +1863,34 @@ function onPromptBuild(text)
 end
 
 function onAssistantMessage(text)
-  text = pwf.dispatch(text, [[<overlay>\s*<move\s+([^>]*?)/>\s*</overlay>]], "overlay.move", "\$1")
-  text = pwf.dispatch(text, [[<overlay>\s*<emotion\s+([^>]*?)/>\s*</overlay>]], "overlay.emotion", "\$1")
-  text = pwf.dispatch(text, [[<overlay>\s*<wait\s+([^>]*?)/>\s*</overlay>]], "overlay.wait", "\$1")
-  text = pwf.dispatch(text, [[<live2d>\s*<wait\s+([^>]*?)/>\s*</live2d>]], "live2d.wait", "\$1")
+  text = dispatch_remove(text, "<overlay>%s*<move%s+([^>]-)/>%s*</overlay>", overlay_move_from_payload)
+  text = dispatch_remove(text, "<overlay>%s*<emotion%s+([^>]-)/>%s*</overlay>", overlay_emotion_from_payload)
+  text = dispatch_remove(text, "<overlay>%s*<wait%s+([^>]-)/>%s*</overlay>", overlay_wait_from_payload)
+  text = dispatch_remove(text, "<live2d>%s*<wait%s+([^>]-)/>%s*</live2d>", live2d_wait_from_payload)
 
-  text = pwf.dispatch(text, [[<param\s+([^>]*?)/>]], "live2d.param", "\$1")
-  text = pwf.dispatch(text, [[<motion\s+([^>]*?)/>]], "live2d.motion", "\$1")
-  text = pwf.dispatch(text, [[<expression\s+([^>]*?)/>]], "live2d.expression", "\$1")
-  text = pwf.dispatch(text, [[<emotion\s+([^>]*?)/>]], "live2d.emotion", "\$1")
-  text = pwf.dispatch(text, [[<wait\s+([^>]*?)/>]], "live2d.wait", "\$1")
-  text = pwf.dispatch(text, [[<preset\s+([^>]*?)/>]], "live2d.preset", "\$1")
-  text = pwf.dispatch(text, [[<reset\s*([^>]*?)/>]], "live2d.reset", "\$1")
-  text = pwf.dispatch(text, [[<move\s+([^>]*?)/>]], "overlay.move", "\$1")
+  text = dispatch_remove(text, "<param%s+([^>]-)/>", live2d_param_from_payload)
+  text = dispatch_remove(text, "<motion%s+([^>]-)/>", live2d_motion_from_payload)
+  text = dispatch_remove(text, "<expression%s+([^>]-)/>", live2d_expression_from_payload)
+  text = dispatch_remove(text, "<emotion%s+([^>]-)/>", live2d_emotion_from_payload)
+  text = dispatch_remove(text, "<wait%s+([^>]-)/>", live2d_wait_from_payload)
+  text = dispatch_remove(text, "<preset%s+([^>]-)/>", live2d_preset_from_payload)
+  text = dispatch_remove(text, "<reset%s*([^>]-)/>", live2d_reset_from_payload)
+  text = dispatch_remove(text, "<move%s+([^>]-)/>", overlay_move_from_payload)
 
-  text = pwf.dispatch(text, [[\[param:([^\]]+)\]]], "live2d.param", "\$1")
-  text = pwf.dispatch(text, [[\[motion:([^\]]+)\]]], "live2d.motion", "\$1")
-  text = pwf.dispatch(text, [[\[expression:([^\]]+)\]]], "live2d.expression", "\$1")
-  text = pwf.dispatch(text, [[\[emotion:([^\]]+)\]]], "live2d.emotion", "\$1")
-  text = pwf.dispatch(text, [[\[wait:([^\]]+)\]]], "live2d.wait", "\$1")
-  text = pwf.dispatch(text, [[\[preset:([^\]]+)\]]], "live2d.preset", "\$1")
-  text = pwf.dispatch(text, [[\[reset\]]], "live2d.reset", "")
-  text = pwf.dispatch(text, [[\[img_move:([^\]]+)\]]], "overlay.move", "\$1")
-  text = pwf.dispatch(text, [[\[img_emotion:([^\]]+)\]]], "overlay.emotion", "\$1")
+  text = dispatch_remove(text, "%[param:([^%]]+)%]", live2d_param_from_payload)
+  text = dispatch_remove(text, "%[motion:([^%]]+)%]", live2d_motion_from_payload)
+  text = dispatch_remove(text, "%[expression:([^%]]+)%]", live2d_expression_from_payload)
+  text = dispatch_remove(text, "%[emotion:([^%]]+)%]", live2d_emotion_from_payload)
+  text = dispatch_remove(text, "%[wait:([^%]]+)%]", live2d_wait_from_payload)
+  text = dispatch_remove(text, "%[preset:([^%]]+)%]", live2d_preset_from_payload)
+  text = dispatch_remove(text, "%[reset%]", function(_) live2d.reset() end)
+  text = dispatch_remove(text, "%[img_move:([^%]]+)%]", overlay_move_from_payload)
+  text = dispatch_remove(text, "%[img_emotion:([^%]]+)%]", overlay_emotion_from_payload)
 
-  text = pwf.gsub(text, [[</?live2d>]], "")
-  text = pwf.gsub(text, [[</?overlay>]], "")
+  text = text:gsub("<live2d>", "")
+  text = text:gsub("</live2d>", "")
+  text = text:gsub("<overlay>", "")
+  text = text:gsub("</overlay>", "")
   return text
 end
 
