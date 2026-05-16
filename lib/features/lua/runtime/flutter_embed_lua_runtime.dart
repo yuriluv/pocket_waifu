@@ -79,10 +79,16 @@ class FlutterEmbedLuaRuntime implements RealLuaRuntime {
     _luaLive2DResetCallback,
     0,
   );
+  static final Pointer<NativeFunction<_LuaHostCallback>>
+  _screenshotCaptureCallbackPtr = Pointer.fromFunction<_LuaHostCallback>(
+    _luaScreenshotCaptureCallback,
+    0,
+  );
 
   static const String _luaHostPrelude = '''
 overlay = overlay or {}
 live2d = live2d or {}
+screenshot = screenshot or {}
 
 function overlay.move(x, y, op, durationMs)
   if type(x) == "table" then
@@ -162,6 +168,19 @@ function live2d.reset(durationMs)
     return __pwf_live2d_reset(args.durationMs or args.duration or args.dur)
   end
   return __pwf_live2d_reset(durationMs)
+end
+
+function screenshot.capture(mode, maxWidth, maxHeight, quality)
+  if type(mode) == "table" then
+    local args = mode
+    return __pwf_screenshot_capture(
+      args.mode,
+      args.maxWidth or args.width,
+      args.maxHeight or args.height,
+      args.quality
+    )
+  end
+  return __pwf_screenshot_capture(mode, maxWidth, maxHeight, quality)
 end
 ''';
 
@@ -357,6 +376,10 @@ end
     runtime.registerFunction('__pwf_live2d_wait', _live2dWaitCallbackPtr);
     runtime.registerFunction('__pwf_live2d_preset', _live2dPresetCallbackPtr);
     runtime.registerFunction('__pwf_live2d_reset', _live2dResetCallbackPtr);
+    runtime.registerFunction(
+      '__pwf_screenshot_capture',
+      _screenshotCaptureCallbackPtr,
+    );
     _hostFunctionsRegistered = true;
   }
 
@@ -595,6 +618,19 @@ end
     );
   }
 
+  void _enqueueScreenshotCapture(Pointer<lua_State> state) {
+    final mode = _parseScreenshotMode(_readStringArg(state, 1));
+    _queueAction(
+      LuaScreenshotCaptureAction(
+        context: _buildActionContext('screenshot.capture'),
+        mode: mode,
+        maxWidth: _positiveIntOrNull(_readIntArg(state, 2)),
+        maxHeight: _positiveIntOrNull(_readIntArg(state, 3)),
+        quality: _positiveIntOrNull(_readIntArg(state, 4)),
+      ),
+    );
+  }
+
   int _argCount(Pointer<lua_State> state) {
     return LuaRuntime.lua.lua_gettop(state);
   }
@@ -654,6 +690,24 @@ end
     };
   }
 
+  LuaHostScreenshotMode _parseScreenshotMode(String? raw) {
+    final normalized = raw?.trim().toLowerCase();
+    return switch (normalized) {
+      'include' ||
+      'includeoverlays' ||
+      'include_overlays' ||
+      'include-overlays' => LuaHostScreenshotMode.includeOverlays,
+      _ => LuaHostScreenshotMode.excludeOverlays,
+    };
+  }
+
+  int? _positiveIntOrNull(int? value) {
+    if (value == null || value <= 0) {
+      return null;
+    }
+    return value;
+  }
+
   static FlutterEmbedLuaRuntime? _forState(Pointer<lua_State> state) {
     return _runtimeByStateAddress[state.address];
   }
@@ -705,6 +759,11 @@ end
 
   static int _luaLive2DResetCallback(Pointer<lua_State> state) {
     _forState(state)?._enqueueLive2DReset(state);
+    return 0;
+  }
+
+  static int _luaScreenshotCaptureCallback(Pointer<lua_State> state) {
+    _forState(state)?._enqueueScreenshotCapture(state);
     return 0;
   }
 

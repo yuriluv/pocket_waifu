@@ -1,18 +1,23 @@
 import '../../image_overlay/services/image_overlay_directive_service.dart';
 import '../../live2d_llm/services/live2d_directive_service.dart';
+import '../../../models/screen_share_settings.dart';
+import '../../../services/unified_capture_service.dart';
 import 'lua_host_api.dart';
 
 class DirectiveLuaHostApi implements LuaHostApi {
   DirectiveLuaHostApi({
     Live2DDirectiveService? live2dDirectiveService,
     ImageOverlayDirectiveService? imageOverlayDirectiveService,
+    UnifiedCaptureService? captureService,
   }) : _live2dDirectiveService =
            live2dDirectiveService ?? Live2DDirectiveService.instance,
-       _imageOverlayDirectiveService =
-           imageOverlayDirectiveService ?? ImageOverlayDirectiveService.instance;
+        _imageOverlayDirectiveService =
+            imageOverlayDirectiveService ?? ImageOverlayDirectiveService.instance,
+        _captureService = captureService ?? UnifiedCaptureService();
 
   final Live2DDirectiveService _live2dDirectiveService;
   final ImageOverlayDirectiveService _imageOverlayDirectiveService;
+  final UnifiedCaptureService _captureService;
 
   @override
   Future<LuaHostCallResult<Object?>> invoke(LuaHostAction action) async {
@@ -105,6 +110,58 @@ class DirectiveLuaHostApi implements LuaHostApi {
         return _success(action);
       }
 
+      if (action is LuaScreenshotCaptureAction) {
+        final screenshotMode = _screenshotMode(action.mode);
+        final maxResolution = _maxResolution(action);
+        final capture = await _captureService.capture(
+          ScreenShareSettings(
+            screenshotMode: screenshotMode,
+            maxResolution: maxResolution,
+          ),
+        );
+
+        if (capture == null) {
+          return LuaHostCallResult<Object?>(
+            status: LuaHostCallStatus.unavailable,
+            errorCode: 'capture_unavailable',
+            message: 'Screenshot capture returned no image.',
+            metadata: <String, Object?>{
+              ..._baseMetadata(action),
+              'screenshotMode': screenshotMode.name,
+              'maxResolution': maxResolution,
+              if (action.maxWidth != null) 'requestedMaxWidth': action.maxWidth,
+              if (action.maxHeight != null)
+                'requestedMaxHeight': action.maxHeight,
+              if (action.quality != null) 'requestedQuality': action.quality,
+            },
+          );
+        }
+
+        final capturedImage = LuaCapturedImage(
+          base64: capture.base64Data,
+          mimeType: capture.mimeType,
+          width: capture.width,
+          height: capture.height,
+        );
+
+        return LuaHostCallResult<Object?>(
+          status: LuaHostCallStatus.success,
+          value: capturedImage,
+          metadata: <String, Object?>{
+            ..._baseMetadata(action),
+            'screenshotMode': screenshotMode.name,
+            'maxResolution': maxResolution,
+            'width': capturedImage.width,
+            'height': capturedImage.height,
+            'mimeType': capturedImage.mimeType,
+            if (action.maxWidth != null) 'requestedMaxWidth': action.maxWidth,
+            if (action.maxHeight != null)
+              'requestedMaxHeight': action.maxHeight,
+            if (action.quality != null) 'requestedQuality': action.quality,
+          },
+        );
+      }
+
       if (action.domain == LuaHostDomain.overlay ||
           action.domain == LuaHostDomain.live2d) {
         return LuaHostCallResult<Object?>(
@@ -195,5 +252,29 @@ class DirectiveLuaHostApi implements LuaHostApi {
       LuaHostNumericOperation.del => 'del',
       LuaHostNumericOperation.multiply => 'mul',
     };
+  }
+
+  ScreenshotMode _screenshotMode(LuaHostScreenshotMode mode) {
+    return switch (mode) {
+      LuaHostScreenshotMode.includeOverlays => ScreenshotMode.includeOverlays,
+      LuaHostScreenshotMode.excludeOverlays => ScreenshotMode.excludeOverlays,
+    };
+  }
+
+  int _maxResolution(LuaScreenshotCaptureAction action) {
+    final bounds = <int>[];
+    final width = action.maxWidth;
+    final height = action.maxHeight;
+    if (width != null && width > 0) {
+      bounds.add(width);
+    }
+    if (height != null && height > 0) {
+      bounds.add(height);
+    }
+    if (bounds.isEmpty) {
+      return const ScreenShareSettings().maxResolution;
+    }
+    bounds.sort();
+    return bounds.first;
   }
 }
