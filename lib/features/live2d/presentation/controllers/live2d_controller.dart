@@ -96,6 +96,32 @@ class Live2DController extends ChangeNotifier {
 
       _storageService.restoreFromSettings(_settings);
 
+      if (!_storageService.hasFolderSelected) {
+        final bootstrapResult =
+            await _storageService.bootstrapDefaultModelRootIfNeeded();
+        if (bootstrapResult.bootstrapped &&
+            bootstrapResult.rootFolderPath != null) {
+          _settings = _settings.copyWith(
+            dataFolderPath: bootstrapResult.rootFolderPath,
+            dataFolderUri: bootstrapResult.rootFolderPath,
+            selectedModelPath: bootstrapResult.defaultModelRelativePath,
+            selectedModelId: null,
+          );
+          await _settings.save();
+          live2dLog.info(
+            _tag,
+            '기본 모델 루트 자동 설정 완료',
+            details: bootstrapResult.rootFolderPath,
+          );
+        } else if (bootstrapResult.failure != null) {
+          live2dLog.warning(
+            _tag,
+            '기본 모델 부트스트랩 실패 - 수동 폴더 선택으로 복구 가능',
+            details: '${bootstrapResult.failure}: ${bootstrapResult.details}',
+          );
+        }
+      }
+
       _nativeBridge.setStateSyncCallback(_handleNativeStateSync);
       await _gestureMotionMapper.initialize();
 
@@ -130,6 +156,14 @@ class Live2DController extends ChangeNotifier {
               await _settings.save();
               live2dLog.info(_tag, '선택 모델 식별자 마이그레이션 완료', details: model.id);
             }
+          } else if (_repository.models.isNotEmpty) {
+            final fallbackModel = _repository.models.first;
+            _settings = _settings.copyWith(
+              selectedModelId: fallbackModel.id,
+              selectedModelPath: fallbackModel.relativePath,
+            );
+            await _settings.save();
+            live2dLog.info(_tag, '기본 모델 자동 선택 완료', details: fallbackModel.id);
           }
         }
       }

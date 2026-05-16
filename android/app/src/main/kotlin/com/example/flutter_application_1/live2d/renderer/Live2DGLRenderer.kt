@@ -35,6 +35,38 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
         private const val TAG = "Live2DGLRenderer"
         private const val DEFAULT_FPS = 60
         private const val LOW_POWER_FPS = 30
+        private val MOTION_NAME_WITH_INDEX = Regex("^(.+?)[_:](\\d+)$")
+
+        internal data class MotionDispatch(
+            val group: String,
+            val index: Int,
+            val fallbackMotionName: String
+        )
+
+        internal fun buildMotionDispatch(group: String, index: Int): MotionDispatch {
+            val normalizedGroup = group
+            val normalizedIndex = index.coerceAtLeast(0)
+            val fallbackMotionName = if (normalizedIndex > 0) {
+                "$normalizedGroup:$normalizedIndex"
+            } else {
+                normalizedGroup
+            }
+            return MotionDispatch(
+                group = normalizedGroup,
+                index = normalizedIndex,
+                fallbackMotionName = fallbackMotionName
+            )
+        }
+
+        internal fun parseMotionName(motionName: String): MotionDispatch {
+            val match = MOTION_NAME_WITH_INDEX.matchEntire(motionName)
+            if (match == null) {
+                return buildMotionDispatch(motionName, 0)
+            }
+            val group = match.groupValues[1]
+            val index = match.groupValues[2].toIntOrNull() ?: 0
+            return buildMotionDispatch(group, index)
+        }
         
         // ========== FBO Alpha Fix Shader ==========
         
@@ -491,15 +523,18 @@ class Live2DGLRenderer(private val context: Context) : GLSurfaceView.Renderer {
     
     /**
      */
-    fun playMotion(motionName: String, loop: Boolean): Boolean {
+    fun playMotion(group: String, index: Int, loop: Boolean): Boolean {
+        val dispatch = buildMotionDispatch(group, index)
         cubismModel?.let { model ->
-            val parts = motionName.split(":")
-            val group = parts[0]
-            val index = parts.getOrNull(1)?.toIntOrNull() ?: 0
             val priority = if (loop) CubismModel.PRIORITY_IDLE else CubismModel.PRIORITY_NORMAL
-            return model.playMotion(group, index, priority)
+            return model.playMotion(dispatch.group, dispatch.index, priority)
         }
-        return currentModel?.playMotion(motionName, loop) ?: false
+        return currentModel?.playMotion(dispatch.fallbackMotionName, loop) ?: false
+    }
+
+    fun playMotion(motionName: String, loop: Boolean): Boolean {
+        val dispatch = parseMotionName(motionName)
+        return playMotion(dispatch.group, dispatch.index, loop)
     }
     
     /**

@@ -4,9 +4,12 @@
 // ============================================================================
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../domain/entities/interaction_event.dart';
 import 'live2d_log_service.dart';
+
+enum Live2DRuntimeReadinessState { unknown, waiting, ready, degraded }
 
 ///
 class Live2DNativeBridge {
@@ -26,9 +29,24 @@ class Live2DNativeBridge {
   StreamSubscription? _eventSubscription;
 
   final List<InteractionHandler> _eventHandlers = [];
+  final List<void Function(Map<String, dynamic>)> _stateSyncListeners = [];
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
+
+  static const Duration _runtimeReadyTimeout = Duration(seconds: 2);
+
+  Live2DRuntimeReadinessState _runtimeReadinessState =
+      Live2DRuntimeReadinessState.unknown;
+  Live2DRuntimeReadinessState get runtimeReadinessState =>
+      _runtimeReadinessState;
+
+  String? _runtimeReadinessMessage;
+  String? get runtimeReadinessMessage => _runtimeReadinessMessage;
+
+  Map<String, dynamic>? _lastStateSync;
+  Completer<bool>? _runtimeReadyCompleter;
+  Timer? _runtimeReadyTimer;
 
   Stream<InteractionEvent> get eventStream =>
       _eventChannel.receiveBroadcastStream().map((event) {
@@ -96,6 +114,7 @@ class Live2DNativeBridge {
 
   ///
   void _handleStateSync(Map<String, dynamic> data) {
+    _lastStateSync = data;
     final isRunning = data['isRunning'] as bool? ?? false;
     final modelLoaded = data['modelLoaded'] as bool? ?? false;
     final uptimeMs = data['uptimeMs'] as int? ?? 0;
@@ -108,6 +127,17 @@ class Live2DNativeBridge {
     );
 
     _stateSyncCallback?.call(data);
+    for (final listener in List<void Function(Map<String, dynamic>)>.from(
+      _stateSyncListeners,
+    )) {
+      listener(data);
+    }
+
+    if (isRunning && modelLoaded) {
+      _markRuntimeReady(
+        'Runtime parameter gate opened via stateSync event.',
+      );
+    }
   }
 
   void Function(Map<String, dynamic>)? _stateSyncCallback;
@@ -116,6 +146,96 @@ class Live2DNativeBridge {
   ///
   void setStateSyncCallback(void Function(Map<String, dynamic>)? callback) {
     _stateSyncCallback = callback;
+  }
+
+  void addStateSyncListener(void Function(Map<String, dynamic>) listener) {
+    _stateSyncListeners.add(listener);
+  }
+
+  void removeStateSyncListener(void Function(Map<String, dynamic>) listener) {
+    _stateSyncListeners.remove(listener);
+  }
+
+  Future<bool> waitForRuntimeModelReady({Duration? timeout}) async {
+    if (_runtimeReadinessState == Live2DRuntimeReadinessState.ready) {
+      return true;
+    }
+
+    if (_runtimeReadinessState == Live2DRuntimeReadinessState.degraded) {
+      return false;
+    }
+
+    final lastSync = _lastStateSync;
+    if (lastSync != null) {
+      final isRunning = lastSync['isRunning'] as bool? ?? false;
+      final modelLoaded = lastSync['modelLoaded'] as bool? ?? false;
+      if (isRunning && modelLoaded) {
+        _markRuntimeReady('Runtime parameter gate opened from cached stateSync.');
+        return true;
+      }
+    }
+
+    final isReadyFromHealth = await _probeRuntimeReadinessFromHealth();
+    if (isReadyFromHealth) {
+      _markRuntimeReady('Runtime parameter gate opened via health probe.');
+      return true;
+    }
+
+    final existing = _runtimeReadyCompleter;
+    if (existing != null) {
+      return existing.future;
+    }
+
+    final completer = Completer<bool>();
+    _runtimeReadyCompleter = completer;
+    _runtimeReadinessState = Live2DRuntimeReadinessState.waiting;
+    _runtimeReadinessMessage =
+        'Waiting for model-ready state (isRunning && modelLoaded).';
+
+    final deadline = timeout ?? _runtimeReadyTimeout;
+    _runtimeReadyTimer?.cancel();
+    _runtimeReadyTimer = Timer(deadline, () {
+      if (completer.isCompleted) {
+        return;
+      }
+      _runtimeReadinessState = Live2DRuntimeReadinessState.degraded;
+      _runtimeReadinessMessage =
+          'Timed out waiting for model-ready state after ${deadline.inMilliseconds}ms.';
+      completer.complete(false);
+      _runtimeReadyCompleter = null;
+    });
+
+    return completer.future;
+  }
+
+  Future<bool> _probeRuntimeReadinessFromHealth() async {
+    try {
+      final health = await getHealthStatus();
+      final service = health['service'];
+      if (service is! Map) {
+        return false;
+      }
+      final map = Map<String, dynamic>.from(service as Map);
+      final isRunning = map['isRunning'] as bool? ?? false;
+      final currentModel = map['currentModel'];
+      final hasModel = currentModel != null;
+      return isRunning && hasModel;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _markRuntimeReady(String details) {
+    _runtimeReadinessState = Live2DRuntimeReadinessState.ready;
+    _runtimeReadinessMessage = 'Model-ready state confirmed.';
+    final completer = _runtimeReadyCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(true);
+      _runtimeReadyCompleter = null;
+    }
+    _runtimeReadyTimer?.cancel();
+    _runtimeReadyTimer = null;
+    live2dLog.debug(_tag, 'Runtime readiness gate opened', details: details);
   }
 
   /// Newcastle notification/session sync contract callback.
@@ -129,10 +249,26 @@ class Live2DNativeBridge {
     _eventSubscription?.cancel();
     _eventSubscription = null;
     _eventHandlers.clear();
+    _stateSyncListeners.clear();
     _stateSyncCallback = null;
     _notificationContractCallback = null;
+    _lastStateSync = null;
+    _runtimeReadinessState = Live2DRuntimeReadinessState.unknown;
+    _runtimeReadinessMessage = null;
+    final pending = _runtimeReadyCompleter;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(false);
+    }
+    _runtimeReadyCompleter = null;
+    _runtimeReadyTimer?.cancel();
+    _runtimeReadyTimer = null;
     _isInitialized = false;
     live2dLog.info(_tag, '네이티브 브릿지 정리됨');
+  }
+
+  @visibleForTesting
+  void debugHandleStateSync(Map<String, dynamic> data) {
+    _handleStateSync(data);
   }
 
   // ============================================================================
@@ -550,6 +686,15 @@ class Live2DNativeBridge {
     double value, {
     int durationMs = 200,
   }) async {
+    final ready = await waitForRuntimeModelReady();
+    if (!ready) {
+      live2dLog.warning(
+        _tag,
+        'setParameter blocked by runtime readiness gate',
+        details: runtimeReadinessMessage,
+      );
+      return false;
+    }
     try {
       final result = await _methodChannel.invokeMethod<bool>('setParameter', {
         'id': paramId,
@@ -566,6 +711,15 @@ class Live2DNativeBridge {
   }
 
   Future<double?> getParameter(String paramId) async {
+    final ready = await waitForRuntimeModelReady();
+    if (!ready) {
+      live2dLog.warning(
+        _tag,
+        'getParameter blocked by runtime readiness gate',
+        details: runtimeReadinessMessage,
+      );
+      return null;
+    }
     try {
       final result = await _methodChannel.invokeMethod<double>('getParameter', {
         'id': paramId,

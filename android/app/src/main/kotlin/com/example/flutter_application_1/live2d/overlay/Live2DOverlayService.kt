@@ -605,26 +605,26 @@ class Live2DOverlayService : Service() {
     private fun handleGesture(gestureType: GestureType) {
         when (gestureType) {
             GestureType.TAP -> {
-                glSurfaceView?.playMotion("tap", false)
+                glSurfaceView?.playMotion("tap", 0, false)
             }
             GestureType.DOUBLE_TAP -> {
                 setRandomExpression()
             }
             GestureType.LONG_PRESS -> {
-                glSurfaceView?.playMotion("special", false)
+                glSurfaceView?.playMotion("special", 0, false)
             }
             GestureType.HEAD_PAT -> {
                 glSurfaceView?.setExpression("happy")
-                glSurfaceView?.playMotion("happy", false)
+                glSurfaceView?.playMotion("happy", 0, false)
             }
             GestureType.POKE -> {
                 glSurfaceView?.setExpression("surprised")
             }
             GestureType.SWIPE_UP -> {
-                glSurfaceView?.playMotion("greet", false)
+                glSurfaceView?.playMotion("greet", 0, false)
             }
             GestureType.SWIPE_DOWN -> {
-                glSurfaceView?.playMotion("bow", false)
+                glSurfaceView?.playMotion("bow", 0, false)
             }
             else -> {
             }
@@ -667,9 +667,8 @@ class Live2DOverlayService : Service() {
         Live2DLogger.Model.d("모션 재생 요청", "$group[$index], priority=$priority")
         
         glSurfaceView?.let { gl ->
-            val motionName = if (index > 0) "${group}_$index" else group
             val loop = (priority <= 1)
-            gl.playMotion(motionName, loop)
+            gl.playMotion(group, index, loop)
         }
     }
     

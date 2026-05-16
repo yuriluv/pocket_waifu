@@ -9,6 +9,43 @@ import '../models/gesture_motion_mapping.dart';
 import '../models/live2d_parameter_preset.dart';
 import '../models/parameter_alias_map.dart';
 
+class PresetResolutionWarning {
+  const PresetResolutionWarning({
+    required this.presetId,
+    required this.unknownParameterIds,
+  });
+
+  final String presetId;
+  final List<String> unknownParameterIds;
+
+  Map<String, Object> toMetadata() {
+    return <String, Object>{
+      'presetId': presetId,
+      'unknownParameterIds': unknownParameterIds,
+    };
+  }
+}
+
+class PresetResolutionResult {
+  const PresetResolutionResult({
+    required this.preset,
+    this.warning,
+  });
+
+  final Live2DParameterPreset preset;
+  final PresetResolutionWarning? warning;
+}
+
+class ParameterPresetLoadResult {
+  const ParameterPresetLoadResult({
+    required this.presets,
+    required this.warnings,
+  });
+
+  final List<Live2DParameterPreset> presets;
+  final List<PresetResolutionWarning> warnings;
+}
+
 class Live2DSettingsRepository {
   Live2DSettingsRepository._internal();
 
@@ -131,6 +168,72 @@ class Live2DSettingsRepository {
         .whereType<Map>()
         .map((e) => Live2DParameterPreset.fromJson(Map<String, dynamic>.from(e)))
         .toList(growable: false);
+  }
+
+  Future<ParameterPresetLoadResult> loadParameterPresetsResolved(
+    String modelPath, {
+    required Set<String> resolvedParameterIds,
+    ParameterAliasMap? aliases,
+  }) async {
+    final presets = await loadParameterPresets(modelPath);
+    final resolved = <Live2DParameterPreset>[];
+    final warnings = <PresetResolutionWarning>[];
+    for (final preset in presets) {
+      final result = resolvePresetAgainstResolvedIds(
+        preset,
+        resolvedParameterIds: resolvedParameterIds,
+        aliases: aliases,
+      );
+      resolved.add(result.preset);
+      if (result.warning != null) {
+        warnings.add(result.warning!);
+      }
+    }
+    return ParameterPresetLoadResult(
+      presets: resolved,
+      warnings: warnings,
+    );
+  }
+
+  PresetResolutionResult resolvePresetAgainstResolvedIds(
+    Live2DParameterPreset preset, {
+    required Set<String> resolvedParameterIds,
+    ParameterAliasMap? aliases,
+  }) {
+    final normalized = <String, double>{};
+    final unknownIds = <String>{};
+
+    final directMatches = <String, double>{};
+    final aliasMatches = <String, double>{};
+
+    for (final entry in preset.overrides.entries) {
+      final id = entry.key;
+      if (resolvedParameterIds.contains(id)) {
+        directMatches[id] = entry.value;
+        continue;
+      }
+      final resolved = aliases?.aliasToReal[id];
+      if (resolved != null && resolvedParameterIds.contains(resolved)) {
+        aliasMatches[resolved] = entry.value;
+      } else {
+        unknownIds.add(id);
+      }
+    }
+
+    normalized.addAll(aliasMatches);
+    normalized.addAll(directMatches);
+
+    final warning = unknownIds.isEmpty
+        ? null
+        : PresetResolutionWarning(
+            presetId: preset.id,
+            unknownParameterIds: unknownIds.toList(growable: false)..sort(),
+          );
+
+    return PresetResolutionResult(
+      preset: preset.copyWith(overrides: normalized),
+      warning: warning,
+    );
   }
 
   Future<void> saveParameterPresets(

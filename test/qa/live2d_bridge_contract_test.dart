@@ -68,5 +68,28 @@ void main() {
 
       expect(modelInfo, isEmpty);
     });
+
+    test('getModelInfo preserves motionGroups list schema payload', () async {
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'getModelInfo') {
+          return {
+            'motionGroups': {
+              'Idle': ['idle_01.motion3.json', 'idle_02.motion3.json'],
+              'TapBody': ['tap_01.motion3.json'],
+            },
+            'expressions': ['happy', 'angry'],
+          };
+        }
+        return null;
+      });
+
+      final modelInfo = await bridge.getModelInfo();
+
+      expect(modelInfo['motionGroups'], {
+        'Idle': ['idle_01.motion3.json', 'idle_02.motion3.json'],
+        'TapBody': ['tap_01.motion3.json'],
+      });
+      expect(modelInfo['expressions'], ['happy', 'angry']);
+    });
   });
 }

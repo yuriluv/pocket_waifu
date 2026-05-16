@@ -46,6 +46,28 @@ void main() {
       },
     );
 
+    test('non-zero motion index is forwarded without translation', () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        if (call.method == 'playMotion') {
+          return true;
+        }
+        return null;
+      });
+
+      final played = await bridge.playMotion('tap', 2, priority: 3);
+
+      expect(played, isTrue);
+      expect(calls, hasLength(1));
+      expect(calls.single.method, 'playMotion');
+      expect(calls.single.arguments, {
+        'group': 'tap',
+        'index': 2,
+        'priority': 3,
+      });
+    });
+
     test(
       'empty motion inventory reports zero groups and zero count',
       () async {

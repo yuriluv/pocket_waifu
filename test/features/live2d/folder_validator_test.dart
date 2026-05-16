@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_application_1/features/live2d/data/repositories/live2d_repository.dart';
 import 'package:flutter_application_1/features/live2d/utils/folder_validator.dart';
 
 void main() {
@@ -41,6 +42,21 @@ void main() {
       
       expect(result, FolderValidationResult.valid);
       expect(count, 2);
+    });
+
+    test('validates bundled archetype fixture path', () async {
+      final repository = Live2DRepository();
+      repository.clearCache();
+      final artifactsPath =
+          '${Directory.current.path}/artifacts/live2d/archetypes';
+
+      final (result, count) = await FolderValidator.validate(
+        artifactsPath,
+        repository.scanModels,
+      );
+
+      expect(result, FolderValidationResult.valid);
+      expect(count, greaterThanOrEqualTo(3));
     });
     
     test('returns permissionDenied when scan throws exception', () async {

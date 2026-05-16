@@ -13,6 +13,61 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import com.example.flutter_application_1.live2d.overlay.Live2DOverlayService
 
+internal object Live2DModelInfoDecoder {
+    fun decodeMotionGroups(raw: Any?): Map<String, List<String>> {
+        if (raw == null) {
+            return emptyMap()
+        }
+        val motionGroups = raw as? Map<*, *>
+            ?: throw IllegalArgumentException("motionGroups must be a map")
+
+        return buildMap {
+            for ((rawGroup, rawMotions) in motionGroups) {
+                val group = rawGroup as? String
+                    ?: throw IllegalArgumentException("motionGroups key must be a string")
+                put(group, decodeMotionNames(group, rawMotions))
+            }
+        }
+    }
+
+    fun decodeStringList(raw: Any?, fieldName: String): List<String> {
+        if (raw == null) {
+            return emptyList()
+        }
+        val values = raw as? List<*>
+            ?: throw IllegalArgumentException("$fieldName must be a list")
+        return values.mapIndexed { index, value ->
+            value as? String
+                ?: throw IllegalArgumentException("$fieldName[$index] must be a string")
+        }
+    }
+
+    private fun decodeMotionNames(group: String, rawMotions: Any?): List<String> {
+        if (rawMotions == null) {
+            return emptyList()
+        }
+
+        val names = rawMotions as? List<*>
+        if (names != null) {
+            return names.mapIndexed { index, value ->
+                value as? String
+                    ?: throw IllegalArgumentException("motionGroups[$group][$index] must be a string")
+            }
+        }
+
+        val legacyCount = rawMotions as? Number
+        if (legacyCount != null) {
+            val count = legacyCount.toInt()
+            if (count < 0) {
+                throw IllegalArgumentException("motionGroups[$group] count must be non-negative")
+            }
+            return List(count) { index -> "$group:$index" }
+        }
+
+        throw IllegalArgumentException("motionGroups[$group] must be list or number")
+    }
+}
+
 /**
  * Live2D Method Handler
  * 
@@ -658,9 +713,8 @@ class Live2DMethodHandler(
         try {
             val modelInfo = Live2DOverlayService.currentModelInfo
             if (modelInfo != null) {
-                @Suppress("UNCHECKED_CAST")
-                val motionGroups = modelInfo["motionGroups"] as? Map<String, List<String>>
-                result.success(motionGroups?.keys?.toList() ?: emptyList<String>())
+                val motionGroups = Live2DModelInfoDecoder.decodeMotionGroups(modelInfo["motionGroups"])
+                result.success(motionGroups.keys.toList())
             } else {
                 result.success(emptyList<String>())
             }
@@ -676,9 +730,8 @@ class Live2DMethodHandler(
         try {
             val modelInfo = Live2DOverlayService.currentModelInfo
             if (modelInfo != null) {
-                @Suppress("UNCHECKED_CAST")
-                val motionGroups = modelInfo["motionGroups"] as? Map<String, List<String>>
-                val count = motionGroups?.get(group)?.size ?: 0
+                val motionGroups = Live2DModelInfoDecoder.decodeMotionGroups(modelInfo["motionGroups"])
+                val count = motionGroups[group]?.size ?: 0
                 result.success(count)
             } else {
                 result.success(0)
@@ -694,9 +747,8 @@ class Live2DMethodHandler(
         try {
             val modelInfo = Live2DOverlayService.currentModelInfo
             if (modelInfo != null) {
-                @Suppress("UNCHECKED_CAST")
-                val motionGroups = modelInfo["motionGroups"] as? Map<String, List<String>>
-                val names = motionGroups?.get(group) ?: emptyList()
+                val motionGroups = Live2DModelInfoDecoder.decodeMotionGroups(modelInfo["motionGroups"])
+                val names = motionGroups[group] ?: emptyList()
                 result.success(names)
             } else {
                 result.success(emptyList<String>())
@@ -711,9 +763,11 @@ class Live2DMethodHandler(
         try {
             val modelInfo = Live2DOverlayService.currentModelInfo
             if (modelInfo != null) {
-                @Suppress("UNCHECKED_CAST")
-                val expressions = modelInfo["expressions"] as? List<String>
-                result.success(expressions ?: emptyList<String>())
+                val expressions = Live2DModelInfoDecoder.decodeStringList(
+                    modelInfo["expressions"],
+                    "expressions"
+                )
+                result.success(expressions)
             } else {
                 result.success(emptyList<String>())
             }

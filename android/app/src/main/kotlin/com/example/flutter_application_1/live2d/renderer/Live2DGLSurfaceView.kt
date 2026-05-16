@@ -97,6 +97,21 @@ class Live2DGLSurfaceView : GLSurfaceView {
     
     /**
      */
+    fun playMotion(group: String, index: Int, loop: Boolean = false): Boolean {
+        val r = renderer ?: return false
+        val latch = CountDownLatch(1)
+        var result = false
+        queueEvent {
+            try {
+                result = r.playMotion(group, index, loop)
+            } finally {
+                latch.countDown()
+            }
+        }
+        latch.await(1, TimeUnit.SECONDS)
+        return result
+    }
+
     fun playMotion(motionName: String, loop: Boolean = false): Boolean {
         val r = renderer ?: return false
         val latch = CountDownLatch(1)

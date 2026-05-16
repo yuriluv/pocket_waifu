@@ -5,11 +5,13 @@ import '../../data/models/auto_motion_config.dart';
 import '../../data/models/gesture_motion_mapping.dart';
 import '../../data/models/live2d_parameter_preset.dart';
 import '../../data/models/model3_data.dart';
+import '../../data/models/resolved_model.dart';
 import '../../data/repositories/live2d_settings_repository.dart';
 import '../../data/services/auto_motion_service.dart';
 import '../../data/services/gesture_motion_mapper.dart';
 import '../../data/services/live2d_native_bridge.dart';
 import '../../data/services/model3_json_parser.dart';
+import '../../data/services/resolved_model_service.dart';
 import '../../domain/entities/interaction_event.dart';
 import 'live2d_function_test_screen.dart';
 
@@ -17,9 +19,13 @@ class Live2DAdvancedSettingsScreen extends StatefulWidget {
   const Live2DAdvancedSettingsScreen({
     super.key,
     required this.model3Path,
+    this.parser,
+    this.resolvedModelService,
   });
 
   final String? model3Path;
+  final Model3JsonParser? parser;
+  final ResolvedModelService? resolvedModelService;
 
   @override
   State<Live2DAdvancedSettingsScreen> createState() =>
@@ -30,13 +36,17 @@ class _Live2DAdvancedSettingsScreenState
     extends State<Live2DAdvancedSettingsScreen>
     with TickerProviderStateMixin {
   late final TabController _tabController;
-  final Model3JsonParser _parser = Model3JsonParser();
-  Model3Data? _model3Data;
+  late final Model3JsonParser _parser;
+  late final ResolvedModelService _resolvedModelService;
+  ResolvedModel? _resolvedModel;
+  int _loadRequestVersion = 0;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _parser = widget.parser ?? Model3JsonParser();
+    _resolvedModelService = widget.resolvedModelService ?? ResolvedModelService();
     _tabController = TabController(length: 4, vsync: this);
     _loadModel3Data();
   }
@@ -56,12 +66,13 @@ class _Live2DAdvancedSettingsScreenState
   }
 
   Future<void> _loadModel3Data() async {
+    final requestVersion = ++_loadRequestVersion;
     final modelPath = widget.model3Path;
     if (modelPath == null || modelPath.isEmpty) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _model3Data = null;
+          _resolvedModel = null;
         });
       }
       return;
@@ -69,16 +80,18 @@ class _Live2DAdvancedSettingsScreenState
 
     setState(() {
       _isLoading = true;
+      _resolvedModel = null;
     });
 
     final parsed = await _parser.parseFile(modelPath);
-    if (!mounted) {
+    final resolved = await _resolvedModelService.resolve(parsed);
+    if (!mounted || requestVersion != _loadRequestVersion) {
       return;
     }
 
     setState(() {
       _isLoading = false;
-      _model3Data = parsed;
+      _resolvedModel = resolved;
     });
   }
 
@@ -147,21 +160,21 @@ class _Live2DAdvancedSettingsScreenState
                     ]
                   : [
                       _AutoMotionTab(
-                        model3Data: _model3Data,
+                        resolvedModel: _resolvedModel,
                         modelPath: modelPath,
                         isLoading: _isLoading,
                       ),
                       _GestureMappingTab(
-                        model3Data: _model3Data,
+                        resolvedModel: _resolvedModel,
                         modelPath: modelPath,
                         isLoading: _isLoading,
                       ),
                       _InteractionTestTab(
-                        model3Data: _model3Data,
+                        resolvedModel: _resolvedModel,
                         isLoading: _isLoading,
                       ),
                       _MotionParametersTab(
-                        model3Data: _model3Data,
+                        resolvedModel: _resolvedModel,
                         modelPath: modelPath,
                         isLoading: _isLoading,
                       ),
@@ -187,12 +200,12 @@ class _ComingSoonTabPlaceholder extends StatelessWidget {
 
 class _AutoMotionTab extends StatefulWidget {
   const _AutoMotionTab({
-    required this.model3Data,
+    required this.resolvedModel,
     required this.modelPath,
     required this.isLoading,
   });
 
-  final Model3Data? model3Data;
+  final ResolvedModel? resolvedModel;
   final String? modelPath;
   final bool isLoading;
 
@@ -215,8 +228,8 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
   @override
   void didUpdateWidget(covariant _AutoMotionTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.model3Data != widget.model3Data && widget.model3Data != null) {
-      _onModelChanged(widget.model3Data!);
+    if (oldWidget.resolvedModel != widget.resolvedModel && widget.resolvedModel != null) {
+      _onModelChanged(widget.resolvedModel!.toModel3Data());
     }
   }
 
@@ -242,7 +255,7 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
       _loadingConfig = false;
     });
 
-    final model3Data = widget.model3Data;
+    final model3Data = widget.resolvedModel?.toModel3Data();
     if (model3Data != null) {
       await _sanitizeConfigForModel(model3Data);
       if (_config.enabled) {
@@ -279,7 +292,7 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
   }
 
   Future<void> _updateConfig(AutoMotionConfig config) async {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     setState(() {
       _config = config;
     });
@@ -301,7 +314,7 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (widget.isLoading || _loadingConfig) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -422,12 +435,12 @@ class _AutoMotionTabState extends State<_AutoMotionTab> {
 
 class _GestureMappingTab extends StatefulWidget {
   const _GestureMappingTab({
-    required this.model3Data,
+    required this.resolvedModel,
     required this.modelPath,
     required this.isLoading,
   });
 
-  final Model3Data? model3Data;
+  final ResolvedModel? resolvedModel;
   final String? modelPath;
   final bool isLoading;
 
@@ -493,7 +506,7 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
   }
 
   Future<void> _addEntry(InteractionType gesture) async {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (data == null || data.motionGroups.isEmpty) {
       return;
     }
@@ -540,7 +553,7 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (data == null) {
       return const Center(child: Text('모델 데이터를 불러올 수 없습니다.'));
     }
@@ -786,11 +799,11 @@ class _GestureMappingTabState extends State<_GestureMappingTab> {
 
 class _InteractionTestTab extends StatefulWidget {
   const _InteractionTestTab({
-    required this.model3Data,
+    required this.resolvedModel,
     required this.isLoading,
   });
 
-  final Model3Data? model3Data;
+  final ResolvedModel? resolvedModel;
   final bool isLoading;
 
   @override
@@ -800,11 +813,12 @@ class _InteractionTestTab extends StatefulWidget {
 class _InteractionTestTabState extends State<_InteractionTestTab> {
   final Map<String, double> _currentValues = <String, double>{};
   final Live2DNativeBridge _bridge = Live2DNativeBridge();
+  String? _runtimeNotice;
 
   @override
   void didUpdateWidget(covariant _InteractionTestTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.model3Data != widget.model3Data) {
+    if (oldWidget.resolvedModel != widget.resolvedModel) {
       _initializeParameterValues();
     }
   }
@@ -816,7 +830,7 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
   }
 
   void _initializeParameterValues() {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (data == null) {
       return;
     }
@@ -836,6 +850,10 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
   }
 
   Future<void> _initializeFromNative() async {
+    final ready = await _ensureRuntimeReady();
+    if (!ready) {
+      return;
+    }
     try {
       final paramIds = await _bridge.getParameterIds();
       if (!mounted || paramIds.isEmpty) return;
@@ -855,6 +873,22 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     }
   }
 
+  Future<bool> _ensureRuntimeReady() async {
+    final ready = await _bridge.waitForRuntimeModelReady();
+    if (!mounted) {
+      return ready;
+    }
+    final message = ready
+        ? null
+        : (_bridge.runtimeReadinessMessage ?? 'Runtime model is not ready yet.');
+    if (message != _runtimeNotice) {
+      setState(() {
+        _runtimeNotice = message;
+      });
+    }
+    return ready;
+  }
+
   Future<void> _playMotion(String group, int index) async {
     await _bridge.playMotion(group, index);
   }
@@ -864,6 +898,10 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
   }
 
   Future<void> _setParameter(Model3Parameter parameter, double value) async {
+    final ready = await _ensureRuntimeReady();
+    if (!ready) {
+      return;
+    }
     await _bridge.setParameter(parameter.id, value);
     if (!mounted) {
       return;
@@ -874,6 +912,10 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
   }
 
   Future<void> _resetParameters(Model3Data data) async {
+    final ready = await _ensureRuntimeReady();
+    if (!ready) {
+      return;
+    }
     for (final parameter in data.parameters) {
       await _bridge.setParameter(parameter.id, parameter.defaultValue);
     }
@@ -889,7 +931,7 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -900,6 +942,11 @@ class _InteractionTestTabState extends State<_InteractionTestTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (_runtimeNotice != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _RuntimeReadinessNotice(message: _runtimeNotice!),
+          ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -1003,12 +1050,12 @@ enum _ParameterSortField { id, name, min, defaultValue, max, current }
 
 class _MotionParametersTab extends StatefulWidget {
   const _MotionParametersTab({
-    required this.model3Data,
+    required this.resolvedModel,
     required this.modelPath,
     required this.isLoading,
   });
 
-  final Model3Data? model3Data;
+  final ResolvedModel? resolvedModel;
   final String? modelPath;
   final bool isLoading;
 
@@ -1025,11 +1072,14 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
   final Map<String, double> _currentValues = <String, double>{};
   Map<String, bool> _motionEnabled = <String, bool>{};
   List<Live2DParameterPreset> _presets = <Live2DParameterPreset>[];
+  Map<String, PresetResolutionWarning> _presetWarnings =
+      <String, PresetResolutionWarning>{};
 
   String _search = '';
   _ParameterSortField _sortField = _ParameterSortField.name;
   bool _sortAsc = true;
   bool _loading = true;
+  String? _runtimeNotice;
 
   @override
   void initState() {
@@ -1046,7 +1096,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
   void didUpdateWidget(covariant _MotionParametersTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.modelPath != widget.modelPath ||
-        oldWidget.model3Data != widget.model3Data) {
+        oldWidget.resolvedModel != widget.resolvedModel) {
       _loadState();
     }
   }
@@ -1059,7 +1109,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
   }
 
   Future<void> _loadState() async {
-    var data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     final modelPath = widget.modelPath;
     if (data == null || modelPath == null || modelPath.isEmpty) {
       if (!mounted) {
@@ -1071,47 +1121,23 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
       return;
     }
 
-    // If model3.json didn't have a Parameters section, try fetching from native
-    if (data.parameters.isEmpty) {
-      try {
-        final paramIds = await _bridge.getParameterIds();
-        if (paramIds.isNotEmpty) {
-          final nativeParams = <Model3Parameter>[];
-          for (final id in paramIds) {
-            final currentValue = await _bridge.getParameter(id);
-            nativeParams.add(Model3Parameter(
-              id: id,
-              name: id,
-              min: -30.0,
-              defaultValue: currentValue ?? 0.0,
-              max: 30.0,
-            ));
-          }
-          data = Model3Data(
-            motionGroups: data.motionGroups,
-            expressions: data.expressions,
-            parameters: nativeParams,
-            hitAreas: data.hitAreas,
-          );
-          debugPrint('MotionParamsTab: loaded ${nativeParams.length} parameters from native bridge');
-        }
-      } catch (e) {
-        debugPrint('MotionParamsTab: failed to load native parameters: $e');
-      }
-    }
-
-    // Re-promote to non-nullable after potential modification
-    final resolvedData = data!;
-
     final defaults = <String, bool>{
-      for (final entry in resolvedData.motionGroups.entries)
+      for (final entry in data.motionGroups.entries)
         for (var i = 0; i < entry.value.length; i++) '${entry.key}#$i': true,
     };
 
     final savedMotionEnabled = await _repo.loadMotionEnabled(modelPath);
-    final presets = await _repo.loadParameterPresets(modelPath);
+    final resolvedParameterIds = data.parameters
+        .map((parameter) => parameter.id)
+        .toSet();
+    final aliases = await _repo.loadParameterAliases(modelPath);
+    final presetLoadResult = await _repo.loadParameterPresetsResolved(
+      modelPath,
+      resolvedParameterIds: resolvedParameterIds,
+      aliases: aliases,
+    );
     final current = <String, double>{
-      for (final parameter in resolvedData.parameters) parameter.id: parameter.defaultValue,
+      for (final parameter in data.parameters) parameter.id: parameter.defaultValue,
     };
 
     if (!mounted) {
@@ -1121,7 +1147,11 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
       _motionEnabled = {
         for (final key in defaults.keys) key: savedMotionEnabled[key] ?? true,
       };
-      _presets = presets;
+      _presets = presetLoadResult.presets;
+      _presetWarnings = {
+        for (final warning in presetLoadResult.warnings)
+          warning.presetId: warning,
+      };
       _currentValues
         ..clear()
         ..addAll(current);
@@ -1141,6 +1171,10 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
   }
 
   Future<void> _setParameter(Model3Parameter parameter, double value) async {
+    final ready = await _ensureRuntimeReady();
+    if (!ready) {
+      return;
+    }
     await _bridge.setParameter(parameter.id, value);
     if (!mounted) {
       return;
@@ -1152,7 +1186,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
 
   Future<void> _savePreset() async {
     final modelPath = widget.modelPath;
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (modelPath == null || modelPath.isEmpty || data == null) {
       return;
     }
@@ -1182,17 +1216,37 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     }
     setState(() {
       _presets = next;
+      _presetWarnings.remove(preset.id);
       _presetNameController.clear();
     });
   }
 
   Future<void> _applyPreset(Live2DParameterPreset preset) async {
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
+    final modelPath = widget.modelPath;
     if (data == null) {
       return;
     }
+
+    final ready = await _ensureRuntimeReady();
+    if (!ready) {
+      return;
+    }
+
+    final aliases = modelPath == null || modelPath.isEmpty
+        ? null
+        : await _repo.loadParameterAliases(modelPath);
+    final result = _repo.resolvePresetAgainstResolvedIds(
+      preset,
+      resolvedParameterIds: data.parameters
+          .map((parameter) => parameter.id)
+          .toSet(),
+      aliases: aliases,
+    );
+
     for (final parameter in data.parameters) {
-      final target = preset.overrides[parameter.id] ?? parameter.defaultValue;
+      final target =
+          result.preset.overrides[parameter.id] ?? parameter.defaultValue;
       await _bridge.setParameter(parameter.id, target);
     }
     if (!mounted) {
@@ -1201,9 +1255,43 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     setState(() {
       for (final parameter in data.parameters) {
         _currentValues[parameter.id] =
-            preset.overrides[parameter.id] ?? parameter.defaultValue;
+            result.preset.overrides[parameter.id] ?? parameter.defaultValue;
+      }
+      if (result.warning == null) {
+        _presetWarnings.remove(preset.id);
+      } else {
+        _presetWarnings[preset.id] = result.warning!;
       }
     });
+
+    final warning = result.warning;
+    if (warning != null) {
+      debugPrint('Preset apply warning metadata: ${warning.toMetadata()}');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${preset.name}: skipped ${warning.unknownParameterIds.length} '
+            'unknown parameter IDs',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<bool> _ensureRuntimeReady() async {
+    final ready = await _bridge.waitForRuntimeModelReady();
+    if (!mounted) {
+      return ready;
+    }
+    final message = ready
+        ? null
+        : (_bridge.runtimeReadinessMessage ?? 'Runtime model is not ready yet.');
+    if (message != _runtimeNotice) {
+      setState(() {
+        _runtimeNotice = message;
+      });
+    }
+    return ready;
   }
 
   Future<void> _deletePreset(String presetId) async {
@@ -1218,6 +1306,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     }
     setState(() {
       _presets = next;
+      _presetWarnings.remove(presetId);
     });
   }
 
@@ -1339,7 +1428,7 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     if (widget.isLoading || _loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final data = widget.model3Data;
+    final data = widget.resolvedModel?.toModel3Data();
     if (data == null) {
       return const Center(child: Text('모델 데이터를 불러올 수 없습니다.'));
     }
@@ -1350,6 +1439,11 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (_runtimeNotice != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _RuntimeReadinessNotice(message: _runtimeNotice!),
+          ),
         TextField(
           controller: _searchController,
           decoration: const InputDecoration(
@@ -1490,24 +1584,42 @@ class _MotionParametersTabState extends State<_MotionParametersTab> {
                 ),
                 const SizedBox(height: 8),
                 ..._presets.map(
-                  (preset) => ListTile(
-                    dense: true,
-                    title: Text(preset.name),
-                    subtitle: Text('Overrides: ${preset.overrides.length}'),
-                    trailing: Wrap(
-                      spacing: 8,
-                      children: [
-                        TextButton(
-                          onPressed: () => _applyPreset(preset),
-                          child: const Text('Apply Preset'),
-                        ),
-                        IconButton(
-                          onPressed: () => _deletePreset(preset.id),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                      ],
-                    ),
-                  ),
+                  (preset) {
+                    final warning = _presetWarnings[preset.id];
+                    final warningText = warning == null
+                        ? null
+                        : 'Unknown IDs: ${warning.unknownParameterIds.join(', ')}';
+                    return ListTile(
+                      dense: true,
+                      title: Text(preset.name),
+                      subtitle: Text(
+                        warningText == null
+                            ? 'Overrides: ${preset.overrides.length}'
+                            : 'Overrides: ${preset.overrides.length} · $warningText',
+                      ),
+                      trailing: Wrap(
+                        spacing: 8,
+                        children: [
+                          if (warning != null)
+                            Tooltip(
+                              message: warningText,
+                              child: const Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.orange,
+                              ),
+                            ),
+                          TextButton(
+                            onPressed: () => _applyPreset(preset),
+                            child: const Text('Apply Preset'),
+                          ),
+                          IconButton(
+                            onPressed: () => _deletePreset(preset.id),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1532,4 +1644,34 @@ class _MotionItem {
   final int index;
   final String label;
   final bool enabled;
+}
+
+class _RuntimeReadinessNotice extends StatelessWidget {
+  const _RuntimeReadinessNotice({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

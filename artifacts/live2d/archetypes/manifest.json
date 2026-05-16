@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "defaultArchetype": "c_full_ready",
+  "archetypes": [
+    {
+      "id": "a_requires_preprocess",
+      "modelFile": "a_requires_preprocess.model3.json",
+      "files": [
+        "a_requires_preprocess.model3.json",
+        "akaituno.moc3",
+        "akaituno.physics3.json",
+        "akaituno.cdi3.json",
+        "akaituno.8192/texture_00.png",
+        "texture_00.png",
+        "motions/idle.motion3.json"
+      ]
+    },
+    {
+      "id": "b_partial_parameters",
+      "modelFile": "b_partial_parameters.model3.json",
+      "files": [
+        "b_partial_parameters.model3.json",
+        "IceGirl.moc3",
+        "IceGirl.physics3.json",
+        "IceGirl.cdi3.json",
+        "IceGirl.8192/texture_00.png",
+        "IceGirl.8192/texture_01.png",
+        "IceGirl.8192/texture_02.png",
+        "IceGirl.8192/texture_03.png",
+        "texture_00.png",
+        "motions/idle.motion3.json"
+      ]
+    },
+    {
+      "id": "c_full_ready",
+      "modelFile": "c_full_ready.model3.json",
+      "files": [
+        "c_full_ready.model3.json",
+        "【雪熊企划】雪熊少女.moc3",
+        "【雪熊企划】雪熊少女.physics3.json",
+        "【雪熊企划】雪熊少女.cdi3.json",
+        "【雪熊企划】雪熊少女.4096/texture_00.png",
+        "【雪熊企划】雪熊少女.4096/texture_01.png",
+        "texture_00.png",
+        "motions/idle.motion3.json"
+      ]
+    }
+  ]
+}

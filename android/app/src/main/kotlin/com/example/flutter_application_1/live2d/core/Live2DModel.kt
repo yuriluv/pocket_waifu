@@ -33,7 +33,7 @@ class Live2DModel(
         val expressions: List<String>,
         val parameterCount: Int,
         val textureCount: Int = 0,
-        val motionGroups: Map<String, Int> = emptyMap(),
+        val motionGroups: Map<String, List<String>> = emptyMap(),
         val hasMoc: Boolean = false
     )
     
@@ -272,7 +272,7 @@ class Live2DModel(
             expressions = availableExpressions.toList(),
             parameterCount = 0,
             textureCount = texturesPaths.size,
-            motionGroups = availableMotionGroups.mapValues { it.value.size },
+            motionGroups = availableMotionGroups.mapValues { (_, motions) -> motions.toList() },
             hasMoc = mocFilePath != null
         )
     }

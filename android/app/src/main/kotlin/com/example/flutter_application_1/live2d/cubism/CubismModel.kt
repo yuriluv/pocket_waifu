@@ -315,7 +315,11 @@ class CubismModel(
             "sdkMode" to isSdkMode,
             "hasMoc" to (p?.mocFile != null),
             "textureCount" to (p?.textures?.size ?: 0),
-            "motionGroups" to (p?.motionGroups?.mapValues { it.value.size } ?: emptyMap()),
+            "motionGroups" to (
+                p?.motionGroups?.mapValues { (_, motions) ->
+                    motions.map { it.file }
+                } ?: emptyMap()
+            ),
             "expressions" to (p?.expressions?.map { it.name } ?: emptyList()),
             "parameters" to parameterInfo,
             "currentMotion" to "${currentMotionGroup ?: "none"}[$currentMotionIndex]",

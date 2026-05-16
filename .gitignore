@@ -46,4 +46,8 @@ app.*.map.json
 
 # Local gate/qa execution state and logs
 /.ops/
-/artifacts/
+/artifacts/*
+!/artifacts/live2d/
+/artifacts/live2d/*
+!/artifacts/live2d/archetypes/
+!/artifacts/live2d/archetypes/**
